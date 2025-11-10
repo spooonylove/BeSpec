@@ -281,7 +281,7 @@ fn main (){
     };
 
     // Run the app  (this blocks until window closes)
-    let result = eframe::run_native(
+    let _result = eframe::run_native(
         "BeAnal",
         options, 
         Box::new(|_cc| Ok(Box::new(SpectrumApp::new(shared_state.clone())))),

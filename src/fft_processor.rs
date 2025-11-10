@@ -1,7 +1,5 @@
 use realfft::{RealFftPlanner, RealToComplex};
-use std::{os::windows::process, sync::Arc};
-
-use crate::fft_processor;
+use std::sync::Arc;
 
 
 // configure for FFT processing and visualization
