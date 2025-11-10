@@ -357,12 +357,34 @@ mod tests {
     fn test_hann_window() {
         let window = FFTProcessor::compute_hann_window(1024);
 
-        // window should start and end near 0
-        assert!(window[0] < 0.01);
-        assert!(window[1023] < 0.01);
+        let size = 1024;
 
-        // Window should peak near 1.0 in middle
-        assert!(window[512] > 0.99);
+        // small tolerance for floating point comparisons
+        let epsilon = 1e-5; 
+
+        // Test 1:  Window should start at 0.0
+        let expected_start = 0.0;
+        assert!(
+            (window[0] - expected_start).abs() < epsilon,
+            "Window start was {}, expected {}", window[0], expected_start
+        );
+
+
+        // test 2: Window should end at 0.0
+        let expected_end = 0.0;
+        assert!(
+            (window[size - 1] - expected_end).abs() < epsilon,
+            "Window end was {}, expected {}", window[size - 1], expected_end
+        );
+
+        // Test 3: Window should peak at 1.0 in the middle
+        let expected_peak = 1.0;
+        assert!(
+            (window[size / 2] - expected_peak).abs() < epsilon,
+            "Window peak was {}, expected {}", window[size / 2], expected_peak
+        );
+        
+        
     }
 
     #[test]
