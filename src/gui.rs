@@ -53,7 +53,7 @@ impl eframe::App for SpectrumApp {
         // Request continuous repainting for smooth animation
         ctx.request_repaint();
 
-        /// === Building custom frame to manage window resizing and movement
+        // === Building custom frame to manage window resizing and movement
         
         // Grab the background opacity from the shared state
         let bg_opacity = if let Ok(state) = self.shared_state.lock() {
