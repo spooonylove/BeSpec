@@ -154,8 +154,11 @@ impl SpectrumApp {
         for (i, &bar_height_db) in viz_data.bars.iter().enumerate() {
             let x = rect.left() + (i as f32 * bar_slot_width);
 
+            let floor_db = config.noise_floor_db;
+            let db_range = (0.0 - floor_db).max(1.0); // defensive max(1.0) to garentee no div/zero later
+
             // Map dB (-60 to 0) to screen height (0 to 1)
-            let normalized_height = ((bar_height_db + 60.0) / 60.0).clamp(0.0, 1.0);
+            let normalized_height = ((bar_height_db - floor_db) / db_range).clamp(0.0, 1.0);
             let bar_height_px = normalized_height * rect.height();
 
             // Calculate bar color (gradient from low to high)
@@ -272,6 +275,12 @@ impl SpectrumApp {
                 ui.add(
                     egui::Slider::new(&mut state.config.sensitivity, 0.1..=10.0)
                         .text("Sensitivity")
+                );
+
+                ui.add(
+                    egui::Slider::new(&mut state.config.noise_floor_db,-120.0..=-20.0)
+                        .text("Noise Floor (dB)")
+                        .suffix(" dB")
                 );
 
                 ui.add(

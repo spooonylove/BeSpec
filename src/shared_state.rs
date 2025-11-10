@@ -131,6 +131,8 @@ pub struct AppConfig {
     /// Sensitivity multiplier (0.1 - 10.0)
     pub sensitivity: f32,
 
+    /// The lowest dB value to display (the "floor")
+    pub noise_floor_db: f32,
     /// How fast bars rise (milliseconds)
     pub attack_time_ms: f32,
 
@@ -166,6 +168,7 @@ impl Default for AppConfig {
             // Audio Settings
             fft_size: 1024,
             sensitivity: 2.0,
+            noise_floor_db: -60.0,
             attack_time_ms: 20.0,
             release_time_ms: 200.0,
             peak_hold_time_ms: 1000.0,
