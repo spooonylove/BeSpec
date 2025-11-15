@@ -299,7 +299,7 @@ impl FFTConfigManager {
     }
 
     /// Check if user has overridden FFT size
-    pub fn has_overrride(&self) -> bool {
+    pub fn has_override(&self) -> bool {
         self.fft_size_override.is_some()
     }
 
@@ -387,7 +387,7 @@ mod tests {
             let config = FFTSampleRateConfig::for_sample_rate(rate);
             assert_eq!(config.sample_rate, rate);
             assert_eq!(config.fft_size, expected_fft);
-            assert_eq!(config.nyquist_frequency, rate / 2);
+            assert_eq!(config.nyquist_frequency, (rate / 2) as f32);
             println!("✓ {}", config.description);
 
         }
@@ -471,7 +471,7 @@ mod tests {
 
         manager.set_override(8192).unwrap();
         let latency = manager.latency_ms();
-        assert((latency - 170.67).abs() < 1.0);
+        assert!((latency - 170.67).abs() < 1.0);
     }
 
     #[test]

@@ -384,7 +384,7 @@ mod tests {
             samples: vec![1.0, 0.5, 0.5, 0.25],
             sample_rate: 48000,
             channels: 2,
-            _timestamp: Instant::now(),
+            timestamp: Instant::now(),
         };
 
         let mono = packet.to_mono();
@@ -400,7 +400,7 @@ mod tests {
             samples: samples.clone(),
             sample_rate: 44100,
             channels: 1,
-            _timestamp: Instant::now(),
+            timestamp: Instant::now(),
         };
     
         let mono = packet.to_mono();
@@ -416,7 +416,7 @@ mod tests {
             samples,
             sample_rate: 48000,
             channels: 2,
-            _timestamp: Instant::now(),
+            timestamp: Instant::now(),
         };
 
         let duration = packet.duration_secs();

@@ -391,7 +391,7 @@ mod tests {
             samples: vec![0.5, 0.3, 0.7, 0.1],
             sample_rate: 48000,
             channels: 2,
-            _timestamp: std::time::Instant::now(),
+            timestamp: std::time::Instant::now(),
         };
 
         let mono = packet.to_mono();
