@@ -10,6 +10,7 @@ description = "A lightweight, highly configurable, real-time audio spectrum visu
 cpal = "0.15"
 realfft = "3.3"
 num-complex = "0.4"
+lazy_static = "1.4"
 
 # GUI framework
 eframe = "0.29"

@@ -1,157 +1,94 @@
 mod fft_processor;
 mod shared_state;
 mod gui;
+mod audio_device;
+mod audio_capture;
+mod fft_config;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use crossbeam_channel::{bounded, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crossbeam_channel::bounded;
+
 use crate::fft_processor::{FFTProcessor, FFTConfig};
 use shared_state::SharedState;
 use crate::gui::SpectrumApp;
+use crate::audio_capture::{AudioCaptureManager, AudioPacket};
+use crate::fft_config::FFTConfigManager;
 
-#[derive(Clone)]
-struct AudioPacket {
-    samples: Vec<f32>,
-    sample_rate: u32,
-    channels: u16,
-    _timestamp: Instant,
-}
+// ========================================================================
+// AUDIO CAPTURE THREAD
+// ========================================================================
+//    Uses AudioCaptureManager for defvice enumeration and auto-detection
 
-impl AudioPacket {
-    fn to_mono(&self) -> Vec<f32> {
-        if self.channels == 1 {
-            return self.samples.clone()
-        } 
-
-        // This is processing the time-based stream
-        // stream is organized [L, R, L, R...]. This code breaks out the samples,
-        // sums them, averages, and slams it right back togther.
-        // Gee whiz, rust is effecient.
-        self.samples
-            .chunks(self.channels as usize)
-            .map(|frame| frame.iter().sum::<f32>() / self.channels as f32)
-            .collect()
-    }
-}
-
-fn start_audio_capture(shutdown: Arc<AtomicBool>) -> Receiver<AudioPacket> {
+fn start_audio_capture(shutdown: Arc<AtomicBool>) -> crossbeam_channel::Receiver<AudioPacket> {
     let (tx, rx) = bounded(10);
 
     thread::spawn(move || {
         println!("[Capture] Starting audio capture thread");
 
-        let host = cpal::default_host();
-        let device = match host.default_output_device() {
-            Some(device) => device,
-            None => {
-                eprintln!("[Capture] ⚠ No output device found!");
-                return;
-            }
-        };
-
-        println!("[Capture] Using device: {}",
-            device.name().unwrap_or_else(|_| "Unknown".to_string()));
-
-        let config = match device.default_output_config() {
-            Ok(config) => config,
+        // Create Capture Manager (uses default device)
+        let mut capture = match AudioCaptureManager::new() {
+            Ok(mgr) => mgr,
             Err(e) => {
-                eprintln!("[Capture] ⚠ Config error: {}", e);
+                eprintln!("[Capture] ❌ Failed to create audio capture manager: {}", e);
                 return;
             }
         };
 
-        let sample_rate = config.sample_rate().0;
-        let channels = config.channels();
-
-        println!("[Capture] {} channels at {}Hz", channels, sample_rate);
-
-        let err_fn = |err| eprintln!("[Capture] ⚠ Stream error: {}", err);
-
-        let stream = match config.sample_format(){
-            cpal::SampleFormat::F32 => {
-                device.build_input_stream(
-                    &config.into(),
-                    move |data: &[f32], _| {
-                        let packet = AudioPacket {
-                            samples: data.to_vec(),
-                            sample_rate,
-                            channels,
-                            _timestamp: Instant::now(),
-                        };
-
-                        if tx.try_send(packet).is_err(){
-                            // FFT thread  can't keep up - drop packet
-                        }
-                    },
-                    err_fn,
-                    None,
-               )
-            }
-            _ => {
-                eprintln!("[Capture] Unsupported sample format");
-                return;
-            }
-        };
-
-        let stream = match stream {
-            Ok(stream) => stream,
-            Err(e) => {
-                eprintln!("[Capture] Failed to build stream: {}", e);
-                return;
-            }
-        };
-
-        if let Err(e) = stream.play() {
-            eprintln!("[Capture] Failed to play stream: {}", e);
+        // Start capturing
+        if let Err(e) = capture.start_capture() {
+            eprintln!("[Capture] ❌ Failed to start capture: {}", e);
             return;
         }
 
-        println!("[Capture] ✓ Audio capture running... ");
+        println!("[Capture] ✓ Audio capture thread started");
 
+        let audio_rx = capture.receiver();
+
+        // Keep receiving audio packets and forward them
         while !shutdown.load(Ordering::Relaxed) {
-            thread::sleep(Duration::from_millis(100))
+            match audio_rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(packet) => {
+                    // Forward to FFT thread
+                    if tx.try_send(packet).is_err() {
+                        // FFT thread can't keep up, drop packet
+                    }
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
+                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                    eprint!("[Capture] Audio stream disconnected!");
+                    break;
+                }
+            }
+        
         }
 
         println!("[Capture] Shutting down...");
-
-        drop(stream);
+        capture.stop_capture();
     });
 
     rx
 }
 
-/// Start FFT Processing thread
+
+// ========================================================================
+// FFT PROCESSING THREAD
+// ========================================================================
 fn start_fft_processing(
-    rx: Receiver<AudioPacket>,
+    rx: crossbeam_channel::Receiver<AudioPacket>,
     shared_state: Arc<Mutex<SharedState>>,
     shutdown: Arc<AtomicBool>
 ) {
-    thread::spawn(move ||{
+    thread::spawn(move || {
         println!("[FFT] Starting FFT processing thread...");
 
-        //  Get initial config from shared state
-        let config = {
-            let state = shared_state.lock().unwrap();
-            FFTConfig {
-                fft_size: state.config.fft_size,
-                sample_rate: 48000,
-                num_bars: state.config.num_bars,
-                sensitivity: state.config.sensitivity,
-                attack_time_ms: state.config.attack_time_ms,
-                release_time_ms: state.config.release_time_ms,
-                peak_hold_time_ms: state.config.peak_hold_time_ms,
-                peak_release_time_ms: state.config.peak_release_time_ms,
-            }
-            
-        };
-       
-        let mut processor = FFTProcessor::new(config);
-        let mut frame_count = 0u64;
-
+              
+        let mut processor: Option<FFTProcessor> = None;
+        let mut fft_config: Option<FFTConfigManager> = None;
+        let mut frame_count= 0u64;
         
         // === Performance Tracking ===
         let mut total_process_time = Duration::ZERO;
@@ -166,6 +103,94 @@ fn start_fft_processing(
             match rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(packet) => {
                     frame_count += 1;
+
+                    // ====== Initialization: First packet tells us the sample rate
+                    if processor.is_none() || fft_config.is_none() {
+                        println!(
+                            "[FFT] 🎵 First audio packet received at {} Hz",
+                            packet.sample_rate
+                        );
+                    
+                        // Initialize FFT config with ACTUAL device sample rates!
+                        let mut new_fft_config = FFTConfigManager::new(packet.sample_rate);
+
+                        // Get initial settings from shared state
+                        let config = {
+                            let state = shared_state.lock().unwrap();
+                            FFTConfig {
+                                fft_size: new_fft_config.get_fft_size(),
+                                sample_rate: packet.sample_rate,
+                                num_bars: state.config.num_bars,
+                                sensitivity: state.config.sensitivity,
+                                attack_time_ms: state.config.attack_time_ms,
+                                release_time_ms: state.config.release_time_ms,
+                                peak_hold_time_ms: state.config.peak_hold_time_ms,
+                                peak_release_time_ms: state.config.peak_release_time_ms,
+                            }
+                        };
+
+                        let new_processor = FFTProcessor::new(config);
+                        
+                        let info = new_fft_config.info();
+                        println!(
+                            "[FFT] ✓ Initialized: {} Hz, FFT size: {}, latency: {:.2}ms",
+                                info.sample_rate, info.fft_size, info.latency_ms 
+                        );
+                    
+                        processor = Some(new_processor);
+                        fft_config = Some(new_fft_config);
+                    }
+                    
+                    // At this point, both FFT configuration and the FFT Processor
+                    // should be initialized
+                    let processor = match processor.as_mut(){
+                        Some(p) => p,
+                        None => continue, //Shouldn't happen, but be safe
+                    };
+
+                    let fft_config  = match fft_config.as_mut(){
+                        Some(c) => c,
+                        None => continue, //Shouldn't happen, but be safe
+                    };
+
+                    // ==== CRITICAL: Handle sample rate changes =====
+                    // If device sample rate changed, update FFT config
+                    if packet.sample_rate != fft_config.get_sample_rate() {
+                        println!(
+                            "[FFT] 🔄 Sample rate changed: {} Hz → {} Hz",
+                            fft_config.get_sample_rate(),
+                            packet.sample_rate
+                        );
+
+                        //Update FFT config (returns true if rebuild needed)
+                        let needs_rebuild = fft_config.update_sample_rate(packet.sample_rate);
+
+                        if needs_rebuild {
+                            // Rebuild FFT processor with new FFT size
+                            let info = fft_config.info();
+                            println!(
+                                "[FFT] ⚙️  Rebuilding FFT: {} Hz, FFT size: {}, latency: {:.2}ms",
+                                info.sample_rate, info.fft_size, info.latency_ms
+                            );
+
+                            let new_config = {
+                                let state = shared_state.lock().unwrap();
+                                FFTConfig {
+                                    fft_size: info.fft_size, 
+                                    sample_rate: info.sample_rate,
+                                    num_bars: state.config.num_bars,
+                                    sensitivity: state.config.sensitivity,
+                                    attack_time_ms: state.config.attack_time_ms,
+                                    release_time_ms: state.config.release_time_ms,
+                                    peak_hold_time_ms: state.config.peak_hold_time_ms,
+                                    peak_release_time_ms: state.config.peak_release_time_ms,
+                                }
+                            };
+
+                            *processor = FFTProcessor::new(new_config);
+                            
+                        }
+                    }
 
                     // Convert to mono (FFT expects single channel
                     let mono = packet.to_mono();
@@ -182,7 +207,8 @@ fn start_fft_processing(
                     max_process_time = max_process_time.max(process_time);
 
                    // Update shared state
-                   if let Ok(mut state) = shared_state.lock() {
+                   let config_changed = {
+                        let mut state = shared_state.lock().unwrap();
                         // Update  visualization  data
                         state.visualization.bars = bars;
                         state.visualization.peaks = peaks;
@@ -194,23 +220,33 @@ fn start_fft_processing(
                         state.performance.fft_min_time = min_process_time;
                         state.performance.fft_max_time = max_process_time;
 
-                        // Check if config changed (requires FFT rebuild)
-                        let new_config = FFTConfig {
-                            fft_size: state.config.fft_size,
-                            sample_rate: 48000,
-                            num_bars: state.config.num_bars,
-                            sensitivity: state.config.sensitivity,
-                            attack_time_ms: state.config.attack_time_ms,
-                            release_time_ms: state.config.release_time_ms,
-                            peak_hold_time_ms: state.config.peak_hold_time_ms,
-                            peak_release_time_ms: state.config.peak_release_time_ms,
-                        };
+                        // Check if any config parameters changed
+                        // We need to compare with what the processor is currently using
+                        // Since we can't access processor.config directly, we track the 
+                        // current FFT siize from our fft_config manager
+                        let current_fft_size = fft_config.get_fft_size();
+                        let needs_update = state.config.fft_size != current_fft_size ||
+                                        state.config.num_bars != state.visualization.bars.len() ||
+                                        // add other checks if needed
+                                        false;
+                        if needs_update {
+                            //Return the new config to apply
+                            Some(FFTConfig {
+                                fft_size: state.config.fft_size,
+                                sample_rate: fft_config.get_sample_rate(),
+                                num_bars: state.config.num_bars,
+                                sensitivity: state.config.sensitivity,
+                                attack_time_ms: state.config.attack_time_ms,
+                                release_time_ms: state.config.release_time_ms,
+                                peak_hold_time_ms: state.config.peak_hold_time_ms,
+                                peak_release_time_ms: state.config.peak_release_time_ms,
+                            })
+                        } else {
+                            None
+                        }
 
-                        // Update the processor config (handles resize internally)
-                        processor.update_config(new_config);
-                            
-                   }
-                }
+                    };
+                }            
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
                     eprintln!("[FFT] Capture disconnected!");
@@ -231,7 +267,8 @@ fn start_fft_processing(
 
             // Calculate what % of frame budge we're using
             let target_frame_time = Duration::from_millis(16);  // 60 FPS = 16.67ms
-            let usage_pct = (avg_time.as_micros() as f64 / target_frame_time.as_micros() as f64) * 100.0;
+            let usage_pct = 
+                (avg_time.as_micros() as f64 / target_frame_time.as_micros() as f64) * 100.0;
             println!("[FFT]     CPU usage:     {:.1}% of 60fps budget", usage_pct);
         } 
         
