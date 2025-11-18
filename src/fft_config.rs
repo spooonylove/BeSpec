@@ -2,7 +2,6 @@
 /// Ensures FFT settings are always optimal for the current device's sample rate
 
 use std::collections::HashMap;
-use lazy_static::lazy_static;
 
 /// Represents optimal FFT settings for a given sample rate
 #[derive(Clone, Debug)]
