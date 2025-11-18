@@ -161,7 +161,7 @@ pub struct FFTConfigManager {
 
 /// Public result of FFT configuration
 /// Everything you need to know about current state
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FFTInfo {
     pub sample_rate: u32,
     pub fft_size: usize,
@@ -504,7 +504,7 @@ mod tests {
         manager.set_override(4096).unwrap();
         let info = manager.info();
 
-        assert_eq!(info.sample_rate, 4096);
+        assert_eq!(info.fft_size, 4096);
         assert!(info.is_overridden);
     }
 

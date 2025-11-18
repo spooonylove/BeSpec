@@ -219,6 +219,9 @@ fn start_fft_processing(
                         state.performance.fft_ave_time = total_process_time / frame_count as u32;
                         state.performance.fft_min_time = min_process_time;
                         state.performance.fft_max_time = max_process_time;
+                        state.performance.fft_info = fft_config.info();
+
+                        
 
                         // Check if any config parameters changed
                         // We need to compare with what the processor is currently using

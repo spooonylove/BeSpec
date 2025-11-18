@@ -1,4 +1,5 @@
 use std::time::{Duration, Instant};
+use crate::fft_config::FFTInfo;
 
 
 /// Main Shared state container -- wrapped in Arc<Mutx<>> for thread safety
@@ -84,6 +85,9 @@ pub struct PerformanceStats {
 
     /// Current GUI frame rate (updated by GUI)
     pub gui_fps: f32,
+
+    /// Ya know.. the stats.
+    pub fft_info: FFTInfo,
 }
 
 
@@ -187,15 +191,6 @@ impl AppConfig {
             || self.num_bars != other.num_bars
     }
 
-    /// Calculate frequency resolution for current FFT size
-    pub fn frequency_resolution(&self) -> f32 {
-        48000.0 / self.fft_size as f32
-    }
-
-    /// Calculate FFT latency in milliseconds
-    pub fn fft_latency_ms(&self) -> f32 {
-        self.fft_size as f32 / 48000.0 * 1000.0
-    }
 
     /// Apply a color preset by name
     pub fn apply_preset(&mut self, preset_name: &str) {
@@ -544,43 +539,6 @@ mod tests {
         // Change attack time - No Rebuild Required!
         config1.attack_time_ms = 20.0;
 
-    }
-
-    // === Tests for Calculation === 
-
-    #[test]
-    fn test_frequency_resolution() {
-        let mut config = AppConfig::default();
-        
-        // 1024 FFT @ 48kHz
-        config.fft_size = 1024;
-        assert_eq!(config.frequency_resolution(), 48000.0 / 1024.0);
-
-        // 2048 FFT @ 48kHz
-        config.fft_size = 2048;
-        assert_eq!(config.frequency_resolution(), 48000.0 / 2048.0);
-
-        // 4096 FFT @ 48kHz
-        config.fft_size = 4096;
-        assert_eq!(config.frequency_resolution(), 48000.0 / 4096.0);
-
-    }
-
-    #[test]
-    fn test_fft_latency_ms() {
-        let mut config = AppConfig::default();
-
-        // 1024 FFT@ 48kHz = ~21.3ms
-        config.fft_size =  1024;
-        assert!((config.fft_latency_ms() - 21.333).abs()  < 0.01);
-
-        // 2048 FFT @ 48kHz = ~ 42.7ms
-        config.fft_size = 2048;
-        assert!((config.fft_latency_ms() - 42.666).abs() < 0.01);
-
-        // 4096 FFT @ 48kHz = ~ 85.4ms
-        config.fft_size = 4096;
-        assert!((config.fft_latency_ms() - 85.333).abs() < 0.01);
     }
 
     // === Test for invariants ===

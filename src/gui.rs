@@ -357,9 +357,12 @@ impl SpectrumApp {
 
             // === PERFORMANCE INFO ===
             ui.collapsing("📊 Performance Info", |ui| {
-                ui.label(format!("FFT Size: {} samples", state.config.fft_size));
-                ui.label(format!("Frequency Resolution: {:.2} Hz/bin", state.config.frequency_resolution()));
-                ui.label(format!("FFT Latency: {:.2} ms", state.config.fft_latency_ms()));
+                let info = &state.performance.fft_info;
+
+                ui.label(format!("Sample Rate: {} Hz", info.sample_rate));
+                ui.label(format!("FFT Size: {} samples", info.fft_size));
+                ui.label(format!("Frequency Resolution: {:.2} Hz/bin", info.frequency_resolution));
+                ui.label(format!("FFT Latency: {:.2} ms", info.latency_ms));
                 ui.label(format!("Current FPS: {:.1}", state.performance.gui_fps));
             });
         });
