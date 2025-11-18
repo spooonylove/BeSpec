@@ -155,12 +155,6 @@ impl AudioDeviceEnumerator {
         let mut supported_rates = Vec::new();
 
         for &rate in &common_rates {
-            // Try to create a test config with this sample rate
-            let test_config = StreamConfig {
-                channels: 2,
-                sample_rate: cpal::SampleRate(rate),
-                buffer_size: cpal::BufferSize::Default,
-            };
 
             // Check if this configuration is supported
             let is_supported = device

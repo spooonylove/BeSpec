@@ -30,7 +30,7 @@ pub struct FFTSampleRateConfig {
 impl FFTSampleRateConfig {
     /// Calculate configuration for any sample rate
     pub fn for_sample_rate(sample_rate: u32) -> Self {
-        /// Determine FFT size: aim for ~50-100ms of audio
+        // Determine FFT size: aim for ~50-100ms of audio
         let fft_size = match sample_rate{
             8000..=16000 => 512,        // ~32-64ms at 8-16kHz
             16001..=32000 => 1024,      // ~32-64ms at 15-32kHz
@@ -79,7 +79,7 @@ impl FFTSampleRateConfig {
 }
 
 
-/// Preset FFT configuration for common sample rates
+// Preset FFT configuration for common sample rates
 lazy_static::lazy_static! {
     static ref PRESET_CONFIGS: HashMap<u32, FFTSampleRateConfig> = {
         let configs = vec![
@@ -352,7 +352,7 @@ impl FFTConfigManager {
 }
 
 
-/// Pre-computed valid FFT sizes
+// Pre-computed valid FFT sizes
 lazy_static::lazy_static! {
     static ref VALID_FFT_SIZES: Vec<usize> = {
         let mut sizes = Vec::new();
