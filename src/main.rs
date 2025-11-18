@@ -207,7 +207,7 @@ fn start_fft_processing(
                     max_process_time = max_process_time.max(process_time);
 
                    // Update shared state
-                   let config_changed = {
+                   let _config_changed = {
                         let mut state = shared_state.lock().unwrap();
                         // Update  visualization  data
                         state.visualization.bars = bars;

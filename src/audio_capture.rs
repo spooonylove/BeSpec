@@ -72,7 +72,7 @@ impl AudioCaptureManager {
 
     /// Create a capture manager with a specific device ID
     pub fn with_device_id(device_id: &str) -> Result<Self, AudioDeviceError> {
-        let device = AudioDeviceEnumerator::get_device_by_id(device_id)?;
+        let _device = AudioDeviceEnumerator::get_device_by_id(device_id)?;
         let devices = AudioDeviceEnumerator::enumerate_devices()?;
         let device_info = devices
             .into_iter()
@@ -327,7 +327,7 @@ impl AudioCaptureManager {
 
     /// Switch to a different audio device (can be called while capturing)
     pub fn switch_device(&mut self, device_id: &str) -> Result<(), AudioDeviceError> {
-        let device = AudioDeviceEnumerator::get_device_by_id(device_id)?;
+        let _device = AudioDeviceEnumerator::get_device_by_id(device_id)?;
         let devices = AudioDeviceEnumerator::enumerate_devices()?;
         let new_device_info = devices
             .into_iter()
