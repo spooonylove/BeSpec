@@ -112,7 +112,7 @@ fn start_fft_processing(
                         );
                     
                         // Initialize FFT config with ACTUAL device sample rates!
-                        let mut new_fft_config = FFTConfigManager::new(packet.sample_rate);
+                        let new_fft_config = FFTConfigManager::new(packet.sample_rate);
 
                         // Get initial settings from shared state
                         let config = {
