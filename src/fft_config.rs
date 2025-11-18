@@ -324,9 +324,9 @@ impl FFTConfigManager {
     pub fn latency_warning(&self) ->(&'static str, &'static str) {
         let latency = self.latency_ms();
         match latency {
-            l if l < 10.0 => ("⚡", "very snappy"),
-            l if l < 30.0 => ("🟢", "responsive"),
-            l if l < 85.0 => ("🟡", "good detail"),
+            l if l < 20.0 => ("⚡", "very snappy"),
+            l if l < 50.0 => ("🟢", "responsive"),
+            l if l < 100.0 => ("🟡", "good detail"),
             _ => ("🔴", "may lag"),
         }
     }
