@@ -1,82 +1,5 @@
-mod fft_processor;
-mod shared_state;
-mod gui;
-mod audio_device;
-mod audio_capture;
-mod fft_config;
+// In src/main.rs
 
-use std::thread;
-use std::time::{Duration, Instant};
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
-
-use crossbeam_channel::bounded;
-
-use crate::fft_processor::{FFTProcessor, FFTConfig};
-use shared_state::SharedState;
-use crate::gui::SpectrumApp;
-use crate::audio_capture::{AudioCaptureManager, AudioPacket};
-use crate::fft_config::FFTConfigManager;
-
-// ========================================================================
-// AUDIO CAPTURE THREAD
-// ========================================================================
-//    Uses AudioCaptureManager for defvice enumeration and auto-detection
-
-fn start_audio_capture(shutdown: Arc<AtomicBool>) -> crossbeam_channel::Receiver<AudioPacket> {
-    let (tx, rx) = bounded(10);
-
-    thread::spawn(move || {
-        println!("[Capture] Starting audio capture thread");
-
-        // Create Capture Manager (uses default device)
-        let mut capture = match AudioCaptureManager::new() {
-            Ok(mgr) => mgr,
-            Err(e) => {
-                eprintln!("[Capture] ❌ Failed to create audio capture manager: {}", e);
-                return;
-            }
-        };
-
-        // Start capturing
-        if let Err(e) = capture.start_capture() {
-            eprintln!("[Capture] ❌ Failed to start capture: {}", e);
-            return;
-        }
-
-        println!("[Capture] ✓ Audio capture thread started");
-
-        let audio_rx = capture.receiver();
-
-        // Keep receiving audio packets and forward them
-        while !shutdown.load(Ordering::Relaxed) {
-            match audio_rx.recv_timeout(Duration::from_millis(100)) {
-                Ok(packet) => {
-                    // Forward to FFT thread
-                    if tx.try_send(packet).is_err() {
-                        // FFT thread can't keep up, drop packet
-                    }
-                }
-                Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
-                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    eprint!("[Capture] Audio stream disconnected!");
-                    break;
-                }
-            }
-        
-        }
-
-        println!("[Capture] Shutting down...");
-        capture.stop_capture();
-    });
-
-    rx
-}
-
-
-// ========================================================================
-// FFT PROCESSING THREAD
-// ========================================================================
 fn start_fft_processing(
     rx: crossbeam_channel::Receiver<AudioPacket>,
     shared_state: Arc<Mutex<SharedState>>,
@@ -224,8 +147,6 @@ fn start_fft_processing(
                         state.performance.fft_max_time = max_process_time;
                         state.performance.fft_info = fft_config.info();
 
-                        
-
                         // Check if any config parameters changed
                         // We need to compare with what the processor is currently using
                         // Since we can't access processor.config directly, we track the 
@@ -234,7 +155,7 @@ fn start_fft_processing(
 
                         // 1. Check for changes that require a rebuild
                         let needs_update = state.config.fft_size != current_fft_size ||
-                                        state.config.num_bars != state.visualization.bars.len();
+                                            state.config.num_bars != state.visualization.bars.len();
 
                         let config_differs = |current: &FFTConfig| -> bool {
                             state.config.sensitivity != current.sensitivity ||
@@ -244,15 +165,10 @@ fn start_fft_processing(
                             state.config.peak_release_time_ms != current.peak_release_time_ms ||
                             state.config.use_peak_aggregation != current.use_peak_aggregation
                         };
-                                              
                         
                         if needs_update {
                             //Major change - needs FFT rebuild
-                            println!("[FFT] Config change requires rebuild (FFT size or bar count)");
-
-                            // Update the local manager
-                            let _ = fft_config.set_override(state.config.fft_size);
-
+                            println!("[FFT] Config change requires rebuild (FFT size or bar count");
                             Some(FFTConfig {
                                 fft_size: state.config.fft_size,
                                 sample_rate: fft_config.get_sample_rate(),
@@ -267,18 +183,17 @@ fn start_fft_processing(
                         } else {
                             // Check for minor config changes that don't require a rebuild
 
-                            let current = processor.get_config();
+                            let current =  processor.get_config();
 
-                            if config_differs(&current) {
+                            if config_differs(current) {
                                 // Log specific changes for debugging
                                 if state.config.use_peak_aggregation != current.use_peak_aggregation {
-                                    println!{
-                                        "[FFT] Aggregation mode changed: {} → {}",
+                                    println!(
+                                        "[FFT] Aggregation mode changed: {} -> {}",
                                         if current.use_peak_aggregation { "Peak" } else { "Average" },
                                         if state.config.use_peak_aggregation { "Peak" } else { "Average" }
-                                    };
+                                    );
                                 }
-                            
 
                                 Some(FFTConfig {
                                     fft_size: current_fft_size,
@@ -294,20 +209,16 @@ fn start_fft_processing(
                             } else {
                                 None
                             }
-                        }
-                    };
-                    // Apply confiig update if needed
+                        } 
+                    }; // <--- Added closing brace and semicolon for 'pending_config_update'
+
+                    // Apply config update if needed
                     if let Some(new_config) = pending_config_update {
-                        if new_config.fft_size != processor.get_config().fft_size {
-                            println!("[FFT]♻️ Recreating processor for new FFT size: {}", new_config.fft_size);
-                            *processor = FFTProcessor::new(new_config);
-                        } else {
-                            println!("[FFT]🔧 Updating processor config");
-                            processor.update_config(new_config);
-                        }
+                        processor.update_config(new_config);
                     }
-                }
-                
+
+                } // <--- Added closing brace for 'Ok(packet)' match arm
+
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
                     eprintln!("[FFT] Capture disconnected!");
@@ -335,65 +246,3 @@ fn start_fft_processing(
         
     });
 }
-
-fn main (){
-    println!("=== BeAnal - Rust Audio Spectrum Analyzer ===\n");
-
-    // create shared state
-    let shared_state = Arc::new(Mutex::new(SharedState::new()));
-
-    // Get initial window settinghsd from default config
-    let (initial_decorations, initial_on_top) = {
-        let state = shared_state.lock().unwrap();
-        (state.config.window_decorations, state.config.always_on_top)
-    };
-
-    // Shutdown signal for audio threads
-    let shutdown = Arc::new(AtomicBool::new(false));
-
-    // Start audio capture thread
-    let audio_rx = start_audio_capture(shutdown.clone());
-
-    // Start FFT processing thread
-    start_fft_processing(audio_rx, shared_state.clone(), shutdown.clone());
-
-    println!("[Main] Starting GUI...\n");
-
-    // Create a mutable viewport_builder
-    let mut viewport_builder = egui::ViewportBuilder::default()
-        .with_inner_size([800.0, 450.0])
-        .with_title("BeAnal - Audio Spectrum Analyzer")
-        .with_resizable(true)
-        .with_transparent(true)
-        .with_decorations(initial_decorations);
-
-    // Conditionally apply 'always on top' setting
-    if initial_on_top {
-        viewport_builder = viewport_builder.with_always_on_top();
-    }
-
-    // Configure and launch GUI
-    let options = eframe::NativeOptions{
-        viewport: viewport_builder,
-        ..Default::default()
-    };
-
-    // Run the app  (this blocks until window closes)
-    let _result = eframe::run_native(
-        "BeAnal",
-        options, 
-        Box::new(|_cc| Ok(Box::new(SpectrumApp::new(shared_state.clone())))),
-    );
-
-    // Signal shutdown to audio threads
-    println!("\n[Main] Shutting down audio threads...");
-    shutdown.store(true, Ordering::Relaxed);
-
-    // Give threadss time to clean up
-    thread::sleep(Duration::from_millis(500));
-
-
-    println!("[Main] ✓ Shutdown complete");
-
-}
-

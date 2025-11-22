@@ -13,6 +13,7 @@ pub struct FFTConfig{
     pub release_time_ms: f32,           // bar fall speed
     pub peak_hold_time_ms: f32,         // duration of peak hold
     pub peak_release_time_ms: f32,      // peak fall speed
+    pub use_peak_aggregation: bool,     // bar aggregation peak vs average
 }
 
 impl Default for FFTConfig {
@@ -26,6 +27,7 @@ impl Default for FFTConfig {
             release_time_ms: 200.0,
             peak_hold_time_ms: 1500.0,
             peak_release_time_ms: 1500.0,
+            use_peak_aggregation: true,
         }
         
     }
@@ -186,25 +188,28 @@ impl FFTProcessor {
 
     /// Convert FFT output to dB magniotudes with sensitivity
     fn compute_magnitudes(&self) -> Vec<f32> {
-        // realfft's output is unnormalized. A sine wave with amplitude 1.0
-        // will result in a bin with a norm() of N/2.
-        // We must divide by N/2 to get the "true" amplitude (e.g., 1.0).
+        // Magnitude computation is a key point of visualization, and we have to 
+        // make a selection here on how to scale the raw FFT output.  Technically
+        // more accurate, we should normalize by fft_size/2 to get true amplitudes.
+        // However, for visualization purposes, we currently are correcting more
+        // aggressively to get a better dynamic range, and a more responsive, 
+        // visually appealing result.
 
-        let normalization_factor = (self.config.fft_size as f32) / 2.0;
+        const HANN_WINDOW_CORRECTION: f32 = 2.0; // Compensate for Hann window energy loss
 
         self.output_buffer
             .iter()
             .map(|&mag| {
                 
                 //1. Normalize the FFT output first
-                let normalized_mag = mag / normalization_factor;
+                let corrected_mag = mag * HANN_WINDOW_CORRECTION;
 
                 //2. Apply sensitivity
                 
                 // Apply sensitivity (user gain)
-                let  adjusted = normalized_mag * self. config.sensitivity;
+                let  adjusted = corrected_mag * self. config.sensitivity;
 
-                // Convert to dB scale (20 * log10)
+                //3. Convert to dB scale
                 // add small epsilon to avoid log(0)
                 20.0 * (adjusted + 1e-10).log10()
             })
@@ -259,14 +264,27 @@ impl FFTProcessor {
         map
     }
 
+    // Group FFT bin data into visualization bars
     fn group_bins(&self, magnitudes: &[f32]) -> Vec<f32> {
         self.bar_to_bin_map
             .iter()
             .map(|&(start, end)| {
-                // Average the magnitudes in this bin range
-                let sum: f32 = magnitudes[start..end].iter().sum();
-                let count = (end - start) as f32;
-                sum / count.max(1.0)
+
+                
+                if self.config.use_peak_aggregation {
+                    // PEAK MODE: take the maximum value in the range
+                    // this creates a more dramatic, responsive visual effect.
+                    magnitudes[start..end]
+                        .iter()
+                        .copied()
+                        .fold(f32::NEG_INFINITY, f32::max)
+                } else {
+                    // AVERAGE MODE: take the average value in the range
+                    // this creates a smoother, more stable visual effect.
+                    let sum: f32 = magnitudes[start..end].iter().sum();
+                    let count = (end - start) as f32;
+                    sum / count.max(1.0)
+                }
             })
             .collect()
     }
@@ -320,6 +338,11 @@ impl FFTProcessor {
         self.peak_levels.clone()
     }
 
+    // Get a copy of the current configuration
+    pub fn get_config(&self) -> FFTConfig {
+        self.config.clone()
+    }
+    
 }
 
 // ===========  Tests ===============

@@ -259,6 +259,19 @@ impl SpectrumApp {
                 );
 
                 ui.checkbox(&mut state.config.show_peaks, "Show Peaks Indicators");
+
+                ui.separator();
+                ui.label("Bar Aggregation Mode:");
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut state.config.use_peak_aggregation, true, "Peak");
+                    ui.radio_value(&mut state.config.use_peak_aggregation, false, "Average");
+                });
+
+                if ui.small_button("i").on_hover_text(
+                    "Peak: Shows the strongest frequency in each band (more dramatic)\n\
+                    Average: Shows the mean energy in each band (more accurate)"
+                ).clicked() {
+                }
             });
 
             // === AUDIO SETTINGS ===
