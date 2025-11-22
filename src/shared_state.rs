@@ -149,6 +149,9 @@ pub struct AppConfig {
     /// How fast peak falls (milliseconds)
     pub peak_release_time_ms: f32,
 
+    /// Use peak aggregation (true) or average (false) for bar grouping
+    pub use_peak_aggregation: bool,
+
     // === Color Settings === 
     pub color_scheme: ColorScheme,
 }
@@ -177,6 +180,7 @@ impl Default for AppConfig {
             release_time_ms: 200.0,
             peak_hold_time_ms: 1000.0,
             peak_release_time_ms: 1500.0,
+            use_peak_aggregation: true,
 
             // Color Settings 
             color_scheme: ColorScheme::default(),
