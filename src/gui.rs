@@ -175,7 +175,7 @@ impl SpectrumApp {
             // Draw peak indicator if enabled
             if config.show_peaks && i < viz_data.peaks.len() {
                 let peak_height_db = viz_data.peaks[i];
-                let peak_normalized = ((peak_height_db + 60.0) / 60.0).clamp(0.0, 1.0);
+                let peak_normalized = ((peak_height_db - floor_db) / db_range).clamp(0.0, 1.0);
                 let peak_y = rect.bottom() - (peak_normalized * rect.height());
 
                 let peak_rect = egui::Rect::from_min_max(
