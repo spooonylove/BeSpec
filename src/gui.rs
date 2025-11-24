@@ -170,7 +170,38 @@ impl SpectrumApp {
                 egui::pos2(x + bar_width, rect.bottom()),
             );
 
-            painter.rect_filled(bar_rect, 0.0, bar_color);
+            use egui::epaint::Vertex;
+            let mut mesh = egui::Mesh::default();
+
+            // Define the 4 corners of the bar
+            // Bootom vertices uses the 'low' color
+            // Top vertices uses the 'high' color
+            mesh.vertices.push(Vertex {
+                pos: bar_rect.left_bottom(),
+                uv: egui::Pos2::ZERO,
+                color: low,
+            });
+            mesh.vertices.push(Vertex {
+                pos: bar_rect.right_bottom(),
+                uv: egui::Pos2::ZERO,
+                color: low,
+            });
+            mesh.vertices.push(Vertex {
+                pos: bar_rect.right_top(),
+                uv: egui::Pos2::ZERO,
+                color: bar_color,
+            });
+            mesh.vertices.push(Vertex {
+                pos: bar_rect.left_top(),
+                uv: egui::Pos2::ZERO,
+                color: bar_color,
+            });
+
+            // Connnect vertices to form two triangles (0-1-2 and 0-2-3)
+            mesh.add_triangle(0, 1, 2);
+            mesh.add_triangle(0, 2, 3);
+
+            painter.add(egui::Shape::mesh(mesh));
 
             // Draw peak indicator if enabled
             if config.show_peaks && i < viz_data.peaks.len() {
