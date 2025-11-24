@@ -114,7 +114,7 @@ impl SpectrumApp {
 
     /// Draw invisible resize handles and handle window moverment
     fn window_controls(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let rect = ui.available_rect_before_wrap();
+        let rect = ui.max_rect();
 
         // 1. Handle Window Movement (Dragging the background)
         // We keep this so we can still move the window!!
