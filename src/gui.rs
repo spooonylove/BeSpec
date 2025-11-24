@@ -286,8 +286,9 @@ impl SpectrumApp {
                 });
 
                 ui.add(
-                    egui::Slider::new(&mut state.config.sensitivity, 0.1..=10.0)
+                    egui::Slider::new(&mut state.config.sensitivity, 0.01..=3.0)
                         .text("Sensitivity")
+                        .logarithmic(true)
                 );
 
                 ui.add(

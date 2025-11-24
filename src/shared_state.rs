@@ -174,7 +174,7 @@ impl Default for AppConfig {
 
             // Audio Settings
             fft_size: 1024,
-            sensitivity: 2.0,
+            sensitivity: 0.01,
             noise_floor_db: -60.0,
             attack_time_ms: 20.0,
             release_time_ms: 200.0,
