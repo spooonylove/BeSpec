@@ -75,7 +75,10 @@ impl eframe::App for SpectrumApp {
         egui::CentralPanel::default()
             .frame(custom_frame)
             .show(ctx, |ui| {
+                // 1. Render the main visualization content
                 self.render_visualizer(ui);
+                // 2. Handle window controls (dragging and resizing)
+                self.window_controls(ctx, ui);
             });
         
         // Top Menu bar (context menu alternative)
@@ -108,6 +111,62 @@ impl eframe::App for SpectrumApp {
 }
 
 impl SpectrumApp {
+
+    /// Draw invisible resize handles and handle window moverment
+    fn window_controls(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        let rect = ui.available_rect_before_wrap();
+
+        // 1. Handle Window Movement (Dragging the background)
+        // We keep this so we can still move the window!!
+        let interaction = ui.interact(rect, ui.id().with("window_drag"), 
+            egui::Sense::click_and_drag());
+
+        if interaction.dragged() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        }
+        
+        if interaction.double_clicked() {
+            let is_max = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!is_max));
+        }
+
+        // 2. Lower-Right Resize Grip
+        let corner_size = 20.0; // Size of the resize handle area
+
+        // Calculate the rectangel for the bottom-right corner
+        let grip_rect = egui::Rect::from_min_size(
+        egui::pos2(rect.right() - corner_size, rect.bottom() - corner_size),
+        egui::Vec2::splat(corner_size)
+        );
+
+        let response = ui.interact(grip_rect, ui.id()
+            .with("resize_grip"), egui::Sense::drag());
+
+        if response.hovered() {
+            ctx.set_cursor_icon(egui::CursorIcon::ResizeSouthEast);
+        }
+
+        if response.dragged() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(egui::ResizeDirection::SouthEast));
+        }
+
+        if ui.is_rect_visible(grip_rect) {
+            let painter = ui.painter();
+            let stroke = egui::Stroke::new(2.0, egui::Color32::from_white_alpha(50));
+            
+            for i in 0..4 {
+                let offset = i as f32 * 4.0;
+                painter.line_segment(
+                    [
+                        egui::pos2(rect.right() - 4.0 - offset, rect.bottom() - 4.0),
+                        egui::pos2(rect.right() - 4.0, rect.bottom() - 4.0 - offset),
+                    ],
+                    stroke,
+                );
+            }
+        }
+    }
+
     /// Render the main spectrum visualizer
     fn render_visualizer(&mut self, ui: &mut egui::Ui) {
         let state = match self.shared_state.lock() {
