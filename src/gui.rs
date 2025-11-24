@@ -414,8 +414,9 @@ impl SpectrumApp {
             ui.collapsing("🎨 Color Settings", |ui| {
                 let current_scheme = state.config.scheme_name();
 
-                egui::ComboBox::from_label("Color Scheme")
+                egui::ComboBox::from_label("Select Preset")
                     .selected_text(&current_scheme)
+                    .height(300.0)
                     .show_ui(ui, |ui| {
                         let presets = crate::shared_state::ColorPreset::preset_names();
 
