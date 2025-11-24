@@ -1,5 +1,6 @@
 use realfft::{RealFftPlanner, RealToComplex};
 use std::sync::Arc;
+use crate::shared_state::SILENCE_DB;
 
 
 // configure for FFT processing and visualization
@@ -80,9 +81,9 @@ impl FFTProcessor {
         let bar_to_bin_map = Self::compute_bar_mapping(&config);
 
         // Initialize smoothing state
-        let last_bar_heights = vec![0.0; config.num_bars];
-        let peak_levels = vec![0.0; config.num_bars];
-        let peak_hold_timers = vec![0.0; config.num_bars];
+        let last_bar_heights = vec![SILENCE_DB; config.num_bars];
+        let peak_levels = vec![SILENCE_DB; config.num_bars];
+        let peak_hold_timers = vec![SILENCE_DB; config.num_bars];
 
         Self {
             config,

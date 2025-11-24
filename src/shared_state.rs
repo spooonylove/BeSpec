@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 use crate::fft_config::FFTInfo;
 
+pub const SILENCE_DB: f32 = -140.0;
 
 /// Main Shared state container -- wrapped in Arc<Mutx<>> for thread safety
 /// 
@@ -20,6 +21,8 @@ pub struct SharedState{
 }
 
 impl SharedState {
+
+    
     /// Create new shated state with default values
     pub fn new() -> Self {
         let config = AppConfig::default();
@@ -34,8 +37,8 @@ impl SharedState {
 
     /// Resize visualization arrays when bar count changes
     pub fn resize_bars(&mut self, new_count: usize) {
-        self.visualization.bars.resize(new_count, 0.0);
-        self.visualization.peaks.resize(new_count, 0.0);
+        self.visualization.bars.resize(new_count, SILENCE_DB);
+        self.visualization.peaks.resize(new_count, SILENCE_DB);
     }
 }
 
@@ -61,8 +64,8 @@ pub struct VisualizationData {
 impl VisualizationData {
     pub fn new(num_bars: usize) -> Self {
         Self {
-            bars: vec![0.0; num_bars],
-            peaks: vec![0.0; num_bars],
+            bars: vec![SILENCE_DB; num_bars],
+            peaks: vec![SILENCE_DB; num_bars],
             timestamp: Instant::now(),
         }
     }
