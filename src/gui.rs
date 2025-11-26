@@ -313,10 +313,19 @@ impl SpectrumApp {
         };
 
         let config = &state.config;
+
+        // Convert FFT time to pure milliseconds for stable formatting
+        let fft_ms = perf.fft_ave_time.as_secs_f32() * 1000.0;
+
+
+        // Use strict padding:
+        // {:>5.1} -> Right aligned, 5 chars wide, 1 decimal point (e.g. " 60.0" or "144.1")
+        // {:>5.2} -> Right aligned, 5 chars wide, 2 decimal points (e.g. " 1.25")
+        // {:>6}   -> Right aligned, 6 chars wide integer
         let stats_text = format!(
-            "FPS: {:.1} | FFT: {:.2?} | Frames: {} | Bars: {}",
+            "FPS: {:>5.1} | FFT: {:>5.2} ms | Frames: {:>8} | Bars: {:>3}",
             perf.gui_fps,
-            perf.fft_ave_time,
+            fft_ms,
             perf.frame_count,
             config.num_bars,
         );
