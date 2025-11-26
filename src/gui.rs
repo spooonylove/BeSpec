@@ -28,6 +28,9 @@ pub struct SpectrumApp {
     /// Performance tracking
     last_frame_time :  Instant, 
     frame_times: Vec<f32>,
+
+    /// Track window size to only log changes
+    last_window_size: Option<egui::Vec2>,
 }
 
 impl SpectrumApp {
@@ -38,6 +41,7 @@ impl SpectrumApp {
             active_tab: SettingsTab::Visual,
             last_frame_time: Instant::now(),
             frame_times: Vec::with_capacity(60),
+            last_window_size: None,
         }
     }
 
@@ -84,6 +88,17 @@ impl SpectrumApp {
 
 impl eframe::App for SpectrumApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        
+        // --- Main Window Size tracking ---
+        let current_size = ctx.available_rect().size();
+
+        // Only print if the size has changed since the last fraome (or is None)
+        if self.last_window_size != Some(current_size) {
+            println!("[GUI] Main Window Resized: {:.0} x {:.0}", current_size.x, current_size.y);
+            self.last_window_size = Some(current_size);
+        }
+
+
         // Calculate FPS
         let now = Instant::now();
         let frame_time = now.duration_since(self.last_frame_time).as_secs_f32();
