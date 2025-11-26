@@ -40,6 +40,46 @@ impl SpectrumApp {
             frame_times: Vec::with_capacity(60),
         }
     }
+
+    /// A custom "Pill" style tab button with animations and theme integration
+    fn ui_tab_button(
+        &self,
+        ui: &mut egui::Ui,
+        label: &str,
+        tab: SettingsTab,
+        active_tab: &mut SettingsTab,
+        highlight_color: egui::Color32,
+    ) {
+        let is_selected = *active_tab == tab;
+
+        // Text color: Black/White if selected, default grey if not
+        let text_color = if is_selected {
+            egui::Color32::BLACK 
+        } else {
+            ui.visuals().text_color()
+        };
+        
+        // Draw the button
+        let response = ui.add(
+            egui::Button::new(egui::RichText::new(label).size(14.0).color(text_color))
+                .fill(if is_selected {highlight_color} else {egui::Color32::TRANSPARENT})
+                .frame(is_selected)     // only paint the background if selected
+                .rounding(12.0)         // Rounding = 1/2 the hieght for pill shape
+                .min_size(egui::vec2(80.0, 28.0)) // Wide clickable area
+        );
+        if response.clicked() {
+            *active_tab = tab;
+        }
+
+        // Subltle hover effect for inactive tabs
+        if response.hovered() && !is_selected {
+            ui.painter().rect_filled(
+                response.rect,
+                12.0,
+                ui.visuals().widgets.hovered.bg_fill.linear_multiply(0.2)
+            );
+        }
+    }
 }
 
 impl eframe::App for SpectrumApp {
