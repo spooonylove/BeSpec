@@ -103,7 +103,8 @@ impl eframe::App for SpectrumApp {
                 egui::ViewportBuilder::default()
                     .with_title("BeAnal Settings")
                     .with_inner_size([450.0, 500.0])
-                    .with_resizable(true)
+                    .with_resizable(false)
+                    .with_maximize_button(false)
                     .with_always_on_top(),
                 |ctx, _class| {
                     egui::CentralPanel::default().show(ctx, |ui| {
@@ -146,9 +147,7 @@ impl SpectrumApp {
 
         // Right-Click opens the Settings Menu
         interaction.context_menu(|ui| {
-            ui.label("Settings");
-            ui.separator();
-
+   
             if ui.button("⚙ Settings").clicked() {
                 self.settings_open = true;
                 ui.close_menu();
@@ -351,118 +350,264 @@ impl SpectrumApp {
             }
         };
 
-        // 1. Tab Bar
-        ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.active_tab, SettingsTab::Visual, "Visual");
-            ui.selectable_value(&mut self.active_tab, SettingsTab::Audio, "Audio");
-            ui.selectable_value(&mut self.active_tab, SettingsTab::Colors, "Colors");
-            ui.selectable_value(&mut self.active_tab, SettingsTab::Window, "Window");
-            ui.selectable_value(&mut self.active_tab, SettingsTab::Performance, "Performance");
-        });
+        // Define a standard grid spacing for consistency
+        let grid_spacing = egui::vec2(40.0, 12.0); 
 
-       
+        // 1. Tab Bar (Add some padding around it)
+        ui.add_space(5.0);
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.active_tab, SettingsTab::Visual, " 🎨 Visual ");
+            ui.selectable_value(&mut self.active_tab, SettingsTab::Audio, " 🔊 Audio ");
+            ui.selectable_value(&mut self.active_tab, SettingsTab::Colors, " 🌈 Colors ");
+            ui.selectable_value(&mut self.active_tab, SettingsTab::Window, " 🪟 Window ");
+            ui.selectable_value(&mut self.active_tab, SettingsTab::Performance, " 📊 Stats ");
+        });
+        ui.add_space(5.0);
         ui.separator();
-        
+        ui.add_space(10.0);
+
         // 2. Tab Content
         egui::ScrollArea::vertical().show(ui, |ui| {
             match self.active_tab {
                 SettingsTab::Visual => {
                     ui.heading("Visual Configuration");
-                    ui.add_space(10.0);
-
-                    ui.add(egui::Slider::new(&mut state.config.num_bars, 10..=512).text("Number of Bars"));
-                    ui.add(egui::Slider::new(&mut state.config.bar_gap_px, 0..=10).text("Bar Gap (px)"));
-                    ui.add(egui::Slider::new(&mut state.config.bar_opacity, 0.0..=1.0).text("Bar Opacity"));
-                    ui.add(egui::Slider::new(&mut state.config.background_opacity, 0.0..=1.0).text("Background Opacity"));
-                    ui.checkbox(&mut state.config.show_peaks, "Show Peaks Indicators");
+                    ui.add_space(5.0);
                     
-                    ui.separator();
-                    ui.label("Bar Aggregation Mode:");
-                    ui.horizontal(|ui| {
-                        ui.radio_value(&mut state.config.use_peak_aggregation, true, "Peak");
-                        ui.radio_value(&mut state.config.use_peak_aggregation, false, "Average");
+                    // Use a Group for a "Card" look
+                    ui.group(|ui| {
+                        egui::Grid::new("visual_grid")
+                            .num_columns(2)
+                            .spacing(grid_spacing)
+                            .striped(true) // Subtle alternating row colors (very spreadsheet/windows like)
+                            .show(ui, |ui| {
+                                
+                                ui.label("Bar Count");
+                                ui.add(egui::Slider::new(&mut state.config.num_bars, 16..=512));
+                                ui.end_row();
+
+                                ui.label("Bar Gap");
+                                ui.add(egui::Slider::new(&mut state.config.bar_gap_px, 0..=10).suffix(" px"));
+                                ui.end_row();
+
+                                ui.label("Bar Opacity");
+                                ui.add(egui::Slider::new(&mut state.config.bar_opacity, 0.0..=1.0));
+                                ui.end_row();
+
+                                ui.label("Background Opacity");
+                                ui.add(egui::Slider::new(&mut state.config.background_opacity, 0.0..=1.0));
+                                ui.end_row();
+
+                                ui.label("Peak Indicators");
+                                ui.checkbox(&mut state.config.show_peaks, "Enabled");
+                                ui.end_row();
+                            });
                     });
-                    ui.small("Peak: More dramatic | Average: More accurate");
+
+                    ui.add_space(10.0);
+                    ui.group(|ui| {
+                        ui.label("Aggregation Mode:");
+                        ui.horizontal(|ui| {
+                            ui.radio_value(&mut state.config.use_peak_aggregation, true, "Peak (Dramatic)");
+                            ui.radio_value(&mut state.config.use_peak_aggregation, false, "Average (Smooth)");
+                        });
+                    });
                 },
+
                 SettingsTab::Audio => {
                     ui.heading("Audio Configuration");
-                    ui.add_space(10.0);
+                    ui.add_space(5.0);
 
-                    ui.label("FFT Size:");
-                    ui.horizontal(|ui| {
-                        for &size in &[512, 1024, 2048, 4096] {
-                            if ui.selectable_label(state.config.fft_size == size, format!("{}", size)).clicked() {
-                                state.config.fft_size = size;
-                            }
-                        }
+                    ui.group(|ui| {
+                        egui::Grid::new("audio_grid")
+                            .num_columns(2)
+                            .spacing(grid_spacing)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.label("FFT Window Size");
+                                egui::ComboBox::from_id_salt("fft_combo")
+                                    .selected_text(format!("{}", state.config.fft_size))
+                                    .show_ui(ui, |ui| {
+                                        for &size in &[512, 1024, 2048, 4096] {
+                                            if ui.selectable_value(&mut state.config.fft_size, size, format!("{}", size)).clicked() {
+                                                // Logic handled by shared state update in main loop
+                                            }
+                                        }
+                                    });
+                                ui.end_row();
+
+                                ui.label("Sensitivity");
+                                ui.add(egui::Slider::new(&mut state.config.sensitivity, 0.01..=3.0).logarithmic(true));
+                                ui.end_row();
+
+                                ui.label("Noise Floor");
+                                ui.add(egui::Slider::new(&mut state.config.noise_floor_db, -120.0..=-20.0).suffix(" dB"));
+                                ui.end_row();
+                            });
                     });
 
-                    ui.add(egui::Slider::new(&mut state.config.sensitivity, 0.01..=3.0).text("Sensitivity").logarithmic(true));
-                    ui.add(egui::Slider::new(&mut state.config.noise_floor_db,-120.0..=-20.0).text("Noise Floor (dB)").suffix(" dB"));
-                    ui.add(egui::Slider::new(&mut state.config.attack_time_ms, 1.0..=500.0).text("Bar Rise (ms)"));
-                    ui.add(egui::Slider::new(&mut state.config.release_time_ms, 1.0..=2000.0).text("Bar Fall (ms)"));
+                    ui.add_space(10.0);
+                    ui.heading("Response Timing");
+                    ui.group(|ui| {
+                        egui::Grid::new("timing_grid")
+                            .num_columns(2)
+                            .spacing(grid_spacing)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.label("Bar Attack (Rise)");
+                                ui.add(egui::Slider::new(&mut state.config.attack_time_ms, 1.0..=500.0).suffix(" ms"));
+                                ui.end_row();
 
-                    if state.config.show_peaks {
-                        ui.separator();
-                        ui.label("Peaks Timing:");
-                        ui.add(egui::Slider::new(&mut state.config.peak_hold_time_ms, 0.0..=2000.0).text("Hold Time (ms)"));
-                        ui.add(egui::Slider::new(&mut state.config.peak_release_time_ms, 10.0..=2000.0).text("Fall Time (ms)"));
-                    }
+                                ui.label("Bar Release (Fall)");
+                                ui.add(egui::Slider::new(&mut state.config.release_time_ms, 1.0..=2000.0).suffix(" ms"));
+                                ui.end_row();
+
+                                if state.config.show_peaks {
+                                    ui.label("Peak Hold Time");
+                                    ui.add(egui::Slider::new(&mut state.config.peak_hold_time_ms, 0.0..=2000.0).suffix(" ms"));
+                                    ui.end_row();
+
+                                    ui.label("Peak Fall Speed");
+                                    ui.add(egui::Slider::new(&mut state.config.peak_release_time_ms, 10.0..=2000.0).suffix(" ms"));
+                                    ui.end_row();
+                                }
+                            });
+                    });
                 },
+
                 SettingsTab::Colors => {
                     ui.heading("Color Scheme");
-                    ui.add_space(10.0);
+                    ui.add_space(5.0);
 
                     let current_scheme = state.config.scheme_name();
-                    egui::ComboBox::from_label("Select Preset")
-                        .selected_text(&current_scheme)
-                        .height(300.0) // Forces scrollbar for long lists
-                        .show_ui(ui, |ui| {
-                            let presets = crate::shared_state::ColorPreset::preset_names();
-                            for preset_name in presets {
-                                if ui.selectable_label(&current_scheme == &preset_name, &preset_name).clicked() {
-                                    state.config.apply_preset(&preset_name);
-                                }
-                            }
-                            ui.separator();
-                            if ui.selectable_label(&current_scheme == "Rainbow", "Rainbow").clicked() {
-                                state.config.color_scheme = crate::shared_state::ColorScheme::Rainbow;
-                            }
-                        });
                     
-                    ui.separator();
-                    ui.label("Current Colors (RGB):");
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Active Preset:");
+                            egui::ComboBox::from_id_salt("color_combo")
+                                .selected_text(&current_scheme)
+                                .height(300.0)
+                                .show_ui(ui, |ui| {
+                                    let presets = crate::shared_state::ColorPreset::preset_names();
+                                    for preset_name in presets {
+                                        if ui.selectable_label(current_scheme == preset_name, &preset_name).clicked() {
+                                            state.config.apply_preset(&preset_name);
+                                        }
+                                    }
+                                    ui.separator();
+                                    if ui.selectable_label(current_scheme == "Rainbow", "Rainbow").clicked() {
+                                        state.config.color_scheme = crate::shared_state::ColorScheme::Rainbow;
+                                    }
+                                });
+                        });
+                    });
+
+                    ui.add_space(10.0);
+                    ui.label("Preview:");
                     let (low, high, peak) = state.config.get_colors();
-                    ui.label(format!("Low:  {}, {}, {}", low.r, low.g, low.b));
-                    ui.label(format!("High: {}, {}, {}", high.r, high.g, high.b));
-                    ui.label(format!("Peak: {}, {}, {}", peak.r, peak.g, peak.b));
+                    
+                    // Draw a simple gradient preview
+                    let rect = ui.available_rect_before_wrap(); 
+                    let preview_height = 30.0;
+                    let preview_rect = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), preview_height));
+                    ui.allocate_rect(preview_rect, egui::Sense::hover());
+                    
+                    // Paint gradient
+                    use egui::epaint::{Mesh, Vertex};
+                    let mut mesh = Mesh::default();
+                    let l = to_egui_color(low);
+                    let h = to_egui_color(high);
+                    
+                    mesh.vertices.push(Vertex { pos: preview_rect.left_bottom(), uv: egui::Pos2::ZERO, color: l });
+                    mesh.vertices.push(Vertex { pos: preview_rect.right_bottom(), uv: egui::Pos2::ZERO, color: h });
+                    mesh.vertices.push(Vertex { pos: preview_rect.right_top(), uv: egui::Pos2::ZERO, color: h });
+                    mesh.vertices.push(Vertex { pos: preview_rect.left_top(), uv: egui::Pos2::ZERO, color: l });
+                    mesh.add_triangle(0, 1, 2);
+                    mesh.add_triangle(0, 2, 3);
+                    ui.painter().add(egui::Shape::mesh(mesh));
+                    
+                    ui.add_space(10.0);
+                    ui.small(format!("Peak Color: RGB({}, {}, {})", peak.r, peak.g, peak.b));
                 },
+
                 SettingsTab::Window => {
-                    ui.heading("Window Options");
+                    ui.heading("Window Behavior");
+                    ui.add_space(5.0);
+                    
+                    ui.group(|ui| {
+                        egui::Grid::new("window_grid")
+                            .num_columns(2)
+                            .spacing(grid_spacing)
+                            .show(ui, |ui| {
+                                ui.label("Main Window");
+                                ui.checkbox(&mut state.config.always_on_top, "Always on Top");
+                                ui.end_row();
+
+                                ui.label("Decorations");
+                                if ui.checkbox(&mut state.config.window_decorations, "Show Title Bar").changed() {
+                                    let show = state.config.window_decorations;
+                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Decorations(show));
+                                }
+                                ui.end_row();
+                            });
+                    });
+
                     ui.add_space(10.0);
-                    ui.checkbox(&mut state.config.always_on_top, "Always on Top (Main Window)");
-                    if ui.checkbox(&mut state.config.window_decorations, "Show Title Bar").changed() {
-                        let show = state.config.window_decorations;
-                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Decorations(show));
-                    }
-                    ui.checkbox(&mut state.config.show_stats, "Show Stats Overlay");
-                    if state.config.show_stats {
-                        ui.add(egui::Slider::new(&mut state.config.stats_opacity, 0.0..=1.0).text("Stats Opacity"));
-                    }
+                    ui.heading("On-Screen Display");
+                    ui.group(|ui| {
+                        egui::Grid::new("osd_grid")
+                            .num_columns(2)
+                            .spacing(grid_spacing)
+                            .show(ui, |ui| {
+                                ui.label("Performance Stats");
+                                ui.checkbox(&mut state.config.show_stats, "Visible");
+                                ui.end_row();
+
+                                if state.config.show_stats {
+                                    ui.label("Text Opacity");
+                                    ui.add(egui::Slider::new(&mut state.config.stats_opacity, 0.1..=1.0));
+                                    ui.end_row();
+                                }
+                            });
+                    });
                 },
+
                 SettingsTab::Performance => {
-                    ui.heading("Real-time Statistics");
-                    ui.add_space(10.0);
+                    ui.heading("Diagnostics");
+                    ui.add_space(5.0);
+                    
                     let info = &state.performance.fft_info;
-                    ui.label(format!("Sample Rate: {} Hz", info.sample_rate));
-                    ui.label(format!("FFT Size: {} samples", info.fft_size));
-                    ui.label(format!("Freq Res: {:.2} Hz/bin", info.frequency_resolution));
-                    ui.label(format!("Latency: {:.2} ms", info.latency_ms));
-                    ui.label(format!("Render FPS: {:.1}", state.performance.gui_fps));
+                    
+                    ui.group(|ui| {
+                        egui::Grid::new("perf_grid")
+                            .num_columns(2)
+                            .spacing([20.0, 10.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.label("Sample Rate");
+                                ui.label(format!("{} Hz", info.sample_rate));
+                                ui.end_row();
+
+                                ui.label("FFT Size");
+                                ui.label(format!("{} samples", info.fft_size));
+                                ui.end_row();
+
+                                ui.label("Frequency Resolution");
+                                ui.label(format!("{:.2} Hz / bin", info.frequency_resolution));
+                                ui.end_row();
+
+                                ui.label("Theoretical Latency");
+                                ui.label(format!("{:.2} ms", info.latency_ms));
+                                ui.end_row();
+
+                                ui.label("GUI Frame Rate");
+                                ui.label(format!("{:.1} FPS", state.performance.gui_fps));
+                                ui.end_row();
+                            });
+                    });
                 },
             }
         });
-    }
+    }  
 }
 
 /// Convert our Color32 to egui::Color32
