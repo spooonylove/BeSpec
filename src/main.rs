@@ -127,6 +127,7 @@ fn start_fft_processing(
                                 peak_hold_time_ms: state.config.peak_hold_time_ms,
                                 peak_release_time_ms: state.config.peak_release_time_ms,
                                 use_peak_aggregation: state.config.use_peak_aggregation,
+                                linear_freq_knee: state.config.linear_freq_knee,
                             }
                         };
 
@@ -187,6 +188,7 @@ fn start_fft_processing(
                                     peak_hold_time_ms: state.config.peak_hold_time_ms,
                                     peak_release_time_ms: state.config.peak_release_time_ms,
                                     use_peak_aggregation: state.config.use_peak_aggregation,
+                                    linear_freq_knee: state.config.linear_freq_knee,
                                 }
                             };
 
@@ -242,7 +244,8 @@ fn start_fft_processing(
                             state.config.release_time_ms != current.release_time_ms ||
                             state.config.peak_hold_time_ms != current.peak_hold_time_ms ||
                             state.config.peak_release_time_ms != current.peak_release_time_ms ||
-                            state.config.use_peak_aggregation != current.use_peak_aggregation
+                            state.config.use_peak_aggregation != current.use_peak_aggregation ||
+                            state.config.linear_freq_knee != current.linear_freq_knee
                         };
                                               
                         
@@ -263,6 +266,7 @@ fn start_fft_processing(
                                 peak_hold_time_ms: state.config.peak_hold_time_ms,
                                 peak_release_time_ms: state.config.peak_release_time_ms,
                                 use_peak_aggregation: state.config.use_peak_aggregation,
+                                linear_freq_knee: state.config.linear_freq_knee,
                             })
                         } else {
                             // Check for minor config changes that don't require a rebuild
@@ -290,6 +294,7 @@ fn start_fft_processing(
                                     peak_hold_time_ms: state.config.peak_hold_time_ms,
                                     peak_release_time_ms: state.config.peak_release_time_ms,
                                     use_peak_aggregation: state.config.use_peak_aggregation,
+                                    linear_freq_knee: state.config.linear_freq_knee,
                                 })
                             } else {
                                 None

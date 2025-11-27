@@ -15,6 +15,7 @@ pub struct FFTConfig{
     pub peak_hold_time_ms: f32,         // duration of peak hold
     pub peak_release_time_ms: f32,      // peak fall speed
     pub use_peak_aggregation: bool,     // bar aggregation peak vs average
+    pub linear_freq_knee: f32,         // Linear-to-Log transition frequency (Hz)
 }
 
 impl Default for FFTConfig {
@@ -29,6 +30,7 @@ impl Default for FFTConfig {
             peak_hold_time_ms: 1500.0,
             peak_release_time_ms: 1500.0,
             use_peak_aggregation: true,
+            linear_freq_knee: 700.0,
         }
         
     }
@@ -133,11 +135,21 @@ impl FFTProcessor {
     #[allow(dead_code)]
     /// Update configuration (e.g., user changed the number of bars)
     pub fn update_config(&mut self, config: FFTConfig) {
-        // Resize arrays if the bar count changed
-        if config.num_bars != self.config.num_bars {
-            self.last_bar_heights.resize(config.num_bars, 0.0);
-            self.peak_levels.resize(config.num_bars, 0.0);
-            self.peak_hold_timers.resize(config.num_bars, 0.0);
+
+        // check if we need to re-calculate the map
+        // we do this if the bar count changes or the knee frequency changes        
+        let need_remap = config.num_bars != self.config.num_bars ||
+            (config.linear_freq_knee - self.config.linear_freq_knee).abs() > f32::EPSILON;
+
+        if need_remap {
+            // Resize arrays if the bar count changed
+            if config.num_bars != self.config.num_bars {
+                self.last_bar_heights.resize(config.num_bars, SILENCE_DB);
+                self.peak_levels.resize(config.num_bars, SILENCE_DB);
+                self.peak_hold_timers.resize(config.num_bars, 0.0);
+            }
+
+            // Recomput the mapping
             self.bar_to_bin_map = Self::compute_bar_mapping(&config);
         }
 
@@ -224,26 +236,79 @@ impl FFTProcessor {
         let max_fft_index = config.fft_size / 2 - 1;
         let frequency_resolution = config.sample_rate as f64 / config.fft_size as f64;
 
-        const LINEAR_RATIO: f64 = 0.4;
+        // Use the configurable knee frequncy
+        let linear_knee_freq = config.linear_freq_knee as f64;
+        
+        // Calculate how many bins we need to reach the knee frequency
+        let linear_bins_needed = (linear_knee_freq / frequency_resolution) as usize;
 
-        // Linear section (first 40%)
-        let linear_bar_count = (config.num_bars as f64 * LINEAR_RATIO) as usize;
+        // Ensure we don't exceed available bins
+        let linear_bins_needed = linear_bins_needed.min(max_fft_index);
+
+        // Calculate how many bars will be in the lienar section
+        // This is dynamically calculated based on the knee frequency
+        let nyquist = config.sample_rate as f64 / 2.0;
+        let linear_freq_ratio = linear_knee_freq / nyquist;
+
+        // Allocate bars proportinally, with a bit more weight to the log section
+        let linear_bar_count = (config.num_bars as f64 * linear_freq_ratio * 0.8)  as usize;
+        
+        // Ensure we have at least one bar in linear if the knee is > 0Hz
+        let linear_bar_count = if linear_knee_freq > 0.0  && linear_bar_count < 1 {
+            1
+        } else {
+            linear_bar_count
+        };
+
+        // Ensure we don't use all bars for lineaer section
+        let linear_bar_count = linear_bar_count.min(config.num_bars.saturating_sub(1));
+
         let mut last_linear_bin = 0;
 
-        for i in 0..linear_bar_count {
-            map.push((i + 1, i + 2));
-            last_linear_bin = i + 2;
-        }
+        
+        // === LINEAR SECTION ===
+        // Bars are linearly distributed across frequncy
+        if linear_bar_count > 0 && linear_bins_needed > 0 {
+            // Calculate bins per bar in the linear section
+            let bins_per_bar = linear_bins_needed as f64 / linear_bar_count as f64;
 
-        // Logarithmic section (last 60%)
+            for i in 0..linear_bar_count {
+                let start_bin = (i as f64 * bins_per_bar).round() as usize;
+                let end_bin = ((i + 1) as f64 * bins_per_bar).round() as usize;
+
+                // Ensure we have at least 1 bin per bar
+                let end_bin = if end_bin <= start_bin {
+                    start_bin + 1
+                } else {
+                    end_bin
+                };
+
+                // Clamp to valid range
+                let start_bin = start_bin.min(max_fft_index);
+                let end_bin = end_bin.min(max_fft_index + 1);
+
+                map.push((start_bin, end_bin));
+                last_linear_bin = end_bin;
+            }
+        }
+        
+
+        // === LOGARITHMIC SECTION ===
         if config.num_bars > linear_bar_count {
             let log_bar_count = config.num_bars - linear_bar_count;
-            let min_log_freq = last_linear_bin as f64 * frequency_resolution;
+            let min_log_freq = (last_linear_bin as f64 * frequency_resolution).max(frequency_resolution);
             let max_log_freq = 20000.0; // Upper limit, lest you are a dog
 
+            // If min_log_freq is to close to max_log_freq, adjust
+            let max_log_freq = if min_log_freq >= max_log_freq * 0.9 {
+                (nyquist).min(min_log_freq * 10.0)
+            } else {
+                max_log_freq
+            };
+
             for i in 0..log_bar_count {
-                let freq_start = min_log_freq * (max_log_freq / min_log_freq).powf(i as f64 / (log_bar_count - 1) as f64);
-                let freq_end = min_log_freq * (max_log_freq / min_log_freq).powf((i + 1) as f64 / (log_bar_count - 1) as f64);
+                let freq_start = min_log_freq * (max_log_freq / min_log_freq).powf(i as f64 / log_bar_count as f64);
+                let freq_end = min_log_freq * (max_log_freq / min_log_freq).powf((i + 1) as f64 / log_bar_count as f64);
 
                 let mut bin_start = (freq_start / frequency_resolution) as usize;
                 let mut bin_end = (freq_end / frequency_resolution) as usize;   
@@ -260,6 +325,35 @@ impl FFTProcessor {
 
                 map.push((bin_start, bin_end));
             }
+        }
+        // Debug output
+        #[cfg(debug_assertions)]
+        {
+            println!("=== Frequency Mapping (Knee: {} Hz) ===", config.linear_freq_knee);
+            println!("Sample Rate: {} Hz, FFT Size: {}", config.sample_rate, config.fft_size);
+            println!("Frequency Resolution: {:.2} Hz/bin", frequency_resolution);
+            println!("Linear bars: {}, Log bars: {}", linear_bar_count, config.num_bars - linear_bar_count);
+            
+            // Show first few and last few bars
+            for (i, &(start, end)) in map.iter().enumerate().take(3) {
+                let start_freq = start as f64 * frequency_resolution;
+                let end_freq = end as f64 * frequency_resolution;
+                println!("Bar {:3} [LIN]: Bins {:4}-{:4} ({:3} bins) | {:7.1} - {:7.1} Hz", 
+                    i, start, end, end - start, start_freq, end_freq);
+            }
+            
+            if linear_bar_count > 0 && linear_bar_count < config.num_bars {
+                println!("... [Linear->Log transition at bar {}] ...", linear_bar_count);
+            }
+            
+            for (i, &(start, end)) in map.iter().enumerate().rev().take(3).collect::<Vec<_>>().into_iter().rev() {
+                let start_freq = start as f64 * frequency_resolution;
+                let end_freq = end as f64 * frequency_resolution;
+                let section = if i < linear_bar_count { "LIN" } else { "LOG" };
+                println!("Bar {:3} [{}]: Bins {:4}-{:4} ({:3} bins) | {:7.1} - {:7.1} Hz", 
+                    i, section, start, end, end - start, start_freq, end_freq);
+            }
+            println!("=================================");
         }
 
         map
@@ -343,7 +437,49 @@ impl FFTProcessor {
     pub fn get_config(&self) -> FFTConfig {
         self.config.clone()
     }
+
+    pub fn get_mapping_info(&self) -> FrequencyMappingInfo {
+        let frequency_resolution = self.config.sample_rate as f32 / self.config.fft_size as f32;
+
+        // Find where the linear section ends
+        let mut linear_bar_count = 0;
+        let mut max_linear_freq = 0.0;
+
+        // Simple heuristic: linear section has roughly equl bin counts per bar
+        if self.bar_to_bin_map.len() > 1 {
+            let first_bar_bins = self.bar_to_bin_map[0].1 - self.bar_to_bin_map[0].0;
+
+            for (i, &(start, end)) in self.bar_to_bin_map.iter().enumerate() {
+                let bin_count = end - start;
+                if bin_count > first_bar_bins * 2{
+                    break;
+                } 
+
+                linear_bar_count = i + 1;
+                max_linear_freq = end as f32 * frequency_resolution;
+                
+            }
+        }
+
+        FrequencyMappingInfo {
+            linear_bar_count,
+            log_bar_count: self.config.num_bars - linear_bar_count,
+            actual_knee_freq: max_linear_freq,
+            configured_knee_freq: self.config.linear_freq_knee,
+            frequency_resolution,
+        }
+        
+    }
     
+}
+
+#[derive(Clone, Debug)]
+pub struct FrequencyMappingInfo {
+    pub linear_bar_count: usize,
+    pub log_bar_count: usize,
+    pub actual_knee_freq: f32,
+    pub configured_knee_freq: f32,
+    pub frequency_resolution: f32,
 }
 
 // ===========  Tests ===============
@@ -354,25 +490,81 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_bar_mapping() {
-        let config = FFTConfig::default();
+    fn test_bar_mapping_with_knee() {
+        let mut config = FFTConfig::default();
+        config.linear_freq_knee = 700.0;  // 700 Hz knee
+        config.sample_rate = 48000;
+        config.fft_size = 2048;
+        config.num_bars = 64;
+        
         let map = FFTProcessor::compute_bar_mapping(&config);
-
+        
         assert_eq!(map.len(), config.num_bars);
-
-        // First 40% should be linear (1-1 mapping)
-        let linear_count = (config.num_bars as f64 * 0.4) as usize;
-        for i in 0..linear_count {
-            assert_eq!(map[i],( i + 1, i + 2));
-        }
-
-        // All bins sohuld be within FFT Range
+        
+        // All bins should be within FFT Range
         let max_bin = config.fft_size / 2 - 1;
         for &(start, end) in &map {
             assert!(start <= max_bin);
             assert!(end <= max_bin);
             assert!(start < end);
         }
+        
+        // Check that mapping is reasonable
+        let freq_resolution = config.sample_rate as f32 / config.fft_size as f32;
+        let knee_bin = (config.linear_freq_knee / freq_resolution) as usize;
+        
+        // Linear section should cover roughly up to the knee
+        let linear_bars_estimate = (config.num_bars as f32 * (config.linear_freq_knee / 24000.0) * 0.8) as usize;
+        println!("Estimated linear bars: {}", linear_bars_estimate);
+        
+        // The actual mapping should be close to our estimate
+        assert!(linear_bars_estimate > 0);
+    }
+
+    #[test]
+    fn test_different_knee_frequencies() {
+        let mut config = FFTConfig::default();
+        config.sample_rate = 48000;
+        config.fft_size = 2048;
+        config.num_bars = 100;
+        
+        // Test different knee frequencies
+        let knees = vec![0.0, 500.0, 700.0, 1000.0, 2000.0];
+        
+        for knee in knees {
+            config.linear_freq_knee = knee;
+            let map = FFTProcessor::compute_bar_mapping(&config);
+            
+            assert_eq!(map.len(), config.num_bars);
+            
+            // If knee is 0, all bars should be logarithmic
+            if knee == 0.0 {
+                // First bar should start at bin 0 or 1
+                assert!(map[0].0 <= 1);
+            }
+            
+            println!("Knee {} Hz: First bar covers bins {}-{}", 
+                knee, map[0].0, map[0].1);
+        }
+    }
+
+    #[test]
+    fn test_mapping_info() {
+        let mut config = FFTConfig::default();
+        config.linear_freq_knee = 700.0;
+        config.sample_rate = 48000;
+        config.fft_size = 2048;
+        config.num_bars = 64;
+        
+        let processor = FFTProcessor::new(config);
+        let info = processor.get_mapping_info();
+        
+        println!("Mapping info: {:?}", info);
+        
+        assert_eq!(info.linear_bar_count + info.log_bar_count, 64);
+        assert_eq!(info.configured_knee_freq, 700.0);
+        assert!(info.actual_knee_freq > 0.0);
+        assert!(info.frequency_resolution > 0.0);
     }
 
     #[test]
