@@ -274,14 +274,14 @@ impl FFTConfigManager {
     pub fn info(&self) -> FFTInfo {
         let fft_size = self.get_fft_size();
         let latency_ms = self.latency_ms();
-
+        let frequency_resolution = self.current_sample_rate as f32 / fft_size as f32;
         FFTInfo {
             sample_rate: self.current_sample_rate,
             fft_size,
             recommended_fft_size: self.current_config.fft_size,
             is_overridden: self.fft_size_override.is_some(),
             latency_ms,
-            frequency_resolution: self.current_config.frequency_resolution,
+            frequency_resolution,
             recommended_bars: self.current_config.recommended_bars,
         }  
     }
