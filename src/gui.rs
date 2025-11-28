@@ -375,12 +375,11 @@ impl SpectrumApp {
         // {:>5.2} -> Right aligned, 5 chars wide, 2 decimal points (e.g. " 1.25")
         // {:>6}   -> Right aligned, 6 chars wide integer
         let stats_text = format!(
-            "FPS: {:>5.1} | Lat: {:>4.1}ms | Res: {:>4.1}Hz | {}Hz | Knee: {}Hz",
+            "FPS: {:>5.1} | Lat: {:>4.1}ms | Res: {:>4.1}Hz | {}Hz",
             perf.gui_fps,
             info.latency_ms,
             info.frequency_resolution,
             info.sample_rate,
-            config.linear_freq_knee as u32
         );
 
         let text_color = egui::Color32::WHITE.linear_multiply(config.stats_opacity);
@@ -498,50 +497,6 @@ impl SpectrumApp {
                                 ui.end_row();
                             });
                     });
-
-                    // === Frequency Mapping Section ===
-                    ui.add_space(10.0);
-                    ui.heading("Frequency Mapping");
-                    ui.group(|ui| {
-                        egui::Grid::new("freq_mapping_grid")
-                            .num_columns(2)
-                            .spacing(grid_spacing)
-                            .striped(true)
-                            .show(ui, |ui| {
-                                ui.label("Linear→Log Knee");
-                                ui.add(
-                                    egui::Slider::new(&mut state.config.linear_freq_knee, 0.0..=2000.0)
-                                        .suffix(" Hz")
-                                        .logarithmic(true)    // Makes dragging feel natural for frequency
-                                        .clamp_to_range(true) // Correct method name
-                                );
-                                ui.end_row();
-
-                                // Quick preset buttons
-                                ui.label("Presets:");
-                                ui.horizontal(|ui| {
-                                    if ui.button("Fully Log").on_hover_text("0 Hz - All logarithmic").clicked() {
-                                        state.config.linear_freq_knee = 0.0;
-                                    }
-                                    if ui.button("Bark").on_hover_text("500 Hz - Bark scale standard").clicked() {
-                                        state.config.linear_freq_knee = 500.0;
-                                    }
-                                    if ui.button("Mel").on_hover_text("700 Hz - Mel scale standard").clicked() {
-                                        state.config.linear_freq_knee = 700.0;
-                                    }
-                                    if ui.button("Extended").on_hover_text("1000 Hz - Extended linear").clicked() {
-                                        state.config.linear_freq_knee = 1000.0;
-                                    }
-                                });
-                                ui.end_row();
-                            });
-                    });
-
-                    // Help text
-                    ui.add_space(5.0);
-                    ui.small("The knee frequency determines where the visualization transitions from linear to logarithmic frequency mapping.");
-                    ui.small("Human hearing is approximately linear below 500-700 Hz and logarithmic above.");
-
 
                     ui.add_space(10.0);
                     ui.heading("Response Timing");

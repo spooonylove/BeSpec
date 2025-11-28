@@ -155,10 +155,6 @@ pub struct AppConfig {
     /// Use peak aggregation (true) or average (false) for bar grouping
     pub use_peak_aggregation: bool,
 
-    /// Lienar-to-Log frequency knee point (Hz)
-    /// Based on psychoacoustic research: human hearing is linear below ~500-700 Hz
-    pub linear_freq_knee: f32,
-
     // === Color Settings === 
     pub color_scheme: ColorScheme,
 }
@@ -188,7 +184,6 @@ impl Default for AppConfig {
             peak_hold_time_ms: 1000.0,
             peak_release_time_ms: 1500.0,
             use_peak_aggregation: true,
-            linear_freq_knee: 400.0,
 
             // Color Settings 
             color_scheme: ColorScheme::default(),
