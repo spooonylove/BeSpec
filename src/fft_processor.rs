@@ -1,4 +1,4 @@
-use realfft::{RealFftPlanner, RealToComplex};
+use realfft::{RealFftPlanner, RealToComplex, num_traits::Float};
 use std::sync::Arc;
 use crate::shared_state::SILENCE_DB;
 
@@ -229,59 +229,133 @@ impl FFTProcessor {
     fn compute_bar_mapping(config: &FFTConfig) -> BarToBinMap {
         let mut map = Vec::with_capacity(config.num_bars);
 
-        let max_fft_index = config.fft_size / 2 - 1;
+        let max_fft_bin = config.fft_size / 2;
         let frequency_resolution = config.sample_rate as f64 / config.fft_size as f64;
+        let nyquist_freq = config.sample_rate as f64 / 2.0;
 
-        // --- Hardcoded musical constants ---
-        const LINEAR_BAR_PROPORTION: f64 = 0.15;
-        const KNEE_FREQ: f64 = 500.0;
-        // -----------------------------------
+        // === ADPATIIVE PARAMETERS  ===
+        // Instead of fixed proportions, adapt based on available data
 
-        // Allocate bars proportinally, with a bit more weight to the log section
-        let linear_bar_count = (config.num_bars as f64 * LINEAR_BAR_PROPORTION).round()  as usize;
-        let mut last_linear_bin = 0;
+        // Calculate how many bins we have for low frequencies (up to KNEE_FREQ)
+        const TARGET_LINEARE_FREQ: f64 = 500.0; // Target knee frequency
+        let bins_in_linear_range = (TARGET_LINEARE_FREQ / frequency_resolution).ceil() as usize;
 
-        
-        // === LINEAR SECTION ===
+        // Determine optimal bar allocation to prevent starvation
+        // Rule: Each bar should have at least 1 bin of unique data
+        let max_linear_bars = bins_in_linear_range.min(config.num_bars / 3); // limit to 1/3 of bars
+
+        //  Adaptively set lineer propposrt based on available bins
+        let lineaer_bar_proportion = if bins_in_linear_range < 10 {
+            // Very low resolution: use pure logarithmic
+            0.0
+        } else if bins_in_linear_range < 20 {
+            // low resolution: minimal linear
+            (max_linear_bars as f64 / config.num_bars as f64).min(0.1) 
+        } else {
+            // Good resolution: can afford more lineaer bars
+            (max_linear_bars as f64 / config.num_bars as f64).min(0.2)
+        };
+
+        let linear_bar_count = (config.num_bars as f64 * lineaer_bar_proportion).round()  as usize;
+        let log_bar_count = config.num_bars - linear_bar_count;
+
+        println!("[Bar Mapping] Resolution: {:.2} Hz/bin", frequency_resolution);
+        println!("[Bar Mapping] Bins in 0-500Hz: {}", bins_in_linear_range);
+        println!("[Bar Mapping] Adaptive allocation: {} linear, {} log bars", 
+             linear_bar_count, log_bar_count);
+
+        // === LINEAR SECTION (0 Hz to ) ===
         // Bars are linearly distributed across frequncy
-        if linear_bar_count > 0 {
+        if linear_bar_count > 0  && bins_in_linear_range > linear_bar_count {
+            // Distribute bars evenly across availabe low-frequency bins
             for i in 0..linear_bar_count {
-                // Map bar indoex (0..count) to Frequency (0..KNEE_FREQ)
-                let freq_target = (i + 1) as f64 / linear_bar_count as f64 * KNEE_FREQ;
-                let bin_target = (freq_target / frequency_resolution).round() as usize;
-
-                let start = last_linear_bin;
-                let end = bin_target.max(start + 1).min(max_fft_index);
+                let start = (i * bins_in_linear_range) / linear_bar_count.min(max_fft_bin - 1);
+                let end = ((i + 1) * bins_in_linear_range / linear_bar_count)
+                    .min(max_fft_bin)
+                    .max(start + 1); // Ensure at least 1 bin per bar
 
                 map.push((start, end));
-                last_linear_bin = end;
             }
         }
         
 
         // === LOGARITHMIC SECTION ===
-        if config.num_bars > linear_bar_count {
-            let log_bar_count = config.num_bars - linear_bar_count;
-            
-            // Ensure min_log_freq  starts exactly whre linear ended.
-            let min_log_freq = (last_linear_bin as f64 * frequency_resolution).max(frequency_resolution);
-            let max_log_freq = 20000.0; // Upper limit, lest you are a dog
+        let actual_log_bars = config.num_bars - map.len();
+        if actual_log_bars > 0 {
+            let start_bin = if map.is_empty() { 0 } else { map.last().unwrap().1 };
+            let start_freq = start_bin as f64 * frequency_resolution;
 
-            for i in 0..log_bar_count {
-                let t = (i + 1) as f64 / log_bar_count as f64;
-                let freq_end = min_log_freq * (max_log_freq / min_log_freq).powf(t);
+            // Use octave-based distribution for musical relevance
+            // each octave gets exponentially more bars
+            let octaves = (nyquist_freq / start_freq.max(frequency_resolution)).log2();
 
-                let mut bin_start = last_linear_bin;
-                let mut bin_end = (freq_end / frequency_resolution).round() as usize;   
+            for i in 0..actual_log_bars {
+                let prev_end = if i == 0 {
+                    start_bin
+                } else {
+                    map.last().unwrap().1
+                };
 
-                // Clamp to valid ranges
-                bin_start = bin_start.max(last_linear_bin).min(max_fft_index);
-                bin_end = bin_end.max(bin_start + 1).min(max_fft_index);
+                // Exponential distribution across remaining spectrum
+                let t = (i + 1) as f64 / actual_log_bars as f64;
 
-                map.push((bin_start, bin_end));
-                last_linear_bin = bin_end;
+                // use a power function for smooth exponential growth
+                // adjust the exponent for different visual emphasis
+                let exponent = 2.0;  // Highher = more bars for higher frequencies
+                let freq_normalized = t.powf(exponent);
+
+                let target_freq = start_freq + (nyquist_freq - start_freq) * freq_normalized;
+                let target_bin = (target_freq / frequency_resolution).round() as usize;
+
+                let end = target_bin.min(max_fft_bin).max(prev_end + 1);
+                
+                map.push((prev_end, end));
+            }
+
+            // Ensure we reach the end of the spectrum
+            if let Some(last_bar) = map.last_mut() {
+                last_bar.1 = max_fft_bin;
             }
         }
+
+        // === STARVATION CHECK ===
+    #[cfg(debug_assertions)]
+    {
+        let mut single_bin_bars = 0;
+        let mut multi_bin_bars = 0;
+        let mut max_bin_span = 0;
+        
+        for &(start, end) in &map {
+            let span = end - start;
+            if span == 1 {
+                single_bin_bars += 1;
+            } else {
+                multi_bin_bars += 1;
+            }
+            max_bin_span = max_bin_span.max(span);
+        }
+        
+        println!("\n=== Mapping Quality Report ===");
+        println!("Single-bin bars: {} ({:.1}%)", 
+                 single_bin_bars, 
+                 single_bin_bars as f64 / map.len() as f64 * 100.0);
+        println!("Multi-bin bars:  {} ({:.1}%)", 
+                 multi_bin_bars,
+                 multi_bin_bars as f64 / map.len() as f64 * 100.0);
+        println!("Max bin span: {} bins", max_bin_span);
+        
+        // Warn about potential issues
+        if single_bin_bars as f64 / map.len() as f64 > 0.5 {
+            println!("⚠️  Warning: >50% of bars are single-bin (low frequency resolution)");
+            println!("   Consider: Increasing FFT size or reducing bar count");
+        }
+        
+        if max_bin_span > 50 {
+            println!("⚠️  Warning: Some bars span {} bins (may lose detail)", max_bin_span);
+            println!("   Consider: Increasing bar count for better high-frequency detail");
+        }
+    }
+
         map
     }
 

@@ -18,7 +18,10 @@ A high-performance, (soon to be) cross-platform, real-time audio spectrum visual
 * **⚡ High Performance:** Built with `egui` (immediate mode GUI) and `realfft` for blazing fast rendering and audio processing.
 * **🎧 Cross-Platform Audio:** Uses `cpal` to capture system audio on Windows (WASAPI), Linux (ALSA/Pulse/Jack), and macOS (CoreAudio).
 * **🎛️ Deep Customization:**
-    * **Dynamic FFT:** Adjust window size (512 to 4096 samples) to balance latency vs. frequency resolution.
+    *  ~~Dynamic FFT:~~ Uses a fixed 2048-point FFT for excellent frequency resolution across all sample rates:
+        - 48 kHz: 23.4 Hz/bin (ideal)
+        - 96 kHz: 46.9 Hz/bin (professional grade)
+        - 192 kHz: 93.8 Hz/bin (acceptable for mastering)
     * **Visuals:** Tune bar counts (16-512), sensitivity, noise floor, and opacity.
     * **Responsiveness:** Configure Attack/Release times for bars and Peak Hold/Decay times for indicators.
     * **Theming:** Select from 25+ preset color schemes (Winamp, Synthwave, Cyberpunk) or use dynamic "Rainbow" mode.
