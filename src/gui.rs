@@ -46,45 +46,7 @@ impl SpectrumApp {
         }
     }
 
-    /// A custom "Pill" style tab button with animations and theme integration
-    fn ui_tab_button(
-        &self,
-        ui: &mut egui::Ui,
-        label: &str,
-        tab: SettingsTab,
-        active_tab: &mut SettingsTab,
-        highlight_color: egui::Color32,
-    ) {
-        let is_selected = *active_tab == tab;
 
-        // Text color: Black/White if selected, default grey if not
-        let text_color = if is_selected {
-            egui::Color32::BLACK 
-        } else {
-            ui.visuals().text_color()
-        };
-        
-        // Draw the button
-        let response = ui.add(
-            egui::Button::new(egui::RichText::new(label).size(14.0).color(text_color))
-                .fill(if is_selected {highlight_color} else {egui::Color32::TRANSPARENT})
-                .frame(is_selected)     // only paint the background if selected
-                .rounding(12.0)         // Rounding = 1/2 the hieght for pill shape
-                .min_size(egui::vec2(80.0, 28.0)) // Wide clickable area
-        );
-        if response.clicked() {
-            *active_tab = tab;
-        }
-
-        // Subltle hover effect for inactive tabs
-        if response.hovered() && !is_selected {
-            ui.painter().rect_filled(
-                response.rect,
-                12.0,
-                ui.visuals().widgets.hovered.bg_fill.linear_multiply(0.2)
-            );
-        }
-    }
 }
 
 impl eframe::App for SpectrumApp {
@@ -419,11 +381,15 @@ impl SpectrumApp {
         // 1. Tab Bar (Add some padding around it)
         ui.add_space(5.0);
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.active_tab, SettingsTab::Visual, " 🎨 Visual ");
-            ui.selectable_value(&mut self.active_tab, SettingsTab::Audio, " 🔊 Audio ");
-            ui.selectable_value(&mut self.active_tab, SettingsTab::Colors, " 🌈 Colors ");
-            ui.selectable_value(&mut self.active_tab, SettingsTab::Window, " 🪟 Window ");
-            ui.selectable_value(&mut self.active_tab, SettingsTab::Performance, " 📊 Stats ");
+            // Get the highlight color (High Color from config)
+            let (_, high, _) = state.config.get_colors();
+            let highlight = to_egui_color(high);
+
+            ui_tab_button(ui, " 🎨 Visual ", SettingsTab::Visual, &mut self.active_tab, highlight);
+            ui_tab_button(ui, " 🔊 Audio ", SettingsTab::Audio, &mut self.active_tab, highlight);
+            ui_tab_button(ui, " 🌈 Colors ", SettingsTab::Colors, &mut self.active_tab, highlight);
+            ui_tab_button(ui, " 🪟 Window ", SettingsTab::Window, &mut self.active_tab, highlight);
+            ui_tab_button(ui, " 📊 Stats ", SettingsTab::Performance, &mut self.active_tab, highlight);
         });
         ui.add_space(5.0);
         ui.separator();
@@ -445,7 +411,8 @@ impl SpectrumApp {
                             .show(ui, |ui| {
                                 
                                 ui.label("Bar Count");
-                                ui.add(egui::Slider::new(&mut state.config.num_bars, 16..=512));
+                                ui.add(egui::Slider::new(&mut state.config.num_bars, 10..=512)
+                                    .step_by(1.0));
                                 ui.end_row();
 
                                 ui.label("Bar Gap");
@@ -679,6 +646,49 @@ impl SpectrumApp {
         });
     }  
 }
+
+
+// === Helper Functions ===
+
+    /// A custom "Pill" style tab button with animations and theme integration
+fn ui_tab_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    tab: SettingsTab,
+    active_tab: &mut SettingsTab,
+    highlight_color: egui::Color32,
+) {
+    let is_selected = *active_tab == tab;
+
+    // Text color: Black/White if selected, default grey if not
+    let text_color = if is_selected {
+        egui::Color32::BLACK 
+    } else {
+        ui.visuals().text_color()
+    };
+    
+    // Draw the button
+    let response = ui.add(
+        egui::Button::new(egui::RichText::new(label).size(14.0).color(text_color))
+            .fill(if is_selected {highlight_color} else {egui::Color32::TRANSPARENT})
+            .frame(is_selected)     // only paint the background if selected
+            .rounding(12.0)         // Rounding = 1/2 the hieght for pill shape
+            .min_size(egui::vec2(80.0, 28.0)) // Wide clickable area
+    );
+    if response.clicked() {
+        *active_tab = tab;
+    }
+
+    // Subltle hover effect for inactive tabs
+    if response.hovered() && !is_selected {
+        ui.painter().rect_filled(
+            response.rect,
+            12.0,
+            ui.visuals().widgets.hovered.bg_fill.linear_multiply(0.2)
+        );
+    }
+}
+
 
 /// Convert our Color32 to egui::Color32
 fn to_egui_color(color: StateColor32) -> egui::Color32 {
