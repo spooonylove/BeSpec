@@ -1,5 +1,10 @@
 use std::time::{Duration, Instant};
 use crate::fft_config::FFTInfo;
+use egui::epaint::tessellator::Path;
+use serde::{Serialize, Deserialize};
+use std::fs;
+use std::path::PathBuf;
+use directories::ProjectDirs;
 
 pub const SILENCE_DB: f32 = -140.0;
 
@@ -25,7 +30,7 @@ impl SharedState {
     
     /// Create new shated state with default values
     pub fn new() -> Self {
-        let config = AppConfig::default();
+        let config = AppConfig::load();
         
         Self {
             visualization: VisualizationData::new(config.num_bars),
@@ -97,7 +102,7 @@ pub struct PerformanceStats {
 /// Application configuration (users settings)
 /// 
 /// GUI writes these values, FFT thread reads them
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     // === Visual Settings ===
     /// Number of frequency bars to display (16-512)
@@ -164,7 +169,7 @@ impl Default for AppConfig {
             bar_opacity: 1.0,
             background_opacity: 1.0,
             show_peaks: true,
-            show_stats: true,
+            show_stats: false,
             stats_opacity: 0.3,
 
             // Window Settings
@@ -188,6 +193,60 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    /// Returns the standard OS config path, e.g.:
+    /// Windows: C:\Users\Username\AppData\Roaming\BeAnal
+    /// MacOS: /Users/Username/Library/Application Support/BeAnal
+    /// Linux: /home/username/.config/BeAnal
+    fn get_config_path() -> PathBuf {
+        if let Some(proj_dirs) = ProjectDirs::from("","","beanal") {
+            let config_dir = proj_dirs.config_dir();
+
+            // Ensure directory exists
+            if let Err(e) = fs::create_dir_all(config_dir) {
+                eprintln!("[Config] Error creating config directory: {}", e);
+            }
+
+            return config_dir.join("config.json");
+        }
+        
+        // Fallback
+        PathBuf::from("beanal_config.json")
+    }
+
+    pub fn load() -> Self {
+        let path = Self::get_config_path();
+
+        if path.exists() {
+            match fs::read_to_string(&path) {
+                Ok(contents) => match serde_json::from_str(&contents) {
+                    Ok(config) => {
+                        println!("[Config] Loading config from {:?}", path);
+                        return config;
+                    },
+                    Err(e) => eprintln!("[Config] Parse eror: {}", e),
+                },
+                Err(e) => eprintln!("[Config] Read error: {}", e),
+            }
+        }
+        println!("[Config] Using defaults (new config will be saved to {:?})", path);
+        Self::default()
+    }
+
+    pub fn save(&self) {
+        let path = Self::get_config_path();
+        match serde_json::to_string_pretty(self) {
+            Ok(json) => {
+                if let Err(e) = fs::write(&path, json) {
+                    eprint!("[Config] Failed to save to {:?}: {}", path, e);
+                } else {
+                    println!("[Config] Saved config to {:?}", path);
+                }
+            },
+            Err(e) => eprintln!("[Config] Failed to serialize config: {}", e),
+        }
+    }
+    
+    
     /// Check if this config requires rebuilding the FFT processor
     pub fn needs_fft_rebuild(&self, other: &AppConfig) -> bool {
         self.num_bars != other.num_bars
@@ -237,7 +296,7 @@ impl AppConfig {
 }
 
 /// Color scheme options for Visualization
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum ColorScheme {
     /// Named Presets (includes names and colors together)
     Preset {
@@ -259,7 +318,7 @@ pub enum ColorScheme {
 }
 
 /// Named color preset with name and colors
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColorPreset {
     pub name: String,
     pub low: Color32,
@@ -463,7 +522,7 @@ impl ColorPreset {
 /// We define our own to avoid depending on egui in SharedState
 /// (can convert to egui::Color32 in GUI Code)
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Color32{
     pub r: u8,
     pub g: u8,

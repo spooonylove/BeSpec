@@ -380,6 +380,12 @@ fn main (){
         Box::new(|_cc| Ok(Box::new(SpectrumApp::new(shared_state.clone())))),
     );
 
+    // The window has closed. Now we force a save to sensure settings persist
+    println!("[Main] Saving configuration...");
+    if let Ok(state) = shared_state.lock() {
+        state.config.save();
+    }
+
     // Signal shutdown to audio threads
     println!("\n[Main] Shutting down audio threads...");
     shutdown.store(true, Ordering::Relaxed);

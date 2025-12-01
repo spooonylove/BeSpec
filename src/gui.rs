@@ -51,6 +51,14 @@ impl SpectrumApp {
 
 impl eframe::App for SpectrumApp {
 
+    // This is called by eframe periodicatlly and/or on exit
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
+        // On exit, save the current config to disk
+        if let Ok(state) = self.shared_state.lock() {
+            state.config.save();
+        }
+    }
+    
     /// Tell eframe to clear the window with total transparency
     /// this alllows the OS background to show through when our CentralPanel
     /// is also transparent.
