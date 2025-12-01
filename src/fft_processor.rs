@@ -1,7 +1,6 @@
 use realfft::{RealFftPlanner, RealToComplex, num_traits::Float};
 use std::sync::Arc;
-use crate::shared_state::SILENCE_DB;
-
+use crate::{fft_config::FIXED_FFT_SIZE, shared_state::SILENCE_DB};
 
 // configure for FFT processing and visualization
 #[derive(Clone)]
@@ -20,7 +19,7 @@ pub struct FFTConfig{
 impl Default for FFTConfig {
     fn default() -> Self{
         Self {
-            fft_size: 1024,
+            fft_size: FIXED_FFT_SIZE,
             sample_rate: 48000,
             num_bars: 64,
             sensitivity: 1.0,
@@ -34,7 +33,7 @@ impl Default for FFTConfig {
 }
 
 /// Maps visual bars to FFT bin ranges (start_bin, end_bin)
-type BarToBinMap = Vec<(usize, usize)>;
+type BarToBinMap = Vec<f64>;
 
 /// Main FFT processor - handles windowing, FFT, and bar mapping
 pub struct FFTProcessor{
@@ -82,7 +81,7 @@ impl FFTProcessor {
         // Initialize smoothing state
         let last_bar_heights = vec![SILENCE_DB; config.num_bars];
         let peak_levels = vec![SILENCE_DB; config.num_bars];
-        let peak_hold_timers = vec![SILENCE_DB; config.num_bars];
+        let peak_hold_timers = vec![0.0; config.num_bars];
 
         Self {
             config,
@@ -133,18 +132,13 @@ impl FFTProcessor {
     /// Update configuration (e.g., user changed the number of bars)
     pub fn update_config(&mut self, config: FFTConfig) {
 
-        // check if we need to re-calculate the map
-        // we do this if the bar count changes or the knee frequency changes        
-        let need_remap = config.num_bars != self.config.num_bars;
+        // Sample Rate chanmge triggers a full rebuild, not an update
 
-        if need_remap {
-            // Resize arrays if the bar count changed
-            if config.num_bars != self.config.num_bars {
-                self.last_bar_heights.resize(config.num_bars, SILENCE_DB);
-                self.peak_levels.resize(config.num_bars, SILENCE_DB);
-                self.peak_hold_timers.resize(config.num_bars, 0.0);
-            }
-
+        if config.num_bars != self.config.num_bars {
+            self.last_bar_heights.resize(config.num_bars, SILENCE_DB);
+            self.peak_levels.resize(config.num_bars, SILENCE_DB);
+            self.peak_hold_timers.resize(config.num_bars, 0.0);
+            
             // Recomput the mapping
             self.bar_to_bin_map = Self::compute_bar_mapping(&config);
         }
@@ -233,153 +227,68 @@ impl FFTProcessor {
         let frequency_resolution = config.sample_rate as f64 / config.fft_size as f64;
         let nyquist_freq = config.sample_rate as f64 / 2.0;
 
-        // === ADPATIIVE PARAMETERS  ===
-        // Instead of fixed proportions, adapt based on available data
+        // === CONSTANTS  ===
+        const LINEAR_BAR_PROPORTION: f64 = 0.15; // Target 15% Bass (Your choice)
+        const KNEE_FREQ: f64 = 500.0;            // 0-500Hz is Linear
+        const MAX_FREQ: f64 = 20000.0;           // Hard limit at 20kHz
+        // ===================
 
-        // Calculate how many bins we have for low frequencies (up to KNEE_FREQ)
-        const TARGET_LINEARE_FREQ: f64 = 500.0; // Target knee frequency
-        let bins_in_linear_range = (TARGET_LINEARE_FREQ / frequency_resolution).ceil() as usize;
-
-        // Determine optimal bar allocation to prevent starvation
-        // Rule: Each bar should have at least 1 bin of unique data
-        let max_linear_bars = bins_in_linear_range.min(config.num_bars / 3); // limit to 1/3 of bars
-
-        //  Adaptively set lineer propposrt based on available bins
-        let lineaer_bar_proportion = if bins_in_linear_range < 10 {
-            // Very low resolution: use pure logarithmic
-            0.0
-        } else if bins_in_linear_range < 20 {
-            // low resolution: minimal linear
-            (max_linear_bars as f64 / config.num_bars as f64).min(0.1) 
-        } else {
-            // Good resolution: can afford more lineaer bars
-            (max_linear_bars as f64 / config.num_bars as f64).min(0.2)
-        };
-
-        let linear_bar_count = (config.num_bars as f64 * lineaer_bar_proportion).round()  as usize;
+        let linear_bar_count = (config.num_bars as f64 * LINEAR_BAR_PROPORTION).round() as usize;
         let log_bar_count = config.num_bars - linear_bar_count;
 
-        println!("[Bar Mapping] Resolution: {:.2} Hz/bin", frequency_resolution);
-        println!("[Bar Mapping] Bins in 0-500Hz: {}", bins_in_linear_range);
-        println!("[Bar Mapping] Adaptive allocation: {} linear, {} log bars", 
-             linear_bar_count, log_bar_count);
-
         // === LINEAR SECTION (0 Hz to ) ===
-        // Bars are linearly distributed across frequncy
-        if linear_bar_count > 0  && bins_in_linear_range > linear_bar_count {
-            // Distribute bars evenly across availabe low-frequency bins
-            for i in 0..linear_bar_count {
-                let start = (i * bins_in_linear_range) / linear_bar_count.min(max_fft_bin - 1);
-                let end = ((i + 1) * bins_in_linear_range / linear_bar_count)
-                    .min(max_fft_bin)
-                    .max(start + 1); // Ensure at least 1 bin per bar
-
-                map.push((start, end));
-            }
+        for i in 0..linear_bar_count {
+            let freq_target = (i + 1) as f64 / linear_bar_count as f64 * KNEE_FREQ;
+            let bin_pos = freq_target / frequency_resolution;
+            map.push(bin_pos);
         }
-        
-
+    
         // === LOGARITHMIC SECTION ===
-        let actual_log_bars = config.num_bars - map.len();
-        if actual_log_bars > 0 {
-            let start_bin = if map.is_empty() { 0 } else { map.last().unwrap().1 };
-            let start_freq = start_bin as f64 * frequency_resolution;
+        let min_log_bars = KNEE_FREQ.max(frequency_resolution);
 
-            // Use octave-based distribution for musical relevance
-            // each octave gets exponentially more bars
-            let octaves = (nyquist_freq / start_freq.max(frequency_resolution)).log2();
-
-            for i in 0..actual_log_bars {
-                let prev_end = if i == 0 {
-                    start_bin
-                } else {
-                    map.last().unwrap().1
-                };
-
-                // Exponential distribution across remaining spectrum
-                let t = (i + 1) as f64 / actual_log_bars as f64;
-
-                // use a power function for smooth exponential growth
-                // adjust the exponent for different visual emphasis
-                let exponent = 2.0;  // Highher = more bars for higher frequencies
-                let freq_normalized = t.powf(exponent);
-
-                let target_freq = start_freq + (nyquist_freq - start_freq) * freq_normalized;
-                let target_bin = (target_freq / frequency_resolution).round() as usize;
-
-                let end = target_bin.min(max_fft_bin).max(prev_end + 1);
-                
-                map.push((prev_end, end));
-            }
-
-            // Ensure we reach the end of the spectrum
-            if let Some(last_bar) = map.last_mut() {
-                last_bar.1 = max_fft_bin;
-            }
-        }
-
-        // === STARVATION CHECK ===
-    #[cfg(debug_assertions)]
-    {
-        let mut single_bin_bars = 0;
-        let mut multi_bin_bars = 0;
-        let mut max_bin_span = 0;
+        for i in 0..log_bar_count {
+            let t = (i + 1) as f64 / log_bar_count as f64;
+            // True Logarithmic Interpolation
+            let freq_target = min_log_bars * (MAX_FREQ / min_log_bars).powf(t);
+            let bin_pos = freq_target / frequency_resolution;
+            map.push(bin_pos);
         
-        for &(start, end) in &map {
-            let span = end - start;
-            if span == 1 {
-                single_bin_bars += 1;
-            } else {
-                multi_bin_bars += 1;
-            }
-            max_bin_span = max_bin_span.max(span);
         }
-        
-        println!("\n=== Mapping Quality Report ===");
-        println!("Single-bin bars: {} ({:.1}%)", 
-                 single_bin_bars, 
-                 single_bin_bars as f64 / map.len() as f64 * 100.0);
-        println!("Multi-bin bars:  {} ({:.1}%)", 
-                 multi_bin_bars,
-                 multi_bin_bars as f64 / map.len() as f64 * 100.0);
-        println!("Max bin span: {} bins", max_bin_span);
-        
-        // Warn about potential issues
-        if single_bin_bars as f64 / map.len() as f64 > 0.5 {
-            println!("⚠️  Warning: >50% of bars are single-bin (low frequency resolution)");
-            println!("   Consider: Increasing FFT size or reducing bar count");
-        }
-        
-        if max_bin_span > 50 {
-            println!("⚠️  Warning: Some bars span {} bins (may lose detail)", max_bin_span);
-            println!("   Consider: Increasing bar count for better high-frequency detail");
-        }
-    }
 
         map
     }
 
+    fn interpolate_hermite(y0: f32, y1: f32, y2: f32, y3: f32, t: f32) -> f32 {
+        let c0 = y1;
+        let c1 = 0.5 * (y2 - y0);
+        let c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
+        let c3 = 0.5 * (y3 - y0 + 3.0 * (y1 - y2)); 
+        
+        ((c3 * t + c2) * t + c1) * t + c0
+    }
+
     // Group FFT bin data into visualization bars
     fn group_bins(&self, magnitudes: &[f32]) -> Vec<f32> {
+        let max_bin_idx = magnitudes.len().saturating_sub(1);
+
         self.bar_to_bin_map
             .iter()
-            .map(|&(start, end)| {
-
-                
-                if self.config.use_peak_aggregation {
-                    // PEAK MODE: take the maximum value in the range
-                    // this creates a more dramatic, responsive visual effect.
-                    magnitudes[start..end]
-                        .iter()
-                        .copied()
-                        .fold(f32::NEG_INFINITY, f32::max)
-                } else {
-                    // AVERAGE MODE: take the average value in the range
-                    // this creates a smoother, more stable visual effect.
-                    let sum: f32 = magnitudes[start..end].iter().sum();
-                    let count = (end - start) as f32;
-                    sum / count.max(1.0)
+            .map(|&bin_pos| {
+                if bin_pos < 0.0 || bin_pos >= max_bin_idx as f64 {
+                    return SILENCE_DB;
                 }
+
+                let idx = bin_pos.floor() as usize;
+                let t = (bin_pos - idx as f64) as f32;
+
+                // Get surrounding bins for interpolation
+                let y1 = magnitudes[idx];
+                let y2 = if idx + 1 <= max_bin_idx { magnitudes[idx + 1] } else { y1 };
+                let y0 = if idx > 0 { magnitudes[idx -1] } else { y1 };
+                let y3 = if idx + 2 <= max_bin_idx { magnitudes[idx + 2] } else { y2 };
+
+                // Hermite interpolation
+                Self::interpolate_hermite(y0, y1, y2, y3, t)
             })
             .collect()
     }
