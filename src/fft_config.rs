@@ -3,14 +3,21 @@
 
 use std::collections::HashMap;
 
+/// Fixed FFT size for the application
+/// 2048 provides a good balance of frequency resolution and latency:
+/// - At 48kHz: 42.7ms latency, 23.4 Hz/bin resolution
+/// - At 44.1kHz: 46.4ms latency, 21.5 Hz/bin resolution
+/// - At 96kHz: 21.3ms latency, 46.9 Hz/bin resolution
+pub const FIXED_FFT_SIZE: usize = 2048;
+
+
 /// Represents optimal FFT settings for a given sample rate
 #[derive(Clone, Debug)]
 pub struct FFTSampleRateConfig {
     /// Sample rate in Hz
     pub sample_rate: u32,
 
-    /// Optimal FFT size for this sample rate
-    /// Generally: FFT size should be ~50-100ms of audio
+    /// fft size (always FIXED_FFT_SIZE)
     pub fft_size: usize,
 
     /// Number of frequency bins to display
@@ -31,20 +38,15 @@ impl FFTSampleRateConfig {
     /// Calculate configuration for any sample rate
     pub fn for_sample_rate(sample_rate: u32) -> Self {
         // Determine FFT size: aim for ~50-100ms of audio
-        let fft_size = match sample_rate{
-            8000..=16000 => 512,        // ~32-64ms at 8-16kHz
-            16001..=32000 => 1024,      // ~32-64ms at 15-32kHz
-            32001..=48000 => 2048,      // ~42-85ms at 32-48kHz
-            48001..=96000 => 4096,      // ~42-85ms at 48-96kHz
-            _ => 8192,                  // ~85ms+ at 96kHz+
-        };
+        let fft_size= FIXED_FFT_SIZE;
 
         // calculate frequency resolution
         let freq_resolution = sample_rate as f32 / fft_size as f32;
 
-        // Recommend bar count based on useful frequency range
-        // most music is 20Hz-20kHz range
         let nyquist = sample_rate / 2;
+
+        // Recommend bar count based on useful frequency range
+        // most music is 20Hz-20kHz range        
         let useful_freq_bins = 20000.0 / freq_resolution;
         let recommended_bars = (useful_freq_bins as usize).min(512).max(32);
 
@@ -63,13 +65,6 @@ impl FFTSampleRateConfig {
         }
     }
 
-    /// Get a preset configuration for common sample rates
-    pub fn get_preset(sample_rate: u32) -> Option<Self> {
-        PRESET_CONFIGS
-            .get(&sample_rate)
-            .cloned()
-    }
-
     /// Print debug infomration about this configuration
     pub fn debug_print(&self) {
         println!("[FFTConfig] {}", self.description);
@@ -77,69 +72,6 @@ impl FFTSampleRateConfig {
         println!("  Frequency Resolution: {:.2} Hz/bin", self.frequency_resolution);
     }
 }
-
-
-// Preset FFT configuration for common sample rates
-lazy_static::lazy_static! {
-    static ref PRESET_CONFIGS: HashMap<u32, FFTSampleRateConfig> = {
-        let configs = vec![
-            // Common Sample Rates
-            (44100, FFTSampleRateConfig {
-                sample_rate: 44100,
-                fft_size: 2048,
-                recommended_bars: 150,
-                frequency_resolution: 21.53,
-                nyquist_frequency: 22050.0,
-                description: "44.1 kHz (CD quality)".to_string(),
-            }),
-            (48000, FFTSampleRateConfig {
-                sample_rate: 48000,
-                fft_size: 2048,
-                recommended_bars: 150,
-                frequency_resolution: 23.44,
-                nyquist_frequency: 24000.0,
-                description: "48 kHz (professional audio)".to_string(),
-            }),
-            (96000, FFTSampleRateConfig {
-                sample_rate: 96000,
-                fft_size: 4096,
-                recommended_bars: 200,
-                frequency_resolution: 23.44,
-                nyquist_frequency: 48000.0,
-                description: "96 kHz (high-resolution)".to_string(),
-            }),
-            (192000, FFTSampleRateConfig {
-                sample_rate: 192000,
-                fft_size: 8192,
-                recommended_bars: 256,
-                frequency_resolution: 23.44,
-                nyquist_frequency: 96000.0,
-                description: "192 kHz (ultra high-resolution)".to_string(),
-            }),
-            (32000, FFTSampleRateConfig {
-                sample_rate: 32000,
-                fft_size: 1024,
-                recommended_bars: 100,
-                frequency_resolution: 31.25,
-                nyquist_frequency: 16000.0,
-                description: "32 kHz (narrowband)".to_string(),
-            }),
-            (16000, FFTSampleRateConfig {
-                sample_rate: 16000,
-                fft_size: 512,
-                recommended_bars: 64,
-                frequency_resolution: 31.25,
-                nyquist_frequency: 8000.0,
-                description: "16 kHz (telephony)".to_string(),
-            }),
-        ];
-        configs.into_iter().collect()
-    };
-}
-
-/// Valid FFT size range (all powers of 2)
-const MIN_FFT_SIZE: usize = 256;
-const MAX_FFT_SIZE: usize = 16384;
 
 /// Manages FFT configuration based on detected device sample rate
 /// Also handles user override of FFT size for viusalization preferences
@@ -153,9 +85,6 @@ pub struct FFTConfigManager {
     
     /// Cache to avoid recalculation
     config_cache: HashMap<u32, FFTSampleRateConfig>,
-
-    /// Users manual FFT size override (if dictated by user vice auto-calculated)
-    fft_size_override: Option<usize>,
 }
 
 /// Public result of FFT configuration
@@ -164,8 +93,6 @@ pub struct FFTConfigManager {
 pub struct FFTInfo {
     pub sample_rate: u32,
     pub fft_size: usize,
-    pub recommended_fft_size: usize,
-    pub is_overridden: bool,
     pub latency_ms: f32,
     pub frequency_resolution: f32,
     pub recommended_bars: usize,
@@ -183,8 +110,6 @@ impl FFTConfigManager {
             current_sample_rate: sample_rate,
             current_config,
             config_cache,
-            fft_size_override: None,
-
         }
     }
 
@@ -201,105 +126,32 @@ impl FFTConfigManager {
             .entry(new_sample_rate)
             .or_insert_with(|| FFTSampleRateConfig::for_sample_rate(new_sample_rate));
 
-        let old_size = self.current_config.fft_size;
-        let new_size = new_config.fft_size;
-        
-        // Only rebuild if the auto-selected FFT size changed
-        let needs_rebuild = if self.fft_size_override.is_some() {
-            // if User has override, sample rate change doesn't affect FFT size
-            false
-        } else {
-            old_size != new_size
-        };
-
+        println!(
+            "[FFTConfigManager] Sample rate: {} Hz → {} Hz",
+            self.current_sample_rate, new_sample_rate
+        );
+      
         self.current_sample_rate = new_sample_rate;
-
         self.current_config = new_config.clone();
 
-        println!(
-            "[FFTConfigManager] Sample rate: {} Hz → {} Hz (rebuild: {})",
-            new_sample_rate, old_size, needs_rebuild
-        );
-        needs_rebuild
+        // Sample rate change affects frequency mapping, so return true
+        true
     }
      
-
-    /// User manually sets FFT size (eg, via UI slider)
-    /// Returns true if this requires FFT processor rebuild 
-    pub fn set_override(&mut self, fft_size: usize) -> Result<bool, String> {
-        
-        if !Self::is_valid_fft_size(fft_size) {
-            return Err(format!(
-                "Invalid FFT size: {} (must be a power of 2, {}-{})",
-                fft_size, MIN_FFT_SIZE, MAX_FFT_SIZE
-            ));
-        }
-
-        let old_size = self.get_fft_size();
-        let new_size = fft_size;
-        let needs_rebuild = old_size != new_size;
-
-        self.fft_size_override = Some(fft_size);
-
-        println!(
-            "[FFTConfigManager] FFT override: {} → {} (rebuild: {})",
-            old_size, new_size, needs_rebuild
-        );
-
-        Ok(needs_rebuild)
-    }
-
-    /// Clear user override and go back to automatic sizing
-    /// Returns true if FFT processor rebuild needed
-    pub fn clear_override(&mut self) -> bool {
-        if self.fft_size_override.is_none() {
-            return false; // no change
-        }
-
-        let old_size = self.get_fft_size();
-        self.fft_size_override = None;
-        let new_size = self.get_fft_size();
-
-        let needs_rebuild = old_size != new_size;
-
-        println!(
-            "[FFTConfigManager] FFT override cleared (rebuild: {})",
-            needs_rebuild
-        );
-
-        needs_rebuild
-    }
-
     // ======= Query Methods ========
     pub fn info(&self) -> FFTInfo {
-        let fft_size = self.get_fft_size();
-        let latency_ms = self.latency_ms();
-        let frequency_resolution = self.current_sample_rate as f32 / fft_size as f32;
         FFTInfo {
             sample_rate: self.current_sample_rate,
-            fft_size,
-            recommended_fft_size: self.current_config.fft_size,
-            is_overridden: self.fft_size_override.is_some(),
-            latency_ms,
-            frequency_resolution,
+            fft_size: FIXED_FFT_SIZE,
+            latency_ms: self.latency_ms(),
+            frequency_resolution: self.current_config.frequency_resolution,
             recommended_bars: self.current_config.recommended_bars,
         }  
     }
 
     /// Get the effective FFT size (override or auto)
     pub fn get_fft_size(&self) -> usize {
-        self.fft_size_override
-            .unwrap_or(self.current_config.fft_size)
-    }
-
-    /// Get recommended FFT size (what we'd use if no override)
-    pub fn get_recommended_fft_size(&self) -> usize {
-        self.current_config.fft_size
-    }
-
-    /// Check if user has overridden FFT size
-    pub fn has_override(&self) -> bool {
-        self.fft_size_override.is_some()
+        FIXED_FFT_SIZE
     }
 
     /// Get current sample rate
@@ -314,19 +166,18 @@ impl FFTConfigManager {
 
     /// Calculate latency in milliseconds
     pub fn latency_ms(&self) -> f32 {
-        let fft_size = self.get_fft_size();
-        (fft_size as f32 / self.current_sample_rate as f32) * 1000.0
+        (FIXED_FFT_SIZE as f32 / self.current_sample_rate as f32) * 1000.0
     }
 
     /// Get a short latency warning emoji based on current state
     /// REturn: ("emoji", "description")
-    pub fn latency_warning(&self) ->(&'static str, &'static str) {
+    pub fn latency_indicator(&self) ->(&'static str, &'static str) {
         let latency = self.latency_ms();
         match latency {
-            l if l < 20.0 => ("⚡", "very snappy"),
+            l if l < 20.0 => ("⚡", "very responsive"),
             l if l < 50.0 => ("🟢", "responsive"),
-            l if l < 100.0 => ("🟡", "good detail"),
-            _ => ("🔴", "may lag"),
+            l if l < 100.0 => ("🟡", "moderate"),
+            _ => ("🔴", "high latency"),
         }
     }
 
@@ -339,30 +190,6 @@ impl FFTConfigManager {
     pub  fn bin_for_frequency(&self, frequency: f32) -> usize {
         (frequency / self.current_config.frequency_resolution) as usize
     }
-
-    /// Get all valid FFT sizes aas slice (compute once, shared)
-    pub fn valid_fft_sizes() -> &'static [usize] {
-        &VALID_FFT_SIZES
-    }
-
-    /// Check if an FFT size is valid (power of 2, in range)
-    fn is_valid_fft_size(size: usize) -> bool {
-        size.is_power_of_two() && size >= MIN_FFT_SIZE && size <= MAX_FFT_SIZE
-    }
-}
-
-
-// Pre-computed valid FFT sizes
-lazy_static::lazy_static! {
-    static ref VALID_FFT_SIZES: Vec<usize> = {
-        let mut sizes = Vec::new();
-        let mut size = MIN_FFT_SIZE;
-        while size <= MAX_FFT_SIZE {
-            sizes.push(size);
-            size *= 2;
-        }
-        sizes
-    };
 }
 
 // =============== Tests ==================
@@ -371,165 +198,113 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_fft_config_for_sample_rate() {
+    fn test_fixed_fft_size() {
+        // All sample rates should use the same FFT size
         let configs = vec![
-            (8000, 512),
-            (16000, 512),
-            (32000, 1024),
-            (44100, 2048),
-            (48000, 2048),
-            (96000, 4096),
-            (192000, 8192),
+            FFTSampleRateConfig::for_sample_rate(44100),
+            FFTSampleRateConfig::for_sample_rate(48000),
+            FFTSampleRateConfig::for_sample_rate(96000),
+            FFTSampleRateConfig::for_sample_rate(192000),
         ];
-        
-        for (rate, expected_fft) in configs {
-            let config = FFTSampleRateConfig::for_sample_rate(rate);
-            assert_eq!(config.sample_rate, rate);
-            assert_eq!(config.fft_size, expected_fft);
-            assert_eq!(config.nyquist_frequency, (rate / 2) as f32);
-            println!("✓ {}", config.description);
 
+        for config in configs {
+            assert_eq!(config.fft_size, FIXED_FFT_SIZE);
+            println!("✓ {}", config.description)
         }
+    }
+
+    #[test]
+    fn test_frequency_resolution_varies_with_sample_rate() {
+        let config_48k = FFTSampleRateConfig::for_sample_rate(48000);
+        let config_96k = FFTSampleRateConfig::for_sample_rate(96000);
+
+        // Higher sample rate = higher frequency resolution
+        assert!(config_96k.frequency_resolution > config_48k.frequency_resolution);
+
+        // 48kHz: 48000 / 2048 = ~23.4 Hz/bin
+        assert!((config_48k.frequency_resolution - 23.4375).abs() < 0.01);
+
+        // 96kHz: 96000 / 2048 = ~46.9 Hz/bin
+        assert!((config_96k.frequency_resolution - 46.875).abs() < 0.01);
     }
 
     #[test]
     fn test_config_manager_initialization() {
         let manager = FFTConfigManager::new(48000);
         assert_eq!(manager.get_sample_rate(), 48000);
-        assert_eq!(manager.get_fft_size(), 2048);
-        assert!(!manager.has_override());
-
+        assert_eq!(manager.get_fft_size(), FIXED_FFT_SIZE);
     }
 
     #[test]
-    fn test_sample_rate_change_without_override() {
+    fn test_sample_rate_change() {
         let mut manager = FFTConfigManager::new(48000);
 
         // Switch to 96kHz - should trigger rebuild (FFT size change)
-        let rebuild = manager.update_sample_rate(96000);
-        assert!(rebuild);
-        assert_eq!(manager.get_fft_size(), 4096);
+        let changed: bool = manager.update_sample_rate(96000);
+        assert!(changed);
+        assert_eq!( manager.get_sample_rate(), 96000);
+        assert_eq!(manager.get_fft_size(), FIXED_FFT_SIZE);
 
-        // switch back to 48kHz - should trigger rebuild
-        let rebuild = manager.update_sample_rate(48000);
-        assert!(rebuild);
-        assert_eq!(manager.get_fft_size(), 2048);
-
-        // No Change - no rebuild
-        let rebuild = manager.update_sample_rate(48000);
-        assert!(!rebuild);
-    }
-
-    #[test]
-    fn test_sample_rate_change_with_override() {
-        let mut manager = FFTConfigManager::new(48000);
-
-        // Invalid: not power of 2
-        assert!(manager.set_override(3000).is_err());
-        assert!(!manager.has_override());
-
-        // Invalid: too small
-        assert!(manager.set_override(128).is_err());
-
-        // Invalid: too large
-        assert!(manager.set_override(32768).is_err());
-
-        // Valid
-        assert!(manager.set_override(2048).is_ok());
-        assert!(manager.has_override());
-    }
-
-    #[test]
-    fn test_override_trigger_rebuild() {
-        let mut manager = FFTConfigManager::new(48000);
-        assert_eq!(manager.get_fft_size(), 2048);
+        // No Change!
+        let changed = manager.update_sample_rate(96000);
+        assert!(!changed);
         
-        // Set override to different size - rebuild needed
-        let rebuild = manager.set_override(4096).unwrap();
-        assert!(rebuild);
-
-        // set override to same size - no rebuild
-        let rebuild = manager.set_override(4096).unwrap();
-        assert!(!rebuild);
-
-        // Clear override - rebuild needed (back to 2048)
-        let rebuild = manager.clear_override();
-        assert!(rebuild);
-        assert_eq!(manager.get_fft_size(), 2048);
+        // Switch back
+        let changed = manager.update_sample_rate(48000);
+        assert!(changed);
     }
 
     #[test]
     fn test_latency_calculation() {
-        let mut manager = FFTConfigManager::new(48000);
-        let latency = manager.latency_ms();
-        assert!((latency - 42.67).abs() < 1.0);
+        let manage_48k = FFTConfigManager::new(48000);
+        let manage_96k: FFTConfigManager = FFTConfigManager::new(96000);
 
-        manager.set_override(1024).unwrap();
-        let latency = manager.latency_ms();
-        assert!((latency - 21.33).abs() < 1.0);
+        // 48kHz: 2048 / 48000 * 1000 = 42.67ms
+        assert!((manage_48k.latency_ms() - 42.67).abs() < 0.1);
 
-        manager.set_override(8192).unwrap();
-        let latency = manager.latency_ms();
-        assert!((latency - 170.67).abs() < 1.0);
-    }
-
-    #[test]
-    fn test_latency_warning() {
-        let mut manager = FFTConfigManager::new(48000);
-
-         manager.set_override(512).unwrap();
-         let (emoji, _) = manager.latency_warning();
-         assert_eq!(emoji, "⚡");
-
-         manager.set_override(2048).unwrap();
-         let (emoji, _) = manager.latency_warning();
-         assert_eq!(emoji, "🟢");
-
-         manager.set_override(8192).unwrap();
-         let (emoji, _) = manager.latency_warning();
-        assert_eq!(emoji, "🔴");
+        // 96kHz: 2048 / 96000 * 1000 = 21.33ms        
+        assert!((manage_96k.latency_ms() - 21.33).abs() < 0.1);
+        
     }
 
     #[test]
     fn test_fft_info_struct() {
-        let mut manager = FFTConfigManager::new(48000);
+        let manager = FFTConfigManager::new(48000);
         let info = manager.info();
 
         assert_eq!(info.sample_rate, 48000);
-        assert_eq!(info.fft_size, 2048);
-        assert_eq!(info.recommended_fft_size, 2048);
-        assert!(!info.is_overridden);
-
-        manager.set_override(4096).unwrap();
-        let info = manager.info();
-
-        assert_eq!(info.fft_size, 4096);
-        assert!(info.is_overridden);
+        assert_eq!(info.fft_size, FIXED_FFT_SIZE);
+        assert!((info.latency_ms - 42.67).abs() < 0.1);
+        assert!((info.frequency_resolution - 23.4375).abs() < 0.01);
     }
 
-    #[test]
+     #[test]
     fn test_frequency_bin_mapping() {
         let manager = FFTConfigManager::new(48000);
 
+        // Test round-trip
         let bin = manager.bin_for_frequency(1000.0);
         let freq_back = manager.frequency_for_bin(bin);
-        assert!((freq_back - 1000.0).abs() < 50.0);
+        assert!((freq_back - 1000.0).abs() < 30.0);
 
         let dc_bin = manager.bin_for_frequency(0.0);
         assert_eq!(dc_bin, 0);
     }
-
     #[test]
-    fn test_valid_fft_sizes() {
-        let sizes = FFTConfigManager::valid_fft_sizes();
+    fn test_latency_indicator() {
+        // High sample rate = low latency
+         let manager_96k = FFTConfigManager::new(96000);
+         let (emoji, _) = manager_96k.latency_indicator();
+         assert_eq!(emoji, "⚡");
 
-        assert_eq!(sizes[0], 256);
-        assert_eq!(sizes[sizes.len() - 1], 16384);
+         // Standard sample rate = responsive
+         let manager_48k = FFTConfigManager::new(48000);
+         let (emoji, _) = manager_48k.latency_indicator();
+         assert_eq!(emoji, "🟢");
 
-        for &size in sizes {
-            assert!(size.is_power_of_two());
-        }
+         let manager_16k = FFTConfigManager::new(16000);
+         let (emoji, _) = manager_16k.latency_indicator();
+        assert_eq!(emoji, "🔴");
     }
-
 }
         
