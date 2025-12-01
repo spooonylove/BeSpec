@@ -318,11 +318,29 @@ impl SpectrumApp {
             // Calculate bar color (gradient from low to high)
             let bar_color = lerp_color(low, high, normalized_height);
 
-            // Draw bar from bottom
-            let bar_rect = egui::Rect::from_min_max(
-                egui::pos2(x, rect.bottom() - bar_height_px),
-                egui::pos2(x + bar_width, rect.bottom()),
-            );
+            let bar_rect;
+            let mesh_base_color;
+            let mesh_tip_color;
+
+            if config.inverted_spectrum {
+                // Grow from Top
+                bar_rect = egui::Rect::from_min_max(
+                    egui::pos2(x, rect.top()),
+                    egui::pos2(x + bar_width, rect.top() + bar_height_px),
+                );
+                // Gradient: Top is base (low), Bottom is tip (high)
+                mesh_base_color = low;
+                mesh_tip_color = bar_color;
+            } else {
+                // Grow from Bottom
+                bar_rect = egui::Rect::from_min_max(
+                    egui::pos2(x, rect.bottom() - bar_height_px),
+                    egui::pos2(x + bar_width, rect.bottom()),
+                );
+                // Gradient: Bottom is base (low), Top is tip (high)
+                mesh_base_color = low;
+                mesh_tip_color = bar_color;
+            }
 
             use egui::epaint::Vertex;
             let mut mesh = egui::Mesh::default();
@@ -335,10 +353,18 @@ impl SpectrumApp {
             // Top vertices uses the 'high' color
             // Connnect vertices to form two triangles (0-1-2 and 0-2-3)
             // Add it to the painter
-            mesh.vertices.push(Vertex {pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: low});
-            mesh.vertices.push(Vertex {pos: bar_rect.right_bottom(),uv: egui::Pos2::ZERO, color: low,});
-            mesh.vertices.push(Vertex {pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: bar_color,});
-            mesh.vertices.push(Vertex {pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: bar_color,});
+            if config.inverted_spectrum {
+                mesh.vertices.push(Vertex {pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_base_color,});
+                mesh.vertices.push(Vertex {pos: bar_rect.right_top(),uv: egui::Pos2::ZERO, color: mesh_base_color,});
+                mesh.vertices.push(Vertex {pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip_color,});
+                mesh.vertices.push(Vertex {pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip_color,});
+            } else {
+                mesh.vertices.push(Vertex {pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_base_color});
+                mesh.vertices.push(Vertex {pos: bar_rect.right_bottom(),uv: egui::Pos2::ZERO, color: mesh_base_color,});
+                mesh.vertices.push(Vertex {pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: mesh_tip_color,});
+                mesh.vertices.push(Vertex {pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_tip_color,});
+            }
+
             mesh.add_triangle(0, 1, 2);
             mesh.add_triangle(0, 2, 3);
             painter.add(egui::Shape::mesh(mesh));
@@ -347,15 +373,22 @@ impl SpectrumApp {
             if config.show_peaks && i < viz_data.peaks.len() {
                 let peak_height_db = viz_data.peaks[i];
                 let peak_normalized = ((peak_height_db - floor_db) / db_range).clamp(0.0, 1.0);
-                let peak_y = rect.bottom() - (peak_normalized * rect.height());
-
-                let peak_rect = egui::Rect::from_min_max(
-                    egui::pos2(x, peak_y - 2.0),
-                    egui::pos2(x + bar_width, peak_y),
-                );
+                
+                let peak_rect = if config.inverted_spectrum {
+                    let peak_y = rect.top() + (peak_normalized * rect.height());
+                    egui::Rect::from_min_max(
+                        egui::pos2(x, peak_y),
+                        egui::pos2(x + bar_width, peak_y + 2.0),
+                    )
+                } else {
+                    let peak_y = rect.bottom() - (peak_normalized * rect.height());
+                    egui::Rect::from_min_max(
+                        egui::pos2(x, peak_y - 2.0),
+                        egui::pos2(x + bar_width, peak_y),
+                    )
+                };
 
                 painter.rect_filled(peak_rect, 0.0, peak);
-
             }
         }
 
@@ -480,7 +513,14 @@ impl SpectrumApp {
                             ui.radio_value(&mut state.config.use_peak_aggregation, true, "Peak (Dramatic)");
                             ui.radio_value(&mut state.config.use_peak_aggregation, false, "Average (Smooth)");
                         });
+
+                        ui.add_space(5.0);
+                        ui.label("Orientation:");
+                        ui.checkbox(&mut state.config.inverted_spectrum, "Inverted (Top-Down)");
                     });
+
+                    
+
                 },
 
                 SettingsTab::Audio => {
