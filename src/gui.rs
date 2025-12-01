@@ -412,7 +412,9 @@ impl SpectrumApp {
                                 
                                 ui.label("Bar Count");
                                 ui.add(egui::Slider::new(&mut state.config.num_bars, 10..=512)
-                                    .step_by(1.0));
+                                    .step_by(1.0)
+                                    .drag_value_speed(1.0)
+                                    .smart_aim(false));
                                 ui.end_row();
 
                                 ui.label("Bar Gap");
