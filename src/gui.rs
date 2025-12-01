@@ -1,4 +1,5 @@
 use eframe:: egui;
+use egui::Rect;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -32,6 +33,7 @@ pub struct SpectrumApp {
 
     /// Track window size to only log changes
     last_window_size: Option<egui::Vec2>,
+    last_window_pos: Option<egui::Pos2>,
 }
 
 impl SpectrumApp {
@@ -43,6 +45,7 @@ impl SpectrumApp {
             last_frame_time: Instant::now(),
             frame_times: Vec::with_capacity(60),
             last_window_size: None,
+            last_window_pos: None,
         }
     }
 
@@ -70,15 +73,42 @@ impl eframe::App for SpectrumApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         
         // --- Main Window Size tracking ---
-        let current_size = ctx.available_rect().size();
+        if let Some(rect) = ctx.input(|i| i.viewport().inner_rect){
+            let current_size = rect.size();
+               
+            // Only print if the size has changed since the last fraome (or is None)
+            if self.last_window_size != Some(current_size) {
+                // Filter out 0x0 or tiny screens
+                if current_size.x > 10.0 && current_size.y > 10.0 {
+                    println!("[GUI] Main Window Resized: {:.0} x {:.0}", current_size.x, current_size.y);
+                    self.last_window_size = Some(current_size);
 
-        // Only print if the size has changed since the last fraome (or is None)
-        if self.last_window_size != Some(current_size) {
-            println!("[GUI] Main Window Resized: {:.0} x {:.0}", current_size.x, current_size.y);
-            self.last_window_size = Some(current_size);
+                    if let Ok(mut state) = self.shared_state.lock() {
+                        state.config.window_size = [current_size.x, current_size.y];
+                    }
+                }
+            }
         }
 
+        // --- Main Window Position tracking ---
+        if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
+            let current_pos = rect.min;
 
+            if self.last_window_pos != Some(current_pos) {
+                // Determine if we sohuld log (don't log first detection to avaoid spam on startup)
+                if self.last_window_pos.is_some() {
+                    println!("[GUI] Main Window Moved: x: {:.0}, y: {:.0}", current_pos.x, current_pos.y);
+                }
+                
+                self.last_window_pos = Some(current_pos);
+
+                // Save to config
+                if let Ok(mut state) = self.shared_state.lock() {
+                    state.config.window_position = Some([current_pos.x, current_pos.y]);
+                }
+            }
+        }
+        
         // Calculate FPS
         let now = Instant::now();
         let frame_time = now.duration_since(self.last_frame_time).as_secs_f32();

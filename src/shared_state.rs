@@ -136,6 +136,12 @@ pub struct AppConfig {
     /// Shop window title bar and borders
     pub window_decorations: bool,
 
+    /// Saved Window dimensions [width, height
+    pub window_size:  [f32; 2],
+
+    /// Saved Window position on screen [x, y]
+    pub window_position: Option<[f32; 2]>,
+
     // === Audio Settings ===
     /// Sensitivity multiplier (0.1 - 10.0)
     pub sensitivity: f32,
@@ -176,6 +182,8 @@ impl Default for AppConfig {
             always_on_top: false,
             click_through: false,
             window_decorations: false,
+            window_size: [800.0, 400.0],
+            window_position: None,
 
             // Audio Settings
             sensitivity: 1.0,

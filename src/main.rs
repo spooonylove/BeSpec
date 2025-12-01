@@ -337,10 +337,15 @@ fn main (){
     // create shared state
     let shared_state = Arc::new(Mutex::new(SharedState::new()));
 
-    // Get initial window settinghsd from default config
-    let (initial_decorations, initial_on_top) = {
+    // Get initial window settinghs from default config
+    let (initial_decorations, initial_on_top, initial_size, initial_pos) = {
         let state = shared_state.lock().unwrap();
-        (state.config.window_decorations, state.config.always_on_top)
+        (
+            state.config.window_decorations, 
+            state.config.always_on_top,
+            state.config.window_size,
+            state.config.window_position
+        )
     };
 
     // Shutdown signal for audio threads
@@ -356,11 +361,16 @@ fn main (){
 
     // Create a mutable viewport_builder
     let mut viewport_builder = egui::ViewportBuilder::default()
-        .with_inner_size([1000.0, 300.0])
+        .with_inner_size(initial_size)
         .with_title("BeAnal - Audio Spectrum Analyzer")
         .with_resizable(true)
         .with_transparent(true)
         .with_decorations(initial_decorations);
+
+    // Apply position if saved
+    if let Some(pos) = initial_pos {
+        viewport_builder = viewport_builder.with_position([pos[0], pos[1]]);
+    }
 
     // Conditionally apply 'always on top' setting
     if initial_on_top {
