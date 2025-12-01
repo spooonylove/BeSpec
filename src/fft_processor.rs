@@ -1,4 +1,4 @@
-use realfft::{RealFftPlanner, RealToComplex, num_traits::Float};
+use realfft::{RealFftPlanner, RealToComplex};
 use std::sync::Arc;
 use crate::{fft_config::FIXED_FFT_SIZE, shared_state::SILENCE_DB};
 
