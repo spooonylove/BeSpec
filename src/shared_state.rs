@@ -126,6 +126,9 @@ pub struct AppConfig {
     /// Opacity of stats text (0.0 = transparent, 1.0 = opaque)
     pub stats_opacity: f32,
 
+    /// Invert the spectrum (bars grow from top to bottom)
+    pub inverted_spectrum: bool,
+
     // === Window Settings ===
     /// Keep window above all others
     pub always_on_top: bool,
@@ -177,6 +180,7 @@ impl Default for AppConfig {
             show_peaks: true,
             show_stats: false,
             stats_opacity: 0.3,
+            inverted_spectrum: false,
 
             // Window Settings
             always_on_top: false,
