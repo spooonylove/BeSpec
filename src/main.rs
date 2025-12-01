@@ -1,9 +1,9 @@
-mod fft_processor;
-mod shared_state;
-mod gui;
-mod audio_device;
 mod audio_capture;
+mod audio_device;
 mod fft_config;
+mod fft_processor;
+mod gui;
+mod shared_state;
 
 use std::thread;
 use std::time::{Duration, Instant};
@@ -16,7 +16,7 @@ use crate::fft_processor::{FFTProcessor, FFTConfig};
 use shared_state::SharedState;
 use crate::gui::SpectrumApp;
 use crate::audio_capture::{AudioCaptureManager, AudioPacket};
-use crate::fft_config::FFTConfigManager;
+use crate::fft_config::{FFTConfigManager, FIXED_FFT_SIZE};
 
 // ========================================================================
 // AUDIO CAPTURE THREAD
@@ -118,7 +118,7 @@ fn start_fft_processing(
                         let config: FFTConfig = {
                             let state = shared_state.lock().unwrap();
                             FFTConfig {
-                                fft_size: new_fft_config.get_fft_size(),
+                                fft_size: FIXED_FFT_SIZE,
                                 sample_rate: packet.sample_rate,
                                 num_bars: state.config.num_bars,
                                 sensitivity: state.config.sensitivity,
@@ -164,35 +164,34 @@ fn start_fft_processing(
                             packet.sample_rate
                         );
 
-                        //Update FFT config (returns true if rebuild needed)
-                        let needs_rebuild = fft_config.update_sample_rate(packet.sample_rate);
+                        //Update FFT config 
+                        fft_config.update_sample_rate(packet.sample_rate);
 
-                        if needs_rebuild {
-                            // Rebuild FFT processor with new FFT size
-                            let info = fft_config.info();
-                            println!(
-                                "[FFT] ⚙️  Rebuilding FFT: {} Hz, FFT size: {}, latency: {:.2}ms",
-                                info.sample_rate, info.fft_size, info.latency_ms
-                            );
+                        
+                        // Rebuild FFT processor with new FFT size
+                        let info = fft_config.info();
+                        println!(
+                            "[FFT] ⚙️  Rebuilding FFT: {} Hz, latency: {:.2}ms",
+                            info.sample_rate, info.latency_ms
+                        );
 
-                            let new_config = {
-                                let state = shared_state.lock().unwrap();
-                                FFTConfig {
-                                    fft_size: info.fft_size, 
-                                    sample_rate: info.sample_rate,
-                                    num_bars: state.config.num_bars,
-                                    sensitivity: state.config.sensitivity,
-                                    attack_time_ms: state.config.attack_time_ms,
-                                    release_time_ms: state.config.release_time_ms,
-                                    peak_hold_time_ms: state.config.peak_hold_time_ms,
-                                    peak_release_time_ms: state.config.peak_release_time_ms,
-                                    use_peak_aggregation: state.config.use_peak_aggregation,
-                                }
-                            };
+                        let new_config = {
+                            let state = shared_state.lock().unwrap();
+                            FFTConfig {
+                                fft_size: FIXED_FFT_SIZE, 
+                                sample_rate: info.sample_rate,
+                                num_bars: state.config.num_bars,
+                                sensitivity: state.config.sensitivity,
+                                attack_time_ms: state.config.attack_time_ms,
+                                release_time_ms: state.config.release_time_ms,
+                                peak_hold_time_ms: state.config.peak_hold_time_ms,
+                                peak_release_time_ms: state.config.peak_release_time_ms,
+                                use_peak_aggregation: state.config.use_peak_aggregation,
+                            }
+                        };
 
-                            *processor = FFTProcessor::new(new_config);
-                            
-                        }
+                        *processor = FFTProcessor::new(new_config);
+                         
                     }
 
                     // Convert to mono (FFT expects single channel
@@ -227,14 +226,8 @@ fn start_fft_processing(
                         
 
                         // Check if any config parameters changed
-                        // We need to compare with what the processor is currently using
-                        // Since we can't access processor.config directly, we track the 
-                        // current FFT siize from our fft_config manager
-                        let current_fft_size = fft_config.get_fft_size();
-
                         // 1. Check for changes that require a rebuild
-                        let needs_update = state.config.fft_size != current_fft_size ||
-                                        state.config.num_bars != state.visualization.bars.len();
+                        let needs_update = state.config.num_bars != state.visualization.bars.len();
 
                         let config_differs = |current: &FFTConfig| -> bool {
                             state.config.sensitivity != current.sensitivity ||
@@ -248,13 +241,14 @@ fn start_fft_processing(
                         
                         if needs_update {
                             //Major change - needs FFT rebuild
-                            println!("[FFT] Config change requires rebuild (FFT size or bar count)");
-
-                            // Update the local manager
-                            let _ = fft_config.set_override(state.config.fft_size);
-
+                            println!(
+                                "[FFT] Config change requires rebuild (bar count: {} → {})",
+                                state.visualization.bars.len(),
+                                state.config.num_bars
+                            );
+                         
                             Some(FFTConfig {
-                                fft_size: state.config.fft_size,
+                                fft_size: FIXED_FFT_SIZE,
                                 sample_rate: fft_config.get_sample_rate(),
                                 num_bars: state.config.num_bars,
                                 sensitivity: state.config.sensitivity,
@@ -281,7 +275,7 @@ fn start_fft_processing(
                             
 
                                 Some(FFTConfig {
-                                    fft_size: current_fft_size,
+                                    fft_size: FIXED_FFT_SIZE,
                                     sample_rate: fft_config.get_sample_rate(),
                                     num_bars: state.config.num_bars,
                                     sensitivity: state.config.sensitivity,
@@ -298,8 +292,8 @@ fn start_fft_processing(
                     };
                     // Apply confiig update if needed
                     if let Some(new_config) = pending_config_update {
-                        if new_config.fft_size != processor.get_config().fft_size {
-                            println!("[FFT]♻️ Recreating processor for new FFT size: {}", new_config.fft_size);
+                        if new_config.num_bars != processor.get_config().num_bars {
+                            println!("[FFT]♻️ Recreating processor for new bar count: {}", new_config.num_bars);
                             *processor = FFTProcessor::new(new_config);
                         } else {
                             println!("[FFT]🔧 Updating processor config");
@@ -338,6 +332,7 @@ fn start_fft_processing(
 
 fn main (){
     println!("=== BeAnal - Rust Audio Spectrum Analyzer ===\n");
+    println!("    FFT Size: {} (fixed)\n", FIXED_FFT_SIZE);
 
     // create shared state
     let shared_state = Arc::new(Mutex::new(SharedState::new()));

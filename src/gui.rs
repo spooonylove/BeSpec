@@ -2,6 +2,7 @@ use eframe:: egui;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use crate::fft_config::FIXED_FFT_SIZE;
 use crate::shared_state::{SharedState, Color32 as StateColor32};
 
 // Tabs for the settings windowe
@@ -477,23 +478,17 @@ impl SpectrumApp {
                             .striped(true)
                             .show(ui, |ui| {
                                 ui.label("FFT Window Size");
-                                egui::ComboBox::from_id_salt("fft_combo")
-                                    .selected_text(format!("{}", state.config.fft_size))
-                                    .show_ui(ui, |ui| {
-                                        for &size in &[512, 1024, 2048, 4096] {
-                                            if ui.selectable_value(&mut state.config.fft_size, size, format!("{}", size)).clicked() {
-                                                // Logic handled by shared state update in main loop
-                                            }
-                                        }
-                                    });
+                                ui.label(format!("{} samples (fixed)", FIXED_FFT_SIZE));
                                 ui.end_row();
 
                                 ui.label("Sensitivity");
-                                ui.add(egui::Slider::new(&mut state.config.sensitivity, 0.01..=3.0).logarithmic(true));
+                                ui.add(egui::Slider::new(&mut state.config.sensitivity, 0.01..=3.0)
+                                    .logarithmic(true));
                                 ui.end_row();
 
                                 ui.label("Noise Floor");
-                                ui.add(egui::Slider::new(&mut state.config.noise_floor_db, -120.0..=-20.0).suffix(" dB"));
+                                ui.add(egui::Slider::new(&mut state.config.noise_floor_db, -120.0..=-20.0)
+                                    .suffix(" dB"));
                                 ui.end_row();
                             });
                     });
@@ -641,7 +636,7 @@ impl SpectrumApp {
                                 ui.end_row();
 
                                 ui.label("FFT Size");
-                                ui.label(format!("{} samples", info.fft_size));
+                                ui.label(format!("{} samples (fixed)", info.fft_size));
                                 ui.end_row();
 
                                 ui.label("Frequency Resolution");

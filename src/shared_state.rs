@@ -132,9 +132,6 @@ pub struct AppConfig {
     pub window_decorations: bool,
 
     // === Audio Settings ===
-    /// FFT Size (512, 1024, 2048, 4096)
-    pub fft_size: usize,
-
     /// Sensitivity multiplier (0.1 - 10.0)
     pub sensitivity: f32,
 
@@ -176,7 +173,6 @@ impl Default for AppConfig {
             window_decorations: false,
 
             // Audio Settings
-            fft_size: 1024,
             sensitivity: 0.01,
             noise_floor_db: -60.0,
             attack_time_ms: 20.0,
@@ -194,8 +190,7 @@ impl Default for AppConfig {
 impl AppConfig {
     /// Check if this config requires rebuilding the FFT processor
     pub fn needs_fft_rebuild(&self, other: &AppConfig) -> bool {
-        self.fft_size != other.fft_size 
-            || self.num_bars != other.num_bars
+        self.num_bars != other.num_bars
     }
 
 
@@ -529,12 +524,7 @@ mod tests {
         // Same config - no rebuild needed
         assert!(!config1.needs_fft_rebuild(&config2));
 
-        // Change FFT size - needs rebuid
-        config1.fft_size = 2048;
-        assert!(config1.needs_fft_rebuild(&config2));
-
-        // Restore FFT size, change bar count -- needs rebuild
-        config1.fft_size = 1024;
+        // change bar count -- needs rebuild
         config1.num_bars = 256;
         assert!(config1.needs_fft_rebuild(&config2));
 
@@ -545,6 +535,7 @@ mod tests {
         
         // Change attack time - No Rebuild Required!
         config1.attack_time_ms = 20.0;
+        assert!(!config1.needs_fft_rebuild(&config2));
 
     }
 
