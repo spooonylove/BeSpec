@@ -491,8 +491,19 @@ impl SpectrumApp {
                                 ui.end_row();
 
                                 ui.label("Sensitivity");
-                                ui.add(egui::Slider::new(&mut state.config.sensitivity, 0.01..=3.0)
-                                    .logarithmic(true));
+                               ui.add(
+                                    egui::Slider::new(&mut state.config.sensitivity, 0.01..=100.0)
+                                        .logarithmic(true)
+                                        .custom_formatter(|v, _| format!("{:+.1} dB", 20.0 * v.log10()))
+                                        .custom_parser(|s| {
+                                            // Parse "+6 dB" style input
+                                            s.trim().trim_end_matches(" dB").trim_end_matches("dB")
+                                                .parse::<f64>().ok()
+                                                .map(|db| 10_f64.powf(db / 20.0))
+                                        }),
+                                );
+                                
+                                
                                 ui.end_row();
 
                                 ui.label("Noise Floor");

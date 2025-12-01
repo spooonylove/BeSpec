@@ -115,6 +115,7 @@ impl FFTProcessor {
 
         // Step 3: Convert to magnitudes (dB scale)
         let magnitudes = self.compute_magnitudes();
+        
 
         // Step 4:
         let raw_bars = self.group_bins(&magnitudes);
@@ -189,31 +190,46 @@ impl FFTProcessor {
         }
     }
 
-    /// Convert FFT output to dB magniotudes with sensitivity
+    /// Convert FFT output to dB magnitudes with sensitivity
+    /// 
+    /// Normalization strategy:
+    /// - FFT output scales with FFT size, so we normalize by sqrt(N) for energy preservation
+    /// - Hann window reduces energy by ~0.5, so we correct by 2.0
+    /// - We use sqrt(N) instead of N/2 because we want ENERGY scaling, not amplitude
+    ///   This preserves the dynamic range between loud and quiet frequency content
+    /// - Sensitivity is applied as a pre-log multiplier to maintain perceptual linearity
+    ///
+    /// For a 2048-point FFT:
+    /// - sqrt(2048) ≈ 45.25
+    /// - Combined factor: 2.0 / 45.25 ≈ 0.044
+    /// - A full-scale sine produces ~22.6 magnitude → ~0.996 normalized → ~0 dB ✓
+    /// - But real music with spread energy stays dynamic!
     fn compute_magnitudes(&self) -> Vec<f32> {
-        // Magnitude computation is a key point of visualization, and we have to 
-        // make a selection here on how to scale the raw FFT output.  Technically
-        // more accurate, we should normalize by fft_size/2 to get true amplitudes.
-        // However, for visualization purposes, we currently are correcting more
-        // aggressively to get a better dynamic range, and a more responsive, 
-        // visually appealing result.
-
-        const HANN_WINDOW_CORRECTION: f32 = 2.0; // Compensate for Hann window energy loss
+       // Hann window correction (window averages 0.5, so multiply by 2)
+        const HANN_CORRECTION: f32 = 2.0;
+        
+        // Use sqrt(N) normalization for energy-preserving scaling
+        // This is gentler than N/2 and preserves inter-bin dynamics
+        let fft_normalization = 1.0 / (self.config.fft_size as f32).sqrt();
+        
+        // Combined normalization factor
+        let normalization = HANN_CORRECTION * fft_normalization;
 
         self.output_buffer
             .iter()
             .map(|&mag| {
+                // 1. Apply normalization (energy-preserving)
+                let normalized = mag * normalization;
                 
-                //1. Normalize the FFT output first
-                let corrected_mag = mag * HANN_WINDOW_CORRECTION;
+                // 2. Apply sensitivity BEFORE log (preserves dynamic range perception)
+                //    sensitivity > 1.0 = boost quiet content
+                //    sensitivity < 1.0 = reduce overall level  
+                //    sensitivity = 1.0 = calibrated for loud mastered music (~0 dBFS peaks)
+                let adjusted = normalized * self.config.sensitivity;
 
-                //2. Apply sensitivity
-                
-                // Apply sensitivity (user gain)
-                let  adjusted = corrected_mag * self. config.sensitivity;
-
-                //3. Convert to dB scale
-                // add small epsilon to avoid log(0)
+                // 3. Convert to dB scale
+                //    Full scale (1.0) → 0 dB
+                //    -6 dB per halving of amplitude
                 20.0 * (adjusted + 1e-10).log10()
             })
             .collect()

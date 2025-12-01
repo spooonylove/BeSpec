@@ -173,7 +173,7 @@ impl Default for AppConfig {
             window_decorations: false,
 
             // Audio Settings
-            sensitivity: 0.01,
+            sensitivity: 1.0,
             noise_floor_db: -60.0,
             attack_time_ms: 20.0,
             release_time_ms: 200.0,
