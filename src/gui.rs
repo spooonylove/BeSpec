@@ -726,7 +726,17 @@ impl SpectrumApp {
                             .spacing(grid_spacing)
                             .show(ui, |ui| {
                                 ui.label("Main Window");
-                                ui.checkbox(&mut state.config.always_on_top, "Always on Top");
+                                if ui.checkbox(&mut state.config.always_on_top, "Always on Top").changed() {
+                                    let level = if state.config.always_on_top {
+                                        egui::WindowLevel::AlwaysOnTop
+                                    } else {
+                                        egui::WindowLevel::Normal
+                                    };
+                                    ui.ctx().send_viewport_cmd_to(
+                                        egui::ViewportId::ROOT,
+                                        egui::ViewportCommand::WindowLevel(level)
+                                    );
+                                }
                                 ui.end_row();
 
                                 ui.label("Decorations");
