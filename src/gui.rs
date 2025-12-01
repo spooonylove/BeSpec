@@ -88,6 +88,15 @@ impl SpectrumApp {
 }
 
 impl eframe::App for SpectrumApp {
+
+    /// Tell eframe to clear the window with total transparency
+    /// this alllows the OS background to show through when our CentralPanel
+    /// is also transparent.
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        // Return RGBA array directly [Red, Green, Blue, Alpha]
+        [0.0, 0.0, 0.0, 0.0] // Fully transparent   
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         
         // --- Main Window Size tracking ---
@@ -593,7 +602,9 @@ impl SpectrumApp {
                                 ui.label("Decorations");
                                 if ui.checkbox(&mut state.config.window_decorations, "Show Title Bar").changed() {
                                     let show = state.config.window_decorations;
-                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Decorations(show));
+                                    ui.ctx().send_viewport_cmd_to(
+                                        egui::ViewportId::ROOT,
+                                        egui::ViewportCommand::Decorations(show));
                                 }
                                 ui.end_row();
                             });
