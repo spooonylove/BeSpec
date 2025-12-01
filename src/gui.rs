@@ -615,33 +615,105 @@ impl SpectrumApp {
                                 });
                         });
                     });
-
+                    
                     ui.add_space(10.0);
                     ui.label("Preview:");
-                    let (low, high, peak) = state.config.get_colors();
                     
-                    // Draw a simple gradient preview
-                    let rect = ui.available_rect_before_wrap(); 
-                    let preview_height = 30.0;
-                    let preview_rect = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), preview_height));
-                    ui.allocate_rect(preview_rect, egui::Sense::hover());
+                    // 1. Setup the drawing area
+                    let height = 60.0; // Taller to see the gradient better
+                    let (response, painter) = ui.allocate_painter(
+                        egui::vec2(ui.available_width(), height), 
+                        egui::Sense::hover()
+                    );
+                    let rect = response.rect;
+
+                    // 2. Draw Background (using opacity)
+                    let bg_color = egui::Color32::from_black_alpha((state.config.background_opacity * 255.0) as u8);
+                    painter.rect_filled(rect, 4.0, bg_color);
+
+                    // 3. Define a "Mock" Audio Signal (0.0 to 1.0)
+                    let mock_bars = [
+                        // Bass (Heavy)
+                        0.10, 0.40, 0.75, 0.95, 0.90, 0.85, 0.70, 
+                        // Low Mids (Dip)
+                        0.55, 0.40, 0.30, 0.25, 
+                        // High Mids (Vocal Peak)
+                        0.40, 0.60, 0.50, 0.35, 
+                        // Highs (Sparkle & Roll off)
+                        0.25, 0.15, 0.25, 0.40, 0.30, 0.20, 0.15, 0.10, 0.08, 0.04, 0.01
+                    ];
                     
-                    // Paint gradient
-                    use egui::epaint::{Mesh, Vertex};
-                    let mut mesh = Mesh::default();
-                    let l = to_egui_color(low);
-                    let h = to_egui_color(high);
+                    let (low_rgb, high_rgb, peak_rgb) = state.config.get_colors();
+                    let low = to_egui_color(low_rgb).linear_multiply(state.config.bar_opacity);
+                    let high = to_egui_color(high_rgb).linear_multiply(state.config.bar_opacity);
+                    let peak = to_egui_color(peak_rgb).linear_multiply(state.config.bar_opacity);
+
+                    let bar_width = rect.width() / mock_bars.len() as f32;
+                    let gap = 2.0;
+
+                    // 4. Render the Mock Bars
+                    for (i, &level) in mock_bars.iter().enumerate() {
+                        let x = rect.left() + (i as f32 * bar_width) + gap/2.0;
+                        let w = bar_width - gap;
+                        
+                        // Calculate height in pixels
+                        let h = level * rect.height();
+
+                        // Interpolate bar color based on height (just like the real thing)
+                        let bar_color = lerp_color(low, high, level);
+
+                        let bar_rect;
+                        let mesh_base;
+                        let mesh_tip;
+                        let peak_y;
+
+                        if state.config.inverted_spectrum {
+                            // Top-down
+                            bar_rect = egui::Rect::from_min_size(egui::pos2(x, rect.top()), egui::vec2(w, h));
+                            peak_y = bar_rect.bottom() + 2.0;
+                            mesh_base = low;
+                            mesh_tip = bar_color;
+                        } else {
+                            // Bottom-up (Standard)
+                            bar_rect = egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - h), egui::vec2(w, h));
+                            peak_y = bar_rect.top() - 4.0; // Slightly above bar
+                            mesh_base = low;
+                            mesh_tip = bar_color;
+                        }
+
+                        // Draw Bar Gradient
+                        use egui::epaint::{Mesh, Vertex};
+                        let mut mesh = Mesh::default();
+                        
+                        if state.config.inverted_spectrum {
+                            mesh.vertices.push(Vertex { pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_base });
+                            mesh.vertices.push(Vertex { pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: mesh_base });
+                            mesh.vertices.push(Vertex { pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip });
+                            mesh.vertices.push(Vertex { pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip });
+                        } else {
+                            mesh.vertices.push(Vertex { pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_base });
+                            mesh.vertices.push(Vertex { pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: mesh_base });
+                            mesh.vertices.push(Vertex { pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: mesh_tip });
+                            mesh.vertices.push(Vertex { pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_tip });
+                        }
+                        
+                        mesh.add_triangle(0, 1, 2);
+                        mesh.add_triangle(0, 2, 3);
+                        painter.add(egui::Shape::mesh(mesh));
+
+                        // Draw Peak
+                        // Only draw peak if the bar isn't basically empty
+                        if level > 0.05 {
+                            let peak_rect = egui::Rect::from_min_size(
+                                egui::pos2(x, peak_y), 
+                                egui::vec2(w, 2.0)
+                            );
+                            painter.rect_filled(peak_rect, 0.0, peak);
+                        }
+                    }
                     
-                    mesh.vertices.push(Vertex { pos: preview_rect.left_bottom(), uv: egui::Pos2::ZERO, color: l });
-                    mesh.vertices.push(Vertex { pos: preview_rect.right_bottom(), uv: egui::Pos2::ZERO, color: h });
-                    mesh.vertices.push(Vertex { pos: preview_rect.right_top(), uv: egui::Pos2::ZERO, color: h });
-                    mesh.vertices.push(Vertex { pos: preview_rect.left_top(), uv: egui::Pos2::ZERO, color: l });
-                    mesh.add_triangle(0, 1, 2);
-                    mesh.add_triangle(0, 2, 3);
-                    ui.painter().add(egui::Shape::mesh(mesh));
-                    
-                    ui.add_space(10.0);
-                    ui.small(format!("Peak Color: RGB({}, {}, {})", peak.r, peak.g, peak.b));
+                    ui.add_space(5.0);
+                    ui.small(format!("Peak Color: RGB({}, {}, {})", peak_rgb.r, peak_rgb.g, peak_rgb.b));
                 },
 
                 SettingsTab::Window => {
