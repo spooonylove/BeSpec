@@ -239,10 +239,8 @@ impl FFTProcessor {
     fn compute_bar_mapping(config: &FFTConfig) -> BarToBinMap {
         let mut map = Vec::with_capacity(config.num_bars);
 
-        let max_fft_bin = config.fft_size / 2;
         let frequency_resolution = config.sample_rate as f64 / config.fft_size as f64;
-        let nyquist_freq = config.sample_rate as f64 / 2.0;
-
+        
         // === CONSTANTS  ===
         const LINEAR_BAR_PROPORTION: f64 = 0.15; // Target 15% Bass (Your choice)
         const KNEE_FREQ: f64 = 500.0;            // 0-500Hz is Linear

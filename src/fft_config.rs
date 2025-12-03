@@ -14,63 +14,32 @@ pub const FIXED_FFT_SIZE: usize = 2048;
 /// Represents optimal FFT settings for a given sample rate
 #[derive(Clone, Debug)]
 pub struct FFTSampleRateConfig {
-    /// Sample rate in Hz
-    pub sample_rate: u32,
-
-    /// fft size (always FIXED_FFT_SIZE)
-    pub fft_size: usize,
-
     /// Number of frequency bins to display
     /// Scaled to provide good frequency resolution at this sample rate
     pub recommended_bars: usize,
 
     /// Frequency resolution (Hz per bin)
     pub frequency_resolution: f32,
-
-    /// Maximum useful frequency (Nyquist limit)
-    pub nyquist_frequency: f32,
-
-    /// Description for logging
-    pub description: String,
 }
 
 impl FFTSampleRateConfig {
     /// Calculate configuration for any sample rate
     pub fn for_sample_rate(sample_rate: u32) -> Self {
-        // Determine FFT size: aim for ~50-100ms of audio
-        let fft_size= FIXED_FFT_SIZE;
 
         // calculate frequency resolution
-        let freq_resolution = sample_rate as f32 / fft_size as f32;
-
-        let nyquist = sample_rate / 2;
+        let freq_resolution = sample_rate as f32 / FIXED_FFT_SIZE as f32;
 
         // Recommend bar count based on useful frequency range
         // most music is 20Hz-20kHz range        
         let useful_freq_bins = 20000.0 / freq_resolution;
         let recommended_bars = (useful_freq_bins as usize).min(512).max(32);
 
-        let description = format!(
-            "{}Hz: FFT={}, bars={}, res={:.1}Hz/bin",
-            sample_rate, fft_size, recommended_bars, freq_resolution
-        );
-        
         FFTSampleRateConfig {
-            sample_rate,
-            fft_size,
             recommended_bars,
             frequency_resolution: freq_resolution,
-            nyquist_frequency: nyquist as f32,
-            description,
         }
     }
 
-    /// Print debug infomration about this configuration
-    pub fn debug_print(&self) {
-        println!("[FFTConfig] {}", self.description);
-        println!("  Nyquist: {} Hz", self.nyquist_frequency);
-        println!("  Frequency Resolution: {:.2} Hz/bin", self.frequency_resolution);
-    }
 }
 
 /// Manages FFT configuration based on detected device sample rate
@@ -95,7 +64,6 @@ pub struct FFTInfo {
     pub fft_size: usize,
     pub latency_ms: f32,
     pub frequency_resolution: f32,
-    pub recommended_bars: usize,
 }
 
 
@@ -145,7 +113,6 @@ impl FFTConfigManager {
             fft_size: FIXED_FFT_SIZE,
             latency_ms: self.latency_ms(),
             frequency_resolution: self.current_config.frequency_resolution,
-            recommended_bars: self.current_config.recommended_bars,
         }  
     }
 

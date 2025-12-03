@@ -208,40 +208,6 @@ impl AudioDeviceEnumerator {
     }
 }
 
-/// Optimal stream configuration for a device
-#[derive(Clone, Debug)]
-pub struct OptimalStreamConfig {
-    pub sample_rate: u32,
-    pub channels: u16,
-    pub buffer_size: cpal::BufferSize,
-}
-
-impl OptimalStreamConfig {
-    /// Determine the optimal configuration for a device
-    pub fn for_device(device: &Device) -> Result<Self, AudioDeviceError> {
-        let config = device
-            .default_output_config()
-            .map_err(|_| AudioDeviceError::ConfigurationError(
-                "Could not get default output config".to_string()
-            ))?;
-
-        Ok(OptimalStreamConfig {
-            sample_rate: config.sample_rate().0,
-            channels: config.channels(),
-            buffer_size: cpal::BufferSize::Default,
-        })
-    }
-
-    /// Create a StreamConfig from this optimal configuration
-    pub fn to_stream_config(&self) -> StreamConfig {
-        StreamConfig {
-            channels: self.channels,
-            sample_rate: cpal::SampleRate(self.sample_rate),
-            buffer_size: self.buffer_size.clone(),
-        }
-    }
-}
-
 
 // ================== Tests ===================
 

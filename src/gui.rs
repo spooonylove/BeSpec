@@ -1,5 +1,4 @@
 use eframe:: egui;
-use egui::Rect;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 

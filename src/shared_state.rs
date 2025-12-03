@@ -1,6 +1,5 @@
 use std::time::{Duration, Instant};
 use crate::fft_config::FFTInfo;
-use egui::epaint::tessellator::Path;
 use serde::{Serialize, Deserialize};
 use std::fs;
 use std::path::PathBuf;
@@ -40,11 +39,6 @@ impl SharedState {
         }
     }
 
-    /// Resize visualization arrays when bar count changes
-    pub fn resize_bars(&mut self, new_count: usize) {
-        self.visualization.bars.resize(new_count, SILENCE_DB);
-        self.visualization.peaks.resize(new_count, SILENCE_DB);
-    }
 }
 
 impl Default for SharedState {
@@ -546,10 +540,6 @@ impl Color32 {
 
     pub const fn from_rgb(r: u8, g: u8, b: u8) -> Self {
         Self {r, g, b, a: 255}
-    }
-
-    pub const fn from_rgba(r: u8, g: u8, b: u8, a: u8) -> Self { 
-        Self {r, g, b, a}
     }
 
     pub const WHITE: Self = Self::from_rgb(255, 255, 255);
