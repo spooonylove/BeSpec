@@ -586,6 +586,59 @@ impl SpectrumApp {
                                 }
                             });
                     });
+
+                    ui.add_space(10.0);
+                    ui.heading("Input Source");
+                    ui.add_space(5.0);
+
+                    ui.group(|ui| {
+                        egui::Grid::new("audio_source_grid")
+                            .num_columns(2)
+                            .spacing(grid_spacing)
+                            .show(ui, |ui| {
+                                ui.label("Device");
+                                
+                                ui.horizontal(|ui| {
+                                    // Clone data to avoid holding lock while drawing complex UI
+                                    let (current_sel, devices) = {
+                                        (state.config.selected_device.clone(), state.audio_devices.clone())
+                                    };
+
+                                    // Device Selector
+                                    egui::ComboBox::from_id_salt("audio_device_combo")
+                                        .selected_text(&current_sel)
+                                        .width(220.0)
+                                        .show_ui(ui, |ui| {
+                                            
+                                            // 1. Default Option
+                                            if ui.selectable_label(current_sel == "Default", "Default System Device").clicked() {
+                                                println!("[GUI] User selected device: Default");
+                                                state.config.selected_device = "Default".to_string();
+                                                state.device_changed = true;
+                                            }
+                                            
+                                            ui.separator();
+
+                                            // 2. Enumerated Hardware Devices
+                                            for name in devices {
+                                                let is_selected = current_sel == name;
+                                                if ui.selectable_label(is_selected, &name).clicked() {
+                                                    println!("[GUI] User selected device: '{}'", name);
+                                                    state.config.selected_device = name;
+                                                    state.device_changed = true;
+                                                }
+                                            }
+                                        });
+
+                                    // Refresh Button
+                                    if ui.button("🔄").on_hover_text("Refresh Device List").clicked() {
+                                        println!("[GUI] User requested device list refresh");
+                                        state.refresh_devices_requested = true;
+                                    }
+                                });
+                                ui.end_row();
+                            });
+                    });
                 },
 
                 SettingsTab::Colors => {

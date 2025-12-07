@@ -22,6 +22,16 @@ pub struct SharedState{
     /// Application configuration (user settings)
     pub config: AppConfig,
 
+    // === Audio Device State === 
+    pub audio_devices: Vec<String>,
+
+
+    /// Flag: GUI requested a device switch (handled by main thread)
+    pub device_changed: bool,
+
+    /// Flag: GUI requests a hardware scan (handled by main thread
+    pub refresh_devices_requested: bool,
+
 }
 
 impl SharedState {
@@ -35,6 +45,9 @@ impl SharedState {
             visualization: VisualizationData::new(config.num_bars),
             performance: PerformanceStats::default(),
             config,
+            audio_devices: Vec::new(),
+            device_changed: false,
+            refresh_devices_requested: false,
         
         }
     }
@@ -140,6 +153,9 @@ pub struct AppConfig {
     pub window_position: Option<[f32; 2]>,
 
     // === Audio Settings ===
+    /// Name of selected input device (default: "Default")
+    pub selected_device: String,
+
     /// Sensitivity multiplier (0.1 - 10.0)
     pub sensitivity: f32,
 
@@ -184,6 +200,7 @@ impl Default for AppConfig {
             window_position: None,
 
             // Audio Settings
+            selected_device: "Default".to_string(),
             sensitivity: 1.0,
             noise_floor_db: -60.0,
             attack_time_ms: 20.0,
