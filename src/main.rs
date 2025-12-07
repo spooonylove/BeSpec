@@ -387,7 +387,23 @@ fn start_fft_processing(
                     }
                 }
                 
-                Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    // if we haven't received audio for 100ms, the stream is likely 
+                    // stopped, switching, or silent. Reset bars to silence
+                    if let Ok(mut state) = shared_state.lock() {
+                        // Optimization: check frist bar to see if we are already silent
+                        let current_silence = shared_state::SILENCE_DB;
+                        let needs_clear = state.visualization.bars.first()
+                            .map_or(true, |&v| v > current_silence);
+                        if needs_clear {
+                            // fill with silence
+                            state.visualization.bars.fill(current_silence);
+                            state.visualization.peaks.fill(current_silence);
+                            state.visualization.timestamp = Instant::now();
+                        }
+                    }
+                    continue;
+                }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
                     eprintln!("[FFT] Capture disconnected!");
                     break;
