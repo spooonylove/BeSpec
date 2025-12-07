@@ -5,6 +5,7 @@ mod fft_processor;
 mod gui;
 mod shared_state;
 
+use core::panic;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
@@ -12,6 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_channel::bounded;
 
+use crate::audio_device::AudioDeviceEnumerator;
 use crate::fft_processor::{FFTProcessor, FFTConfig};
 use shared_state::SharedState;
 use crate::gui::SpectrumApp;
@@ -23,19 +25,47 @@ use crate::fft_config::{FFTConfigManager, FIXED_FFT_SIZE};
 // ========================================================================
 //    Uses AudioCaptureManager for defvice enumeration and auto-detection
 
-fn start_audio_capture(shutdown: Arc<AtomicBool>) -> crossbeam_channel::Receiver<AudioPacket> {
+fn start_audio_capture(
+    shutdown: Arc<AtomicBool>,
+    shared_state: Arc<Mutex<SharedState>>
+) -> crossbeam_channel::Receiver<AudioPacket> {
+    
     let (tx, rx) = bounded(10);
 
     thread::spawn(move || {
         println!("[Capture] Starting audio capture thread");
 
-        // Create Capture Manager (uses default device)
-        let mut capture = match AudioCaptureManager::new() {
-            Ok(mgr) => mgr,
-            Err(e) => {
-                eprintln!("[Capture] ❌ Failed to create audio capture manager: {}", e);
-                return;
+        // 1. Initial Device List Population
+        println!("[Capture] 🔍 Initializing audio device list...");
+        if let Ok(devices) = AudioCaptureManager::list_devices() {
+            let mut state = shared_state.lock().unwrap();
+            state.audio_devices = devices.iter().map(|d| d.name.clone()).collect();
+
+            println!("[Capture] ✓ Found {} audio devices", state.audio_devices.len());
+            for (i, name) in state.audio_devices.iter().enumerate() {
+                println!("[Capture]    {}: {}", i, name);
             }
+        } else {
+            eprintln!("[Capture] ❌ Failed to enumerate initial audio devices");
+        }
+
+        // 2. Initial Device Selection
+        let initial_device = {
+            shared_state.lock().unwrap().config.selected_device.clone()
+        };
+        println!("[Capture] Target device: {}", initial_device);
+
+        // 3. Create Audio Capture Manager
+        let mut capture = if initial_device == "Default" {
+            AudioCaptureManager::new().unwrap_or_else(|e|{
+                eprintln!("[Capture] ❌ Critical: Failed to create default audio device: {}", e);
+                panic!("Audio init failed");
+            })
+        } else {
+            AudioCaptureManager::with_device_id(&initial_device).unwrap_or_else(|_|{
+                println!("[Capture] ⚠️ Saved device not found, falling back to System Default ");
+                AudioCaptureManager::new().expect("Failed to init default device")
+            })
         };
 
         // Start capturing
@@ -43,27 +73,82 @@ fn start_audio_capture(shutdown: Arc<AtomicBool>) -> crossbeam_channel::Receiver
             eprintln!("[Capture] ❌ Failed to start capture: {}", e);
             return;
         }
-
         println!("[Capture] ✓ Audio capture thread started");
-
-        let audio_rx = capture.receiver();
 
         // Keep receiving audio packets and forward them
         while !shutdown.load(Ordering::Relaxed) {
-            match audio_rx.recv_timeout(Duration::from_millis(100)) {
+
+            // === CHECK FLAGS ===
+            // Verify flags everty cycle (~100ms timeout below)
+            let (needs_refresh, new_device_req) = {
+                if let Ok(mut state) = shared_state.try_lock() {
+                    let refresh = state.refresh_devices_requested;
+                    let change = if state.device_changed {
+                        Some(state.config.selected_device.clone())
+                    } else {
+                        None
+                    };
+
+                    // Reset flags
+                    if refresh { state.refresh_devices_requested = false; }
+                    if change.is_some() { state.device_changed = false;}
+                    (refresh, change)
+                } else {
+                    (false, None)
+                }
+            };
+
+            // === ACTION: REFRESH === 
+            if needs_refresh {
+                println!("[Capture] 🔄 Manual refresh requested. Scanning hardware...");
+                let start = Instant::now();
+
+                if let Ok(devices) = AudioCaptureManager::list_devices() {
+                    if let Ok(mut state) = shared_state.lock() {
+                        state.audio_devices = devices.iter().map(|d| d.name.clone()).collect();
+                        println!("[Capture] ✓ Scan complete in {:.2}ms, Found {} audio devices",
+                            start.elapsed().as_secs_f32() * 1000.0,
+                            state.audio_devices.len()
+                        );
+                    }
+                } else {
+                    eprintln!("[Capture] ⚠️ Device scan failed");
+                }
+            }
+            
+            // === ACTION: DEVICE CHANGE ===
+            if let Some(new_name) = new_device_req {
+                println!("[Capture] 🔄 Audio device change requested: {}", new_name);
+                
+                let result = if new_name == "Default" {
+                    if let Ok((_, info)) = AudioDeviceEnumerator::get_default_device() {
+                        println!("[Capture] Resolving 'Default' -> '{}'", info.id);
+                        capture.switch_device(&info.id)
+                    } else {
+                        Err(crate::audio_device::AudioDeviceError::DeviceNotFound("Default".into()))
+                    }
+                } else {
+                    capture.switch_device(&new_name)
+                };
+
+                match result {
+                    Ok(_) => println!("[Capture] ✓ Switched to new device: {}", new_name),
+                    Err(e) => eprintln!("[Capture] ❌ Failed to switch device: {}", e),
+                }
+            }
+            
+            // === PROCESS AUDIO ===
+            match capture.receiver().recv_timeout(Duration::from_millis(100)) {
                 Ok(packet) => {
                     // Forward to FFT thread
-                    if tx.try_send(packet).is_err() {
-                        // FFT thread can't keep up, drop packet
-                    }
+                    let _ = tx.try_send(packet);
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    eprint!("[Capture] Audio stream disconnected!");
+                    eprint!("[Capture] ⚠️ Stream disconnected unexpectedly");
                     break;
-                }
+                },
             }
-        
         }
 
         println!("[Capture] Shutting down...");
@@ -352,7 +437,7 @@ fn main (){
     let shutdown = Arc::new(AtomicBool::new(false));
 
     // Start audio capture thread
-    let audio_rx = start_audio_capture(shutdown.clone());
+    let audio_rx = start_audio_capture(shutdown.clone(), shared_state.clone());
 
     // Start FFT processing thread
     start_fft_processing(audio_rx, shared_state.clone(), shutdown.clone());
