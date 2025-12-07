@@ -296,10 +296,10 @@ impl AudioCaptureManager {
         // hundreds of times per second.
         // 
         // This loop just keeps the thread alive and running until shutdown is signaled.
-        // We check shutdown every 100ms - if true, we exit and clean up.
+        // We check shutdown every 10ms - if true, we exit and clean up.
         //
         while !shutdown.load(Ordering::Relaxed) {
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(10));
         }
 
         println!("[AudioCapture] Shutting down...");

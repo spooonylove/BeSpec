@@ -129,7 +129,7 @@ impl AudioDeviceEnumerator {
         let channels = config.channels();
 
         // Discover supported sample rates
-        let sample_rates = Self::discover_sample_rates(device)?;
+        let sample_rates = Self::get_sample_rates(device)?;
 
         Ok(AudioDeviceInfo {
             id: name.clone(),
@@ -143,7 +143,14 @@ impl AudioDeviceEnumerator {
 
     /// Discover all supported sample rates for a device
     /// Tests common sample rates and returns those that are supported
-    fn discover_sample_rates(device: &Device) -> Result<Vec<u32>, AudioDeviceError> {
+    fn get_sample_rates(device: &Device) -> Result<Vec<u32>, AudioDeviceError> {
+        // 1. Just get the current default. this is what we must use for loopback.
+        // the covers 99.9% of use cases
+        if let Ok(config) = device.default_output_config() {
+            return Ok(vec![config.sample_rate().0]);
+        }
+
+        // 2. Fallback we slow scan!
         // Common professional and consumer sample rates
         let common_rates = vec![
             8000, 11025, 16000,
