@@ -89,3 +89,5 @@ Contributions are welcome! This project is a learning journey into Rust audio pr
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
+
+Note: Portions of this codebase, particularly UI implementations and test suites, were assisted by LLM tools. Audit and refactoring contributions are welcome!
