@@ -16,19 +16,19 @@ A high-performance, (soon to be) cross-platform, real-time audio spectrum visual
 ## ✨ Features
 
 * **⚡ High Performance:** Built with `egui` (immediate mode GUI) and `realfft` for blazing fast rendering and audio processing.
-* **🎧 Cross-Platform Audio:** Uses `cpal` to capture system audio on Windows (WASAPI), Linux (ALSA/Pulse/Jack), and macOS (CoreAudio).
+* **🎧 Cross-Platform Audio:** * Uses `cpal` to capture system audio on Windows (WASAPI), Linux (ALSA/Pulse/Jack), and macOS (CoreAudio).
+    * **Hot-Swappable Devices:** Select specific input devices and refresh hardware lists on the fly without restarting.
 * **🎛️ Deep Customization:**
-    *  ~~Dynamic FFT:~~ Uses a fixed 2048-point FFT for excellent frequency resolution across all sample rates:
-        - 48 kHz: 23.4 Hz/bin (ideal)
-        - 96 kHz: 46.9 Hz/bin (professional grade)
-        - 192 kHz: 93.8 Hz/bin (acceptable for mastering)
-    * **Visuals:** Tune bar counts (16-512), sensitivity, noise floor, and opacity.
+    * **Optimized FFT Engine:** Uses a fixed 2048-point FFT for excellent frequency resolution across all sample rates (e.g., 23.4 Hz/bin @ 48kHz, 21ms latency @ 96kHz).
+    * **Visual Modes:** * **Standard/Inverted:** Render bars from bottom-up or top-down.
+        * **Aggregation:** Choose between "Peak" (Dramatic/Sharp) or "Average" (Smooth/Accurate) bin grouping.
     * **Responsiveness:** Configure Attack/Release times for bars and Peak Hold/Decay times for indicators.
-    * **Theming:** Select from 25+ preset color schemes (Winamp, Synthwave, Cyberpunk) or use dynamic "Rainbow" mode.
+* **🎨 Theming:** * Select from 25+ preset color schemes (Neon Tokyo, Lava Lamp, Cyberpunk, Winamp Classic).
+    * Define custom gradients or use the dynamic "Rainbow" mode.
 * **🖥️ Modern UI:**
-    * **Borderless Window:** A clean, chrome-less window that floats on your desktop.
-    * **Multi-Window Settings:** A dedicated, non-blocking settings window with modern "Pill" style navigation tabs.
-    * **Performance HUD:** Optional overlay displaying real-time FPS, FFT processing time, and latency metrics.
+    * **Borderless Window:** A clean, chrome-less window that floats on your desktop with "Always on Top" and "Click-through" support.
+    * **Persistent Settings:** Configuration is automatically saved to your OS's standard application data folder.
+    * **Performance HUD:** Real-time overlay displaying FPS, FFT latency (with health indicators ⚡/🟢/🔴), and frequency resolution.
 
 ## 🚀 Getting Started
 
@@ -50,6 +50,7 @@ You will need the [Rust toolchain](https://www.rust-lang.org/tools/install) inst
 
 * **Move:** Click and drag anywhere on the visualizer background to move the window.
 * **Resize:** Click and drag the **bottom-right corner** (indicated by subtle grip lines).
+* **Maximize:** Double-click the window background to toggle fullscreen.
 * **Context Menu:** **Right-click** anywhere on the window to open the main menu.
     * **⚙ Settings:** Opens the advanced configuration window.
     * **❌ Exit:** Closes the application.
@@ -60,11 +61,11 @@ The settings window is organized into tabs for easy navigation:
 
 | Tab | Description |
 | :--- | :--- |
-| **🎨 Visual** | Adjust bar count, spacing, and transparency. Toggle Peak indicators and aggregation modes (Peak vs. Average). |
-| **🔊 Audio** | Fine-tune the FFT engine. Adjust sensitivity, noise floor (-dB), and smoothing (Attack/Release). |
+| **🎨 Visual** | Adjust bar count (16-512), spacing, and transparency. Toggle Inverted Mode (Top-Down) and Aggregation (Peak vs Average). |
+| **🔊 Audio** | **Select Input Device**, refresh hardware list, and fine-tune the FFT engine (Sensitivity, Noise Floor, Attack/Release). |
 | **🌈 Colors** | Choose from 25+ retro and modern color presets. The UI themes itself to match your selection! |
 | **🪟 Window** | Toggle "Always on Top", window decorations (Title Bar), and the performance stats overlay. |
-| **📊 Stats** | View nerdy details like Sample Rate, Frequency Resolution (Hz/Bin), and internal Latency. |
+| **📊 Stats** | View diagnostics like Sample Rate, specific Latency (ms), and connection health indicators. |
 
 ## 🛠️ Architecture
 
