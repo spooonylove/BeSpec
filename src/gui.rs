@@ -1,9 +1,12 @@
 use eframe:: egui;
+use egui::pos2;
+use std::num;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::fft_config::FIXED_FFT_SIZE;
 use crate::shared_state::{SharedState, Color32 as StateColor32};
+use crate::fft_processor::FFTProcessor;
 
 // Tabs for the settings windowe
 #[derive(PartialEq)]
@@ -179,7 +182,6 @@ impl eframe::App for SpectrumApp {
 
                         self.render_settings_window(ui);
                     });
-                    
                 }
             );
         }
@@ -303,6 +305,22 @@ impl SpectrumApp {
         let high = to_egui_color(high_color).linear_multiply(config.bar_opacity);
         let peak = to_egui_color(peak_color).linear_multiply(config.bar_opacity);
 
+        // --- MOUSE INTERAACTION & INSPECTOR PREP ---
+        let mut hovered_bar_index = None;
+        let mut hover_pos = egui::Pos2::ZERO;
+
+        if config.inspector_enabled && ui.rect_contains_pointer(rect) {
+            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                hover_pos = pos;
+                // Calculate which bar we are hovering over
+                let relative_x = pos.x - rect.left();
+                let index = (relative_x / bar_slot_width).floor() as usize;
+                if index < num_bars {
+                    hovered_bar_index = Some(index);
+                }
+            }
+        }
+
         // Draw Bars
         for (i, &bar_height_db) in viz_data.bars.iter().enumerate() {
             let x = rect.left() + (i as f32 * bar_slot_width);
@@ -315,7 +333,14 @@ impl SpectrumApp {
             let bar_height_px = normalized_height * rect.height();
 
             // Calculate bar color (gradient from low to high)
-            let bar_color = lerp_color(low, high, normalized_height);
+            let mut bar_color = lerp_color(low, high, normalized_height);
+
+            // --- INSPECTOR HIGHLIGHT ---
+            // if this is the hovered bar, make it brighter!!
+            if Some(i) == hovered_bar_index {
+                // Mix with white to brighten (40% white blend)
+                bar_color = lerp_color(bar_color, egui::Color32::WHITE, 0.5);
+            }
 
             let bar_rect;
             let mesh_base_color;
@@ -389,6 +414,81 @@ impl SpectrumApp {
 
                 painter.rect_filled(peak_rect, 0.0, peak);
             }
+        }
+
+        // --- DRAW INSPECTOR OVERLAY ---
+        if let Some(index) = hovered_bar_index {
+            // 1. Draw Vertical Crosshair
+            let bar_center_x = rect.left() + (index as f32 * bar_slot_width) + (bar_slot_width / 2.0);
+
+            painter.line_segment(
+                [
+                    egui::pos2(bar_center_x, rect.top()),
+                    egui::pos2(bar_center_x, rect.bottom())
+                ],
+                egui::Stroke::new(1.0, egui::Color32::WHITE.linear_multiply(0.5))
+            );
+
+            // 2. Prepare Label Data
+            let amp_db = viz_data.bars[index];
+            // Ise the centralized helper from FFTProcessor
+            let freq_hz = FFTProcessor::calculate_bar_frequency(
+                index,
+                num_bars,
+                perf.fft_info.sample_rate,
+                perf.fft_info.fft_size
+            );
+           
+            let freq_text = if freq_hz >= 1000.0 {
+                format!("{:.1} kHz", freq_hz / 1000.0)
+            } else {
+                format!("{:.0} Hz", freq_hz)
+            };
+
+            let label_text = format!("{} | {:+.1} dB", freq_text, amp_db);
+
+            // 3. Draw Floating ToolTip
+            let font_id = egui::FontId::proportional(14.0);
+            let galley = painter.layout_no_wrap(
+                label_text.clone(),
+                font_id,
+                egui::Color32::WHITE
+            );
+
+            let label_padding = 6.0;
+            let label_w = galley.size().x + (label_padding * 2.0);
+            let label_h = galley.size().y + (label_padding * 2.0);
+
+            // Smart positioning: Flig to left if near right edge
+            let mut label_pos = hover_pos + egui::vec2(15.0, 0.0); // Default, right of cursor
+            if label_pos.x + label_w > rect.right() {
+                label_pos.x = hover_pos.x - label_w - 15.0; // Flip to left side
+            }
+            // Clamp Y to be inside view
+            label_pos.y = label_pos.y.clamp(rect.top(), rect.bottom() - label_h);
+
+            let label_rect = egui::Rect::from_min_size(label_pos, egui::vec2(label_w, label_h));
+
+            // Background box
+            painter.rect_filled(
+                label_rect,
+                4.0,
+                egui::Color32::from_black_alpha((config.inspector_opacity * 255.0) as u8)
+            );
+
+            // Border
+            painter.rect_stroke(
+                label_rect,
+                4.0,
+                egui::Stroke::new(1.0, egui::Color32::WHITE.linear_multiply(config.inspector_opacity))
+            );
+
+            // Text
+            painter.galley(
+                label_rect.min + egui::vec2(label_padding, label_padding),
+                galley,
+                egui::Color32::WHITE
+            );
         }
 
         // Draw performance stats if enabled
@@ -799,6 +899,16 @@ impl SpectrumApp {
                                         egui::ViewportCommand::Decorations(show));
                                 }
                                 ui.end_row();
+
+                                ui.label("Inspector Tool");
+                                ui.checkbox(&mut state.config.inspector_enabled, "Enabled").on_hover_text("Show frequency and dB on mouse hover");
+                                ui.end_row();
+
+                                if state.config.inspector_enabled {
+                                    ui.label("Inspector Opacity");
+                                    ui.add(egui::Slider::new(&mut state.config.inspector_opacity, 0.1..=1.0));
+                                    ui.end_row();
+                                }
                             });
                     });
 

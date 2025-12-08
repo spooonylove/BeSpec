@@ -136,6 +136,12 @@ pub struct AppConfig {
     /// Invert the spectrum (bars grow from top to bottom)
     pub inverted_spectrum: bool,
 
+    // === Inspector Settings ===
+    /// Enable the mouse-over inspector tool
+    pub inspector_enabled: bool,
+    /// Opacity of the inspector overlay
+    pub inspector_opacity: f32,
+
     // === Window Settings ===
     /// Keep window above all others
     pub always_on_top: bool,
@@ -191,6 +197,10 @@ impl Default for AppConfig {
             show_stats: false,
             stats_opacity: 0.3,
             inverted_spectrum: false,
+
+            // Inspector Settings
+            inspector_enabled: true,
+            inspector_opacity: 0.9,
 
             // Window Settings
             always_on_top: false,
