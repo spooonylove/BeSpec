@@ -452,8 +452,36 @@ impl ColorPreset {
                 high: Color32::from_rgb(255, 69, 0),    // OrangeRed
                 peak: Color32::from_rgb(240, 230, 140), // Khaki
             },
-            
-            // === New Additions (More Ideas!) ===
+            ColorPreset {
+                name: "Super Mario Bros.".to_string(),
+                low: Color32::from_rgb(0, 0, 205),      // Medium Blue
+                high: Color32::from_rgb(220, 20, 60),   // Crimson
+                peak: Color32::from_rgb(255, 215, 0),   // Gold
+            },
+            ColorPreset {
+                name: "Halo".to_string(),
+                low: Color32::from_rgb(85, 107, 47),    // Olive Drab
+                high: Color32::from_rgb(218, 165, 32),  // Goldenrod
+                peak: Color32::from_rgb(0, 191, 255),   // Deep Sky Blue (Cortana)
+            },
+            ColorPreset {
+                name: "Fallout".to_string(),
+                low: Color32::from_rgb(75, 0, 130),     // Indigo
+                high: Color32::from_rgb(0, 255, 255),   // Cyan
+                peak: Color32::from_rgb(240, 248, 255), // Alice Blue
+            },
+            ColorPreset {
+                name: "Sith Lord".to_string(),
+                low: Color32::from_rgb(20, 20, 20),     // Near Black
+                high: Color32::from_rgb(220, 20, 60),   // Crimson
+                peak: Color32::from_rgb(255, 255, 255), // White
+            },
+            ColorPreset {
+                name: "Neon Genesis Evangelion".to_string(),
+                low: Color32::from_rgb(106, 13, 173),   // Purple
+                high: Color32::from_rgb(57, 255, 20),   // Neon Green
+                peak: Color32::from_rgb(255, 140, 0),   // Dark Orange
+            },
             ColorPreset {
                 name: "Neon Tokyo".to_string(),
                 low: Color32::from_rgb(255, 0, 127),    // Hot Pink
@@ -514,6 +542,26 @@ impl ColorPreset {
                 high: Color32::from_rgb(255, 215, 0),   // Gold
                 peak: Color32::from_rgb(255, 250, 205), // Lemon Chiffon
             },
+            ColorPreset {
+                name: "Tequila Sunrise".to_string(),
+                low: Color32::from_rgb(178, 34, 34),    // Firebrick
+                high: Color32::from_rgb(255, 165, 0),   // Orange
+                peak: Color32::from_rgb(255, 255, 0),   // Yellow
+            },
+            ColorPreset {
+                name: "Espresso Martini".to_string(),
+                low: Color32::from_rgb(28, 20, 13),     // Very Dark Brown
+                high: Color32::from_rgb(160, 82, 45),   // Sienna
+                peak: Color32::from_rgb(255, 248, 220), // Cornsilk
+            },
+            ColorPreset {
+                name: "Cotton Candy".to_string(),
+                low: Color32::from_rgb(255, 105, 180),  // Hot Pink
+                high: Color32::from_rgb(135, 206, 250), // Light Sky Blue
+                peak: Color32::from_rgb(255, 255, 255), // White
+            },
+
+
         ]
     }
 
