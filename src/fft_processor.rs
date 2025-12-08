@@ -2,6 +2,14 @@ use realfft::{RealFftPlanner, RealToComplex};
 use std::sync::Arc;
 use crate::{fft_config::FIXED_FFT_SIZE, shared_state::SILENCE_DB};
 
+// === GLOBAL CONSTANTS FOR MAPPING  ===
+// These define the "physics" of how wer map frequncies to visual bars
+// We exposed them publicly so the GUI can use them, too.
+pub const MAPPING_LINEAR_PROPORTION: f64 = 0.15; // Target 15% Bass (Your choice)
+pub const MAPPING_KNEE_FREQ: f64 = 500.0;            // 0-500Hz is Linear
+pub const MAPPING_MAX_FREQ: f64 = 20000.0;           // Hard limit at 20kHz
+// ===================
+
 // configure for FFT processing and visualization
 #[derive(Clone)]
 pub struct FFTConfig{
@@ -116,14 +124,13 @@ impl FFTProcessor {
         // Step 3: Convert to magnitudes (dB scale)
         let magnitudes = self.compute_magnitudes();
         
-
         // Step 4:
         let raw_bars = self.group_bins(&magnitudes);
 
         // Step 5: Apply smoothing (attack/release)
         let smoothed_bars = self.apply_smoothing(&raw_bars, delta_ms);
 
-        // step 6: Update peals
+        // step 6: Update peaks
         let peaks = self.update_peaks(&smoothed_bars, delta_ms);
 
         (smoothed_bars, peaks)
@@ -146,6 +153,34 @@ impl FFTProcessor {
 
         self.config = config;
     }
+
+    /// Public Helper: Calculate frequency for a specific bar index
+    /// Centralized logic to ensure GUI and Audio math always match
+    pub fn calculate_bar_frequency(
+        bar_index: usize,
+        total_bars: usize,
+        sample_rate: u32,
+        fft_size: usize,
+    ) -> f32 {
+        let freq_res = sample_rate as f64 / fft_size as f64;
+        let linear_bar_count = (total_bars as f64 * MAPPING_LINEAR_PROPORTION).round() as usize;
+
+        // 1. Check linear region
+        if bar_index < linear_bar_count {
+            let t = (bar_index + 1) as f64 / linear_bar_count as f64;
+            return (t * MAPPING_KNEE_FREQ) as f32;
+        }
+
+        // 2. Check log region
+        let log_bar_count = total_bars - linear_bar_count;
+        let log_index = bar_index - linear_bar_count;
+
+        let t = (log_index + 1) as f64 / log_bar_count as f64;
+        let min_log_freq = MAPPING_KNEE_FREQ.max(freq_res); // Start where lineaer left off
+
+        (min_log_freq * (MAPPING_MAX_FREQ / min_log_freq).powf(t)) as f32
+    }    
+    
 
     // ============ Private Implementation ============
 
@@ -241,29 +276,23 @@ impl FFTProcessor {
 
         let frequency_resolution = config.sample_rate as f64 / config.fft_size as f64;
         
-        // === CONSTANTS  ===
-        const LINEAR_BAR_PROPORTION: f64 = 0.15; // Target 15% Bass (Your choice)
-        const KNEE_FREQ: f64 = 500.0;            // 0-500Hz is Linear
-        const MAX_FREQ: f64 = 20000.0;           // Hard limit at 20kHz
-        // ===================
-
-        let linear_bar_count = (config.num_bars as f64 * LINEAR_BAR_PROPORTION).round() as usize;
+        let linear_bar_count = (config.num_bars as f64 * MAPPING_LINEAR_PROPORTION).round() as usize;
         let log_bar_count = config.num_bars - linear_bar_count;
 
         // === LINEAR SECTION (0 Hz to ) ===
         for i in 0..linear_bar_count {
-            let freq_target = (i + 1) as f64 / linear_bar_count as f64 * KNEE_FREQ;
+            let freq_target = (i + 1) as f64 / linear_bar_count as f64 * MAPPING_KNEE_FREQ;
             let bin_pos = freq_target / frequency_resolution;
             map.push(bin_pos);
         }
     
         // === LOGARITHMIC SECTION ===
-        let min_log_bars = KNEE_FREQ.max(frequency_resolution);
+        let min_log_bars = MAPPING_KNEE_FREQ.max(frequency_resolution);
 
         for i in 0..log_bar_count {
             let t = (i + 1) as f64 / log_bar_count as f64;
             // True Logarithmic Interpolation
-            let freq_target = min_log_bars * (MAX_FREQ / min_log_bars).powf(t);
+            let freq_target = min_log_bars * (MAPPING_MAX_FREQ / min_log_bars).powf(t);
             let bin_pos = freq_target / frequency_resolution;
             map.push(bin_pos);
         
@@ -349,7 +378,6 @@ impl FFTProcessor {
                        self.peak_levels[i] = bar_height;
                     }
                 }
-                
             }
         }
 
