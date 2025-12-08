@@ -25,6 +25,7 @@ A high-performance, (soon to be) cross-platform, real-time audio spectrum visual
     * **Responsiveness:** Configure Attack/Release times for bars and Peak Hold/Decay times for indicators.
 * **🎨 Theming:** * Select from 25+ preset color schemes (Neon Tokyo, Lava Lamp, Cyberpunk, Winamp Classic).
     * Define custom gradients or use the dynamic "Rainbow" mode.
+* 🔍 **Interactive Inspector:** Turn the visualizer into a precision analysis tool. Hover over the spectrum to activate a vertical crosshair that highlights specific frequency bins and displays exact Frequency (Hz) and Amplitude (dB) metrics.
 * **🖥️ Modern UI:**
     * **Borderless Window:** A clean, chrome-less window that floats on your desktop with "Always on Top" and "Click-through" support.
     * **Persistent Settings:** Configuration is automatically saved to your OS's standard application data folder.
