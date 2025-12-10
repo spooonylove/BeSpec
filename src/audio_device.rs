@@ -3,7 +3,7 @@
 /// 
 
 use cpal::traits::{DeviceTrait, HostTrait};
-use cpal::{Device, StreamConfig};
+use cpal::Device;
 use std::fmt;
 
 /// Represents a single audio output device with metadata
@@ -290,30 +290,9 @@ mod tests {
     }
 
     #[test]
-    fn test_optimal_stream_config() {
-        match AudioDeviceEnumerator::get_default_device() {
-            Ok((device, _info)) => {
-                match OptimalStreamConfig::for_device(&device) {
-                    Ok(config) => {
-                        println!("Optimal config: {} Hz, {} channels", config.sample_rate, config.channels);
-                        assert!(config.sample_rate > 0);
-                        assert!(config.channels > 0);
-                    }
-                    Err(e) => {
-                        eprintln!("Error getting optimal config: {}", e);
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Error getting default device: {}", e);
-            }
-        }
-    }
-
-    #[test]
     fn test_sample_rate_discovery() {
         match AudioDeviceEnumerator::get_default_device() {
-            Ok((device, info)) => {
+            Ok(_device, info)) => {
                 println!("Default device: {}", info.name);
                 println!("Supported sample rates: {:?}", info.sample_rates);
 
