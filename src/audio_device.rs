@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn test_sample_rate_discovery() {
         match AudioDeviceEnumerator::get_default_device() {
-            Ok(_device, info)) => {
+            Ok((_device, info)) => {
                 println!("Default device: {}", info.name);
                 println!("Supported sample rates: {:?}", info.sample_rates);
 
