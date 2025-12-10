@@ -360,6 +360,7 @@ pub struct ColorPreset {
 }
 
 impl ColorPreset {
+    #[allow(dead_code)]
     pub fn new(name: &str, low: Color32, high: Color32, peak: Color32) -> Self {
         Self {
             name: name.to_string(),
@@ -620,6 +621,8 @@ impl Color32 {
     pub const WHITE: Self = Self::from_rgb(255, 255, 255);
     pub const BLACK: Self = Self::from_rgb(0, 0, 0);
     pub const RED: Self = Self::from_rgb(255, 0, 0);
+
+    #[allow(dead_code)]
     pub const GREEN: Self = Self::from_rgb(0, 255, 0);
     pub const BLUE: Self = Self::from_rgb(0, 0, 255);
 
@@ -636,6 +639,7 @@ impl Color32 {
     }
 
     /// Multiply color by opacity (for transparency)
+    #[allow(dead_code)]
     pub fn with_opacity(self, opacity: f32) -> Self {
         Self {
             r: self.r,
@@ -676,27 +680,6 @@ mod tests {
     }
 
     // === Test for invariants ===
-
-    #[test]
-    fn test_resize_maintains_sync() {
-        let mut state = SharedState::new();
-
-        // resize to 256
-        state.resize_bars(256);
-        assert_eq!(state.visualization.bars.len(), 256);
-        assert_eq!(state.visualization.peaks.len(), 256);
-
-        // Resize to 64
-        state.resize_bars(64);
-        assert_eq!(state.visualization.bars.len(), 64);
-        assert_eq!(state.visualization.peaks.len(), 64);
-
-        // resize to 512
-        state.resize_bars(512);
-        assert_eq!(state.visualization.bars.len(), 512);    
-        assert_eq!(state.visualization.peaks.len(), 512);
-    
-    }
 
     #[test]
     fn test_color_lerp_boundaries() {

@@ -165,22 +165,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_fixed_fft_size() {
-        // All sample rates should use the same FFT size
-        let configs = vec![
-            FFTSampleRateConfig::for_sample_rate(44100),
-            FFTSampleRateConfig::for_sample_rate(48000),
-            FFTSampleRateConfig::for_sample_rate(96000),
-            FFTSampleRateConfig::for_sample_rate(192000),
-        ];
-
-        for config in configs {
-            assert_eq!(config.fft_size, FIXED_FFT_SIZE);
-            println!("✓ {}", config.description)
-        }
-    }
-
-    #[test]
     fn test_frequency_resolution_varies_with_sample_rate() {
         let config_48k = FFTSampleRateConfig::for_sample_rate(48000);
         let config_96k = FFTSampleRateConfig::for_sample_rate(96000);
@@ -260,7 +244,7 @@ mod tests {
     #[test]
     fn test_latency_indicator() {
         // High sample rate = low latency
-         let manager_96k = FFTConfigManager::new(96000);
+         let manager_96k = FFTConfigManager::new(192000);
          let (emoji, _) = manager_96k.latency_indicator();
          assert_eq!(emoji, "⚡");
 

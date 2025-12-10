@@ -1,6 +1,4 @@
 use eframe:: egui;
-use egui::pos2;
-use std::num;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
