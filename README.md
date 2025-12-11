@@ -31,18 +31,28 @@ A high-performance, cross-platform, real-time audio spectrum visualizer written 
     * **Persistent Settings:** Configuration is automatically saved to your OS's standard application data folder.
     * **Performance HUD:** Real-time overlay displaying FPS, FFT latency (with health indicators ⚡/🟢/🔴), and frequency resolution.
 
-## 🚀 Getting Started
+## 🚀 Installation & Usage
 
-### Prerequisites
-You will need the [Rust toolchain](https://www.rust-lang.org/tools/install) installed.
+### Option A: Download (Recommended)
+No installation required. BeAnal is a standalone application.
 
-### Build and Run
+1.  Go to the [Releases Page](../../releases/latest).
+2.  Download the executable for your OS:
+    * **Windows:** `beanal-windows.exe`
+    * **macOS:** `beanal-macos-silicon` (M1/M2) or `beanal-macos-intel`
+    * **Linux:** `beanal-linux`
+3.  Run the application!
+    * *(Linux/macOS users may need to allow execution: `chmod +x beanal`)*
+
+### Option B: Build from Source
+If you prefer to build it yourself, you will need the [Rust toolchain](https://www.rust-lang.org/tools/install) installed.
+
 1.  Clone the repository:
     ```bash
     git clone [https://github.com/BeSpec-Dev/beanal.git](https://github.com/BeSpec-Dev/beanal.git)
     cd beanal
     ```
-2.  Run in release mode (recommended for smooth 60FPS audio visualization):
+2.  Run in release mode:
     ```bash
     cargo run --release
     ```
