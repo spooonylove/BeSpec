@@ -439,6 +439,36 @@ fn start_fft_processing(
     });
 }
 
+// ========================================================================
+// Load Icon to Memory
+// ========================================================================
+fn load_icon() -> Option<Arc<egui::IconData>> {
+    // 1. Embed the bytes. Path is relative to this file (src/main.rs)
+    //    So we go up one level (..) to root, then into assets/
+    let icon_bytes = include_bytes!("../assets/icon.png");
+
+    // 2. Decode the bytes into an image
+    //    We use the `image` crate to handle PNG decoding
+    match image::load_from_memory(icon_bytes) {
+        Ok(image) => {
+            let image = image.into_rgba8();
+            let (width, height) = image.dimensions();
+            let rgba = image.into_raw();
+
+            // 3. Return the data in egui's expected format
+            Some(Arc::new(egui::IconData {
+                rgba,
+                width,
+                height,
+            }))
+        }
+        Err(e) => {
+            tracing::error!("[Main] ❌ Failed to load icon : {}", e);
+            None
+        }
+    }
+}
+
 fn main (){
     
     // =====================================================================
@@ -523,6 +553,9 @@ fn main (){
 
     tracing::info!("[Main] Starting GUI...\n");
 
+    // Load the icon
+    let app_icon = load_icon();
+
     // Create a mutable viewport_builder
     let mut viewport_builder = egui::ViewportBuilder::default()
         .with_inner_size(initial_size)
@@ -530,6 +563,11 @@ fn main (){
         .with_resizable(true)
         .with_transparent(true)
         .with_decorations(initial_decorations);
+
+    // Apply icon if loaded
+    if let Some(icon) = app_icon {
+        viewport_builder = viewport_builder.with_icon(icon);
+    }
 
     // Apply position if saved
     if let Some(pos) = initial_pos {
