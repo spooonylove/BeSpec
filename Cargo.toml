@@ -19,6 +19,10 @@ tracing-subscriber = {version = "0.3", features = ["time", "env-filter"] }
 tracing-appender = "0.2"
 time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
 
+# Icon Generation
+image = {version = "0.24", default-features = false, features = ["png"] }
+
+
 # GUI framework
 eframe = "0.29"
 egui = "0.29"
