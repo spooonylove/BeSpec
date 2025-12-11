@@ -2,6 +2,8 @@ use realfft::{RealFftPlanner, RealToComplex};
 use std::sync::Arc;
 use crate::{fft_config::FIXED_FFT_SIZE, shared_state::SILENCE_DB};
 
+use tracing::{info, error};
+
 // === GLOBAL CONSTANTS FOR MAPPING  ===
 // These define the "physics" of how wer map frequncies to visual bars
 // We exposed them publicly so the GUI can use them, too.

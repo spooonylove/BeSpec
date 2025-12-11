@@ -5,6 +5,8 @@ use std::fs;
 use std::path::PathBuf;
 use directories::ProjectDirs;
 
+use tracing::{info, error};
+
 pub const SILENCE_DB: f32 = -140.0;
 
 /// Main Shared state container -- wrapped in Arc<Mutx<>> for thread safety
@@ -236,7 +238,7 @@ impl AppConfig {
 
             // Ensure directory exists
             if let Err(e) = fs::create_dir_all(config_dir) {
-                eprintln!("[Config] Error creating config directory: {}", e);
+                tracing::error!("[Config] Error creating config directory: {}", e);
             }
 
             return config_dir.join("config.json");
@@ -253,15 +255,15 @@ impl AppConfig {
             match fs::read_to_string(&path) {
                 Ok(contents) => match serde_json::from_str(&contents) {
                     Ok(config) => {
-                        println!("[Config] Loading config from {:?}", path);
+                        tracing::info!("[Config] Loading config from {:?}", path);
                         return config;
                     },
-                    Err(e) => eprintln!("[Config] Parse eror: {}", e),
+                    Err(e) => tracing::error!("[Config] Parse eror: {}", e),
                 },
-                Err(e) => eprintln!("[Config] Read error: {}", e),
+                Err(e) => tracing::error!("[Config] Read error: {}", e),
             }
         }
-        println!("[Config] Using defaults (new config will be saved to {:?})", path);
+        tracing::info!("[Config] Using defaults (new config will be saved to {:?})", path);
         Self::default()
     }
 
@@ -272,10 +274,10 @@ impl AppConfig {
                 if let Err(e) = fs::write(&path, json) {
                     eprint!("[Config] Failed to save to {:?}: {}", path, e);
                 } else {
-                    println!("[Config] Saved config to {:?}", path);
+                    tracing::info!("[Config] Saved config to {:?}", path);
                 }
             },
-            Err(e) => eprintln!("[Config] Failed to serialize config: {}", e),
+            Err(e) => tracing::error!("[Config] Failed to serialize config: {}", e),
         }
     }
     

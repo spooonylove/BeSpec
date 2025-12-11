@@ -1,6 +1,6 @@
 [package]
 name = "beanal"
-version = "0.2.0"
+version = "1.1.0"
 edition = "2021"
 authors = ["BeSpec-Dev"]
 description = "A lightweight, highly configurable, real-time audio spectrum visualizer"
@@ -12,6 +12,12 @@ realfft = "3.3"
 num-complex = "0.4"
 lazy_static = "1.4"
 directories = "5.0"
+
+# Data logging
+tracing = "0.1"
+tracing-subscriber = {version = "0.3", features = ["time", "env-filter"] }
+tracing-appender = "0.2"
+time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
 
 # GUI framework
 eframe = "0.29"

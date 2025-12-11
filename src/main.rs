@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console on Windows in release
+
 mod audio_capture;
 mod audio_device;
 mod fft_config;
@@ -10,8 +12,14 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::fs;
+
+use time::macros::format_description;
+use tracing_subscriber::fmt::time::OffsetTime;
+use tracing_subscriber::EnvFilter;
 
 use crossbeam_channel::bounded;
+use directories::ProjectDirs;
 
 use crate::audio_device::AudioDeviceEnumerator;
 use crate::fft_processor::{FFTProcessor, FFTConfig};
@@ -33,47 +41,47 @@ fn start_audio_capture(
     let (tx, rx) = bounded(10);
 
     thread::spawn(move || {
-        println!("[Capture] Starting audio capture thread");
+        tracing::info!("[Capture] Starting audio capture thread");
 
         // 1. Initial Device List Population
-        println!("[Capture] 🔍 Initializing audio device list...");
+        tracing::info!("[Capture] 🔍 Initializing audio device list...");
         if let Ok(devices) = AudioCaptureManager::list_devices() {
             let mut state = shared_state.lock().unwrap();
             state.audio_devices = devices.iter().map(|d| d.name.clone()).collect();
 
-            println!("[Capture] ✓ Found {} audio devices", state.audio_devices.len());
+            tracing::info!("[Capture] ✓ Found {} audio devices", state.audio_devices.len());
             for (i, name) in state.audio_devices.iter().enumerate() {
-                println!("[Capture]    {}: {}", i, name);
+                tracing::info!("[Capture]    {}: {}", i, name);
             }
         } else {
-            eprintln!("[Capture] ❌ Failed to enumerate initial audio devices");
+            tracing::error!("[Capture] ❌ Failed to enumerate initial audio devices");
         }
 
         // 2. Initial Device Selection
         let initial_device = {
             shared_state.lock().unwrap().config.selected_device.clone()
         };
-        println!("[Capture] Target device: {}", initial_device);
+        tracing::info!("[Capture] Target device: {}", initial_device);
 
         // 3. Create Audio Capture Manager
         let mut capture = if initial_device == "Default" {
             AudioCaptureManager::new().unwrap_or_else(|e|{
-                eprintln!("[Capture] ❌ Critical: Failed to create default audio device: {}", e);
+                tracing::error!("[Capture] ❌ Critical: Failed to create default audio device: {}", e);
                 panic!("Audio init failed");
             })
         } else {
             AudioCaptureManager::with_device_id(&initial_device).unwrap_or_else(|_|{
-                println!("[Capture] ⚠️ Saved device not found, falling back to System Default ");
+                tracing::info!("[Capture] ⚠️ Saved device not found, falling back to System Default ");
                 AudioCaptureManager::new().expect("Failed to init default device")
             })
         };
 
         // Start capturing
         if let Err(e) = capture.start_capture() {
-            eprintln!("[Capture] ❌ Failed to start capture: {}", e);
+            tracing::error!("[Capture] ❌ Failed to start capture: {}", e);
             return;
         }
-        println!("[Capture] ✓ Audio capture thread started");
+        tracing::info!("[Capture] ✓ Audio capture thread started");
 
         // Keep receiving audio packets and forward them
         while !shutdown.load(Ordering::Relaxed) {
@@ -100,29 +108,29 @@ fn start_audio_capture(
 
             // === ACTION: REFRESH === 
             if needs_refresh {
-                println!("[Capture] 🔄 Manual refresh requested. Scanning hardware...");
+                tracing::info!("[Capture] 🔄 Manual refresh requested. Scanning hardware...");
                 let start = Instant::now();
 
                 if let Ok(devices) = AudioCaptureManager::list_devices() {
                     if let Ok(mut state) = shared_state.lock() {
                         state.audio_devices = devices.iter().map(|d| d.name.clone()).collect();
-                        println!("[Capture] ✓ Scan complete in {:.2}ms, Found {} audio devices",
+                        tracing::info!("[Capture] ✓ Scan complete in {:.2}ms, Found {} audio devices",
                             start.elapsed().as_secs_f32() * 1000.0,
                             state.audio_devices.len()
                         );
                     }
                 } else {
-                    eprintln!("[Capture] ⚠️ Device scan failed");
+                    tracing::error!("[Capture] ⚠️ Device scan failed");
                 }
             }
             
             // === ACTION: DEVICE CHANGE ===
             if let Some(new_name) = new_device_req {
-                println!("[Capture] 🔄 Audio device change requested: {}", new_name);
+                tracing::info!("[Capture] 🔄 Audio device change requested: {}", new_name);
                 
                 let result = if new_name == "Default" {
                     if let Ok((_, info)) = AudioDeviceEnumerator::get_default_device() {
-                        println!("[Capture] Resolving 'Default' -> '{}'", info.id);
+                        tracing::info!("[Capture] Resolving 'Default' -> '{}'", info.id);
                         capture.switch_device(&info.id)
                     } else {
                         Err(crate::audio_device::AudioDeviceError::DeviceNotFound("Default".into()))
@@ -132,8 +140,8 @@ fn start_audio_capture(
                 };
 
                 match result {
-                    Ok(_) => println!("[Capture] ✓ Switched to new device: {}", new_name),
-                    Err(e) => eprintln!("[Capture] ❌ Failed to switch device: {}", e),
+                    Ok(_) => tracing::info!("[Capture] ✓ Switched to new device: {}", new_name),
+                    Err(e) => tracing::error!("[Capture] ❌ Failed to switch device: {}", e),
                 }
             }
             
@@ -151,7 +159,7 @@ fn start_audio_capture(
             }
         }
 
-        println!("[Capture] Shutting down...");
+        tracing::info!("[Capture] Shutting down...");
         capture.stop_capture();
     });
 
@@ -168,7 +176,7 @@ fn start_fft_processing(
     shutdown: Arc<AtomicBool>
 ) {
     thread::spawn(move || {
-        println!("[FFT] Starting FFT processing thread...");
+        tracing::info!("[FFT] Starting FFT processing thread...");
 
               
         let mut processor: Option<FFTProcessor> = None;
@@ -191,7 +199,7 @@ fn start_fft_processing(
 
                     // ====== Initialization: First packet tells us the sample rate
                     if processor.is_none() || fft_config.is_none() {
-                        println!(
+                        tracing::info!(
                             "[FFT] 🎵 First audio packet received at {} Hz",
                             packet.sample_rate
                         );
@@ -218,7 +226,7 @@ fn start_fft_processing(
                         let new_processor = FFTProcessor::new(config);
                         
                         let info = new_fft_config.info();
-                        println!(
+                        tracing::info!(
                             "[FFT] ✓ Initialized: {} Hz, FFT size: {}, latency: {:.2}ms, mode: {}",
                                 info.sample_rate, info.fft_size, info.latency_ms,
                                 if new_processor.get_config().use_peak_aggregation { "Peak" } else { "Average" }
@@ -243,7 +251,7 @@ fn start_fft_processing(
                     // ==== CRITICAL: Handle sample rate changes =====
                     // If device sample rate changed, update FFT config
                     if packet.sample_rate != fft_config.get_sample_rate() {
-                        println!(
+                        tracing::info!(
                             "[FFT] 🔄 Sample rate changed: {} Hz → {} Hz",
                             fft_config.get_sample_rate(),
                             packet.sample_rate
@@ -255,7 +263,7 @@ fn start_fft_processing(
                         
                         // Rebuild FFT processor with new FFT size
                         let info = fft_config.info();
-                        println!(
+                        tracing::info!(
                             "[FFT] ⚙️  Rebuilding FFT: {} Hz, latency: {:.2}ms",
                             info.sample_rate, info.latency_ms
                         );
@@ -326,7 +334,7 @@ fn start_fft_processing(
                         
                         if needs_update {
                             //Major change - needs FFT rebuild
-                            println!(
+                            tracing::debug!(
                                 "[FFT] Config change requires rebuild (bar count: {} → {})",
                                 state.visualization.bars.len(),
                                 state.config.num_bars
@@ -351,7 +359,7 @@ fn start_fft_processing(
                             if config_differs(&current) {
                                 // Log specific changes for debugging
                                 if state.config.use_peak_aggregation != current.use_peak_aggregation {
-                                    println!{
+                                    tracing::info!{
                                         "[FFT] Aggregation mode changed: {} → {}",
                                         if current.use_peak_aggregation { "Peak" } else { "Average" },
                                         if state.config.use_peak_aggregation { "Peak" } else { "Average" }
@@ -378,10 +386,10 @@ fn start_fft_processing(
                     // Apply confiig update if needed
                     if let Some(new_config) = pending_config_update {
                         if new_config.num_bars != processor.get_config().num_bars {
-                            println!("[FFT]♻️ Recreating processor for new bar count: {}", new_config.num_bars);
+                            tracing::debug!("[FFT]♻️ Recreating processor for new bar count: {}", new_config.num_bars);
                             *processor = FFTProcessor::new(new_config);
                         } else {
-                            println!("[FFT]🔧 Updating processor config");
+                            tracing::debug!("[FFT]🔧 Updating processor config");
                             processor.update_config(new_config);
                         }
                     }
@@ -405,35 +413,90 @@ fn start_fft_processing(
                     continue;
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    eprintln!("[FFT] Capture disconnected!");
+                    tracing::error!("[FFT] Capture disconnected!");
                     break;
                 }
             }
         }
 
-        println!("[FFT] Shutdown (processed {} frames)", frame_count);
+        tracing::info!("[FFT] Shutdown (processed {} frames)", frame_count);
         if frame_count > 0 {
             let avg_time = total_process_time / frame_count as u32;
-            println!("[FFT] === Final Performance Stats ===");
-            println!("[FFT]    Total frames:   {}", frame_count);
-            println!("[FFT]    Avg time:       {:?}", avg_time);
-            println!("[FFT]    Min time:       {:?}", min_process_time);
-            println!("[FFT]    Max time:       {:?}", max_process_time);
-            println!("[FFT]    FPS Potential:  {:.1}", 1000.0 / avg_time.as_micros() as f64 * 1000.0 );
+            tracing::info!("[FFT] === Final Performance Stats ===");
+            tracing::info!("[FFT]    Total frames:   {}", frame_count);
+            tracing::info!("[FFT]    Avg time:       {:?}", avg_time);
+            tracing::info!("[FFT]    Min time:       {:?}", min_process_time);
+            tracing::info!("[FFT]    Max time:       {:?}", max_process_time);
+            tracing::info!("[FFT]    FPS Potential:  {:.1}", 1000.0 / avg_time.as_micros() as f64 * 1000.0 );
 
             // Calculate what % of frame budge we're using
             let target_frame_time = Duration::from_millis(16);  // 60 FPS = 16.67ms
             let usage_pct = 
                 (avg_time.as_micros() as f64 / target_frame_time.as_micros() as f64) * 100.0;
-            println!("[FFT]     CPU usage:     {:.1}% of 60fps budget", usage_pct);
+            tracing::info!("[FFT]     CPU usage:     {:.1}% of 60fps budget", usage_pct);
         } 
         
     });
 }
 
 fn main (){
-    println!("=== BeAnal - Rust Audio Spectrum Analyzer ===\n");
-    println!("    FFT Size: {} (fixed)\n", FIXED_FFT_SIZE);
+    
+    // =====================================================================
+    // 1. Setup cross-platforing logging
+    // =====================================================================
+
+    // Determine the correct data directory for the current OS
+    // Windows: %APPDATA%\BeAnal
+    // Linux: ~/.local/share/beanal
+    // macOs: ~/Library/Application Support/BeAnal
+    let log_dir = if let Some(proj_dirs) = ProjectDirs::from("", "", "BeAnal") {
+        proj_dirs.data_dir().join("logs")
+    } else {
+        // Fallback to local directory wif we can't find the home folder
+        std::path::PathBuf::from("logs")
+    };
+
+    // Ensure the directoy exists (otherwise logging will fail)
+    if let Err(e) = fs::create_dir_all(&log_dir) {
+        tracing::error!("[Main] ❌ Failed to create log directory {:?}: {}", log_dir, e);
+    }
+
+    // Set up the file appender
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "beanal.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    // Get local offset. Fall back to UTC if it fails
+    let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+
+    // Define the time format for logs (human readable, folks!)
+    let timer = OffsetTime::new(
+        offset,
+        format_description!("[hour]:[minute]:[second]"),
+    );
+
+    // Set up Logic Level Filter
+    // This scheks the "RUST_LOG" environment variable for configuration
+    // If not set, it defaults to "info" level logging
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+
+
+    // Initialize tracing
+    tracing_subscriber::fmt()
+        .with_writer(non_blocking)
+        .with_ansi(false)
+        .with_timer(timer)
+        .with_env_filter(env_filter) // No ANSI codes in log files
+        .init();
+
+    // Log startup info
+    tracing::info!("=== BeAnal Startup ===");
+    tracing::info!("Platform: {}", std::env::consts::OS);
+    tracing::info!("Log Directory: {:?}", log_dir);
+    
+    // ========================================================================
+    // 2. INITIALIZE APP STATE
+    // ========================================================================
 
     // create shared state
     let shared_state = Arc::new(Mutex::new(SharedState::new()));
@@ -458,7 +521,7 @@ fn main (){
     // Start FFT processing thread
     start_fft_processing(audio_rx, shared_state.clone(), shutdown.clone());
 
-    println!("[Main] Starting GUI...\n");
+    tracing::info!("[Main] Starting GUI...\n");
 
     // Create a mutable viewport_builder
     let mut viewport_builder = egui::ViewportBuilder::default()
@@ -492,20 +555,20 @@ fn main (){
     );
 
     // The window has closed. Now we force a save to sensure settings persist
-    println!("[Main] Saving configuration...");
+    tracing::info!("[Main] Saving configuration...");
     if let Ok(state) = shared_state.lock() {
         state.config.save();
     }
 
     // Signal shutdown to audio threads
-    println!("\n[Main] Shutting down audio threads...");
+    tracing::info!("[Main] Shutting down audio threads...");
     shutdown.store(true, Ordering::Relaxed);
 
     // Give threadss time to clean up
     thread::sleep(Duration::from_millis(500));
 
 
-    println!("[Main] ✓ Shutdown complete");
+    tracing::info!("[Main] ✓ Shutdown complete");
 
 }
 

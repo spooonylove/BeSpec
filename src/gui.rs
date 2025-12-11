@@ -2,6 +2,8 @@ use eframe:: egui;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use tracing::{info, error};
+
 use crate::fft_config::FIXED_FFT_SIZE;
 use crate::shared_state::{SharedState, Color32 as StateColor32};
 use crate::fft_processor::FFTProcessor;
@@ -80,7 +82,7 @@ impl eframe::App for SpectrumApp {
             if self.last_window_size != Some(current_size) {
                 // Filter out 0x0 or tiny screens
                 if current_size.x > 10.0 && current_size.y > 10.0 {
-                    println!("[GUI] Main Window Resized: {:.0} x {:.0}", current_size.x, current_size.y);
+                    tracing::debug!("[GUI] Main Window Resized: {:.0} x {:.0}", current_size.x, current_size.y);
                     self.last_window_size = Some(current_size);
 
                     if let Ok(mut state) = self.shared_state.lock() {
@@ -97,7 +99,7 @@ impl eframe::App for SpectrumApp {
             if self.last_window_pos != Some(current_pos) {
                 // Determine if we sohuld log (don't log first detection to avaoid spam on startup)
                 if self.last_window_pos.is_some() {
-                    println!("[GUI] Main Window Moved: x: {:.0}, y: {:.0}", current_pos.x, current_pos.y);
+                    tracing::debug!("[GUI] Main Window Moved: x: {:.0}, y: {:.0}", current_pos.x, current_pos.y);
                 }
                 
                 self.last_window_pos = Some(current_pos);
@@ -710,7 +712,7 @@ impl SpectrumApp {
                                             
                                             // 1. Default Option
                                             if ui.selectable_label(current_sel == "Default", "Default System Device").clicked() {
-                                                println!("[GUI] User selected device: Default");
+                                                tracing::info!("[GUI] User selected device: Default");
                                                 state.config.selected_device = "Default".to_string();
                                                 state.device_changed = true;
                                             }
@@ -721,7 +723,7 @@ impl SpectrumApp {
                                             for name in devices {
                                                 let is_selected = current_sel == name;
                                                 if ui.selectable_label(is_selected, &name).clicked() {
-                                                    println!("[GUI] User selected device: '{}'", name);
+                                                    tracing::info!("[GUI] User selected device: '{}'", name);
                                                     state.config.selected_device = name;
                                                     state.device_changed = true;
                                                 }
@@ -730,7 +732,7 @@ impl SpectrumApp {
 
                                     // Refresh Button
                                     if ui.button("🔄").on_hover_text("Refresh Device List").clicked() {
-                                        println!("[GUI] User requested device list refresh");
+                                        tracing::info!("[GUI] User requested device list refresh");
                                         state.refresh_devices_requested = true;
                                     }
                                 });

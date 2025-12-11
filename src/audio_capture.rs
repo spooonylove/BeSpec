@@ -9,6 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use tracing::{info, error};
+
 use crate::audio_device::{AudioDeviceEnumerator, AudioDeviceInfo, AudioDeviceError};
 
 /// Audio packet containing raw samples and metadata
@@ -104,7 +106,7 @@ impl AudioCaptureManager {
         
         let handle = thread::spawn(move || {
             if let Err(e) = Self::capture_loop(&device_info, tx, &shutdown) {
-                eprintln!("[AudioCapture] Error: {}", e);
+                tracing::error!("[AudioCapture] Error: {}", e);
             }
         });
 
@@ -145,7 +147,7 @@ impl AudioCaptureManager {
         let channels = config.channels();           // e.g., 2 (stereo)
 
 
-        println!(
+        tracing::info!(
             "[AudioCapture] Starting capture: {} @ {} Hz, {} channels",
             device_info.id, sample_rate, channels
         );
@@ -199,7 +201,7 @@ impl AudioCaptureManager {
 
                             }
                         },
-                        |err| eprintln!("[AudioCapture] Stream Error: {}", err),
+                        |err| tracing::error!("[AudioCapture] Stream Error: {}", err),
                         None,
 
                     )
@@ -232,7 +234,7 @@ impl AudioCaptureManager {
                                 // The channel buffer is full - FFT thread can't keep up
                             }
                         },
-                        |err| eprintln!("[AudioCapture] Stream Error: {}", err),
+                        |err| tracing::error!("[AudioCapture] Stream Error: {}", err),
                         None,
                     )
                     .map_err(|e| AudioDeviceError::StreamCreationFailed(e.to_string()))?
@@ -265,7 +267,7 @@ impl AudioCaptureManager {
                                 
                             }
                         },
-                        |err| eprintln!("[AudioCapture] Stream Error: {}", err),
+                        |err| tracing::error!("[AudioCapture] Stream Error: {}", err),
                         None,
                     )
                     .map_err(|e| AudioDeviceError::StreamCreationFailed(e.to_string()))?
@@ -286,7 +288,7 @@ impl AudioCaptureManager {
             .play()
             .map_err(|e| AudioDeviceError::StreamCreationFailed(e.to_string()))?;
 
-        println!("[AudioCapture] ✓ Audio stream started successfully");
+        tracing::info!("[AudioCapture] ✓ Audio stream started successfully");
 
         // ============================================================================
         // STEP 5: KEEP THE STREAM ALIVE
@@ -302,7 +304,7 @@ impl AudioCaptureManager {
             thread::sleep(Duration::from_millis(10));
         }
 
-        println!("[AudioCapture] Shutting down...");
+        tracing::info!("[AudioCapture] Shutting down...");
 
         // ============================================================================
         // STEP 6: CLEANUP
@@ -430,11 +432,11 @@ mod tests {
         match AudioCaptureManager::new() {
             Ok(manager) => {
                 let device_info = manager.device_info();
-                println!("Created capture manager for: {}", device_info);
+                tracing::info!("Created capture manager for: {}", device_info);
                 assert!(!device_info.name.is_empty());
             }
             Err(e) => {
-                println!("Note: No audio device available for testing: {}", e);
+                tracing::info!("Note: No audio device available for testing: {}", e);
             }
         }
     }
@@ -443,13 +445,13 @@ mod tests {
     fn test_list_devices() {
         match AudioCaptureManager::list_devices() {
             Ok(devices) => {
-                println!("Found {} audio devices:", devices.len());
+                tracing::info!("Found {} audio devices:", devices.len());
                 for device in devices {
-                    println!("{}", device);
+                    tracing::info!("{}", device);
                 }
             }
             Err(e) => {
-                println!("Error enumerating devices: {}", e);
+                tracing::info!("Error enumerating devices: {}", e);
             }
         }
     }
