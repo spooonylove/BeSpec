@@ -4,7 +4,7 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)]()
 
-A high-performance, (soon to be) cross-platform, real-time audio spectrum visualizer written in **Rust**.
+A high-performance, cross-platform, real-time audio spectrum visualizer written in **Rust**.
 
 **BeAnal** listens to your system audio loopback (what you hear from your speakers) and renders a customizable frequency spectrum overlay on your desktop. It is designed to be minimal, beautiful, and efficient.
 
@@ -15,7 +15,7 @@ A high-performance, (soon to be) cross-platform, real-time audio spectrum visual
 
 ## ✨ Features
 
-* **⚡ High Performance:** Built with `egui` (immediate mode GUI) and `realfft` for blazing fast rendering and audio processing.
+* **⚡ High Performance:** Built with `egui` (immediate mode GUI) and `realfft` for low-latency rendering and audio processing.
 * **🎧 Cross-Platform Audio:** * Uses `cpal` to capture system audio on Windows (WASAPI), Linux (ALSA/Pulse/Jack), and macOS (CoreAudio).
     * **Hot-Swappable Devices:** Select specific input devices and refresh hardware lists on the fly without restarting.
 * **🎛️ Deep Customization:**
@@ -63,7 +63,7 @@ The settings window is organized into tabs for easy navigation:
 | Tab | Description |
 | :--- | :--- |
 | **🎨 Visual** | Adjust bar count (16-512), spacing, and transparency. Toggle Inverted Mode (Top-Down) and Aggregation (Peak vs Average). |
-| **🔊 Audio** | **Select Input Device**, refresh hardware list, and fine-tune the FFT engine (Sensitivity, Noise Floor, Attack/Release). |
+| **🔊 Audio** | Hot-swappable input device selection, and fine-tune the FFT engine (Sensitivity, Noise Floor, Attack/Release). |
 | **🌈 Colors** | Choose from 25+ retro and modern color presets. The UI themes itself to match your selection! |
 | **🪟 Window** | Toggle "Always on Top", window decorations (Title Bar), and the performance stats overlay. |
 | **📊 Stats** | View diagnostics like Sample Rate, specific Latency (ms), and connection health indicators. |
@@ -76,6 +76,26 @@ BeAnal uses a concurrent architecture to ensure the UI never stutters, even unde
 * **FFT Thread:** Processes signals using `realfft`, applying Hann windowing and smoothing logic.
 * **GUI Thread:** Renders the visualization at 60+ FPS using `egui` + `wgpu`.
 * **State Management:** Threads communicate via `crossbeam_channel` for high-speed audio data and `Arc<Mutex<SharedState>>` for configuration synchronization.
+
+## 🔧 Troubleshooting & Logging
+
+BeAnal runs silently by default. If you encounter issues, logs are automatically rotated daily and stored in your OS standard data directory:
+
+* **Windows:** `%APPDATA%\BeAnal\logs\`
+* **macOS:** `~/Library/Application Support/BeAnal/logs/`
+* **Linux:** `~/.local/share/beanal/logs/`
+
+### Debug Mode
+To view granular details (like window resize events or specific FFT rebuild triggers), you can enable verbose logging via environment variables without recompiling:
+
+**Windows (PowerShell):**
+```powershell
+$env:RUST_LOG="debug"; .\beanal.exe
+```
+**macOS / Linux:**
+``` bash
+RUST_LOG=debug ./beanal
+```
 
 ## 🤝 Contributing
 
@@ -90,5 +110,3 @@ Contributions are welcome! This project is a learning journey into Rust audio pr
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
-
-Note: Portions of this codebase, particularly UI implementations and test suites, were assisted by LLM tools. Audit and refactoring contributions are welcome!
