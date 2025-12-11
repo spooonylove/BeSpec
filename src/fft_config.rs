@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 
+use tracing::{info, error};
+
 /// Fixed FFT size for the application
 /// 2048 provides a good balance of frequency resolution and latency:
 /// - At 48kHz: 42.7ms latency, 23.4 Hz/bin resolution
@@ -94,7 +96,7 @@ impl FFTConfigManager {
             .entry(new_sample_rate)
             .or_insert_with(|| FFTSampleRateConfig::for_sample_rate(new_sample_rate));
 
-        println!(
+        tracing::info!(
             "[FFTConfigManager] Sample rate: {} Hz → {} Hz",
             self.current_sample_rate, new_sample_rate
         );

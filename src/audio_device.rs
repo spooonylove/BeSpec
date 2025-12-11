@@ -6,6 +6,8 @@ use cpal::traits::{DeviceTrait, HostTrait};
 use cpal::Device;
 use std::fmt;
 
+use tracing::{info, error};
+
 /// Represents a single audio output device with metadata
 #[derive(Clone, Debug)]
 pub struct AudioDeviceInfo {
@@ -87,7 +89,7 @@ impl AudioDeviceEnumerator {
                 
                 Ok(info) => devices.push(info),
                 Err(e) => {
-                    eprintln!("[Audio] Failed to enumerate device: {}", e);
+                    tracing::error!("[Audio] Failed to enumerate device: {}", e);
                     continue;
                 }
             }
@@ -252,10 +254,10 @@ mod tests {
                     );
                 }
 
-                println!("Found {} device(s)", devices.len());
+                tracing::info!("Found {} device(s)", devices.len());
                 for device in devices {
-                    println!("   {}", device);
-                    println!(
+                    tracing::info!("   {}", device);
+                    tracing::info!(
                         "     Supported Rates : {} Hz",
                         device
                             .sample_rates
@@ -267,7 +269,7 @@ mod tests {
                 }
             }
             Err(e) => {
-                eprintln!("Error enumerating devices: {}", e);
+                tracing::error!("Error enumerating devices: {}", e);
             }
         }
     }
@@ -276,14 +278,14 @@ mod tests {
     fn test_get_default_device() {
         match AudioDeviceEnumerator::get_default_device() {
             Ok((_device, info)) => {
-                println!("Default device: {}", info);
+                tracing::info!("Default device: {}", info);
                 assert!(!info.name.is_empty());
                 assert!(info.is_default);
                 assert!(info.channels > 0);
                 assert!(info.default_sample_rate > 0);
             }
             Err(e) => {
-                eprintln!("Error getting default device: {}", e);
+                tracing::error!("Error getting default device: {}", e);
             }
         }
 
@@ -293,8 +295,8 @@ mod tests {
     fn test_sample_rate_discovery() {
         match AudioDeviceEnumerator::get_default_device() {
             Ok((_device, info)) => {
-                println!("Default device: {}", info.name);
-                println!("Supported sample rates: {:?}", info.sample_rates);
+                tracing::info!("Default device: {}", info.name);
+                tracing::info!("Supported sample rates: {:?}", info.sample_rates);
 
                 // Verify that common rates are tested
                 assert!(!info.sample_rates.is_empty());
@@ -306,7 +308,7 @@ mod tests {
                 assert_eq!(info.sample_rates.len(), sorted.len(), "Sample rates should be unique");
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                tracing::error!("Error: {}", e);
             }
         }
     }
