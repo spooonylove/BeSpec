@@ -1,11 +1,12 @@
 use eframe:: egui;
+use egui::Galley;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use tracing::{info, error};
 
 use crate::fft_config::FIXED_FFT_SIZE;
-use crate::shared_state::{SharedState, Color32 as StateColor32};
+use crate::shared_state::{Color32 as StateColor32, SharedState, VisualMode};
 use crate::fft_processor::FFTProcessor;
 
 // Tabs for the settings windowe
@@ -265,6 +266,7 @@ impl SpectrumApp {
 
     /// Render the main spectrum visualizer
     fn render_visualizer(&mut self, ui: &mut egui::Ui) {
+        // 1. Aquire Locks and Setup
         let state = match self.shared_state.lock() {
             Ok(state) => state,
             Err(_) => {
@@ -279,14 +281,14 @@ impl SpectrumApp {
         let viz_data = &state.visualization;
         let perf = &state.performance;
 
-        // Get drawing area
+        // 2. Allocate Drawing Space
         let available_size = ui.available_size();
         let (response, painter) = ui.allocate_painter(available_size, egui::Sense::hover());
         let rect = response.rect;
 
-        // Calculate bar dimensions
+        // 3. Early exit if no data (unless in Oscope mode)
         let num_bars = viz_data.bars.len();
-        if num_bars == 0 {
+        if num_bars == 0 && config.visual_mode != VisualMode::Oscilloscope {
             drop(state);
             ui.centered_and_justified(|ui| {
                 ui.label("⏸ Waiting for audio...");
@@ -294,213 +296,351 @@ impl SpectrumApp {
             return;
         }
 
-        let bar_gap = config.bar_gap_px as f32;
-        let total_width = rect.width();
-        let bar_slot_width = total_width / num_bars as f32;
-        let bar_width = (bar_slot_width - bar_gap).max(1.0);
+        // 4. Calculate Common Layout Helpers
+        // Ensure we don't eveide by zero even if bars are missing
+        let safe_num_bars = num_bars.max(1);
+        let bar_slot_width = rect.width() / num_bars as f32;
+        let bar_width = (bar_slot_width - config.bar_gap_px as f32).max(1.0);
 
-        // Get Colors
-        let (low_color, high_color, peak_color) = config.get_colors();
-        let low = to_egui_color(low_color).linear_multiply(config.bar_opacity);
-        let high = to_egui_color(high_color).linear_multiply(config.bar_opacity);
-        let peak = to_egui_color(peak_color).linear_multiply(config.bar_opacity);
-
-        // --- MOUSE INTERAACTION & INSPECTOR PREP ---
-        let mut hovered_bar_index = None;
-        let mut hover_pos = egui::Pos2::ZERO;
-
-        if config.inspector_enabled && ui.rect_contains_pointer(rect) {
+        // 5. Handle mouse interactions (for frequency modes)
+        let hovered_bar_index = if config.inspector_enabled && config.visual_mode != VisualMode::Oscilloscope {
             if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                hover_pos = pos;
-                // Calculate which bar we are hovering over
-                let relative_x = pos.x - rect.left();
-                let index = (relative_x / bar_slot_width).floor() as usize;
-                if index < num_bars {
-                    hovered_bar_index = Some(index);
-                }
-            }
+                if rect.contains(pos) {
+                    let relative_x = pos.x - rect.left();
+                    let index = (relative_x / bar_slot_width).floor() as usize;
+                    if index < num_bars {Some(index)} else { None }
+                }else { None }
+            }else { None }
+        } else { None };
+
+        // 6. Dispatch Drawing Strategy
+        match config.visual_mode {
+            VisualMode::SolidBars => {
+                self.draw_solid_bars(&painter, &rect, config, viz_data, bar_width, bar_slot_width, hovered_bar_index);
+            },
+            VisualMode::SegmentedBars => {
+                self.draw_segmented_bars(&painter, &rect, config, viz_data, bar_width, bar_slot_width, hovered_bar_index);
+            },
+            VisualMode::LineSpectrum => {
+                self.draw_line_spectrum(&painter, &rect, config, viz_data, hovered_bar_index);
+            },
+            VisualMode::Oscilloscope => {
+                self.draw_oscilloscope(&painter, &rect, config, viz_data);
+            },
         }
-
-        // Draw Bars
-        for (i, &bar_height_db) in viz_data.bars.iter().enumerate() {
-            let x = rect.left() + (i as f32 * bar_slot_width);
-
-            let floor_db = config.noise_floor_db;
-            let db_range = (0.0 - floor_db).max(1.0); // defensive max(1.0) to garentee no div/zero later
-
-            // Map dB (-60 to 0) to screen height (0 to 1)
-            let normalized_height = ((bar_height_db - floor_db) / db_range).clamp(0.0, 1.0);
-            let bar_height_px = normalized_height * rect.height();
-
-            // Calculate bar color (gradient from low to high)
-            let mut bar_color = lerp_color(low, high, normalized_height);
-
-            // --- INSPECTOR HIGHLIGHT ---
-            // if this is the hovered bar, make it brighter!!
-            if Some(i) == hovered_bar_index {
-                // Mix with white to brighten (40% white blend)
-                bar_color = lerp_color(bar_color, egui::Color32::WHITE, 0.5);
-            }
-
-            let bar_rect;
-            let mesh_base_color;
-            let mesh_tip_color;
-
-            if config.inverted_spectrum {
-                // Grow from Top
-                bar_rect = egui::Rect::from_min_max(
-                    egui::pos2(x, rect.top()),
-                    egui::pos2(x + bar_width, rect.top() + bar_height_px),
-                );
-                // Gradient: Top is base (low), Bottom is tip (high)
-                mesh_base_color = low;
-                mesh_tip_color = bar_color;
-            } else {
-                // Grow from Bottom
-                bar_rect = egui::Rect::from_min_max(
-                    egui::pos2(x, rect.bottom() - bar_height_px),
-                    egui::pos2(x + bar_width, rect.bottom()),
-                );
-                // Gradient: Bottom is base (low), Top is tip (high)
-                mesh_base_color = low;
-                mesh_tip_color = bar_color;
-            }
-
-            use egui::epaint::Vertex;
-            let mut mesh = egui::Mesh::default();
-
-
-
-            // MESH GRADIENT
-            // Define the 4 corners of the bar
-            // Bootom vertices uses the 'low' color
-            // Top vertices uses the 'high' color
-            // Connnect vertices to form two triangles (0-1-2 and 0-2-3)
-            // Add it to the painter
-            if config.inverted_spectrum {
-                mesh.vertices.push(Vertex {pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_base_color,});
-                mesh.vertices.push(Vertex {pos: bar_rect.right_top(),uv: egui::Pos2::ZERO, color: mesh_base_color,});
-                mesh.vertices.push(Vertex {pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip_color,});
-                mesh.vertices.push(Vertex {pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip_color,});
-            } else {
-                mesh.vertices.push(Vertex {pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_base_color});
-                mesh.vertices.push(Vertex {pos: bar_rect.right_bottom(),uv: egui::Pos2::ZERO, color: mesh_base_color,});
-                mesh.vertices.push(Vertex {pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: mesh_tip_color,});
-                mesh.vertices.push(Vertex {pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_tip_color,});
-            }
-
-            mesh.add_triangle(0, 1, 2);
-            mesh.add_triangle(0, 2, 3);
-            painter.add(egui::Shape::mesh(mesh));
-
-            // Draw peak indicator if enabled
-            if config.show_peaks && i < viz_data.peaks.len() {
-                let peak_height_db = viz_data.peaks[i];
-                let peak_normalized = ((peak_height_db - floor_db) / db_range).clamp(0.0, 1.0);
-                
-                let peak_rect = if config.inverted_spectrum {
-                    let peak_y = rect.top() + (peak_normalized * rect.height());
-                    egui::Rect::from_min_max(
-                        egui::pos2(x, peak_y),
-                        egui::pos2(x + bar_width, peak_y + 2.0),
-                    )
-                } else {
-                    let peak_y = rect.bottom() - (peak_normalized * rect.height());
-                    egui::Rect::from_min_max(
-                        egui::pos2(x, peak_y - 2.0),
-                        egui::pos2(x + bar_width, peak_y),
-                    )
-                };
-
-                painter.rect_filled(peak_rect, 0.0, peak);
-            }
-        }
-
-        // --- DRAW INSPECTOR OVERLAY ---
+        
+        // 7. Draw Overlays
         if let Some(index) = hovered_bar_index {
-            // 1. Draw Vertical Crosshair
-            let bar_center_x = rect.left() + (index as f32 * bar_slot_width) + (bar_slot_width / 2.0);
-
-            painter.line_segment(
-                [
-                    egui::pos2(bar_center_x, rect.top()),
-                    egui::pos2(bar_center_x, rect.bottom())
-                ],
-                egui::Stroke::new(1.0, egui::Color32::WHITE.linear_multiply(0.5))
-            );
-
-            // 2. Prepare Label Data
-            let amp_db = viz_data.bars[index];
-            // Ise the centralized helper from FFTProcessor
-            let freq_hz = FFTProcessor::calculate_bar_frequency(
-                index,
-                num_bars,
-                perf.fft_info.sample_rate,
-                perf.fft_info.fft_size
-            );
-           
-            let freq_text = if freq_hz >= 1000.0 {
-                format!("{:.1} kHz", freq_hz / 1000.0)
-            } else {
-                format!("{:.0} Hz", freq_hz)
-            };
-
-            let label_text = format!("{} | {:+.1} dB", freq_text, amp_db);
-
-            // 3. Draw Floating ToolTip
-            let font_id = egui::FontId::proportional(14.0);
-            let galley = painter.layout_no_wrap(
-                label_text.clone(),
-                font_id,
-                egui::Color32::WHITE
-            );
-
-            let label_padding = 6.0;
-            let label_w = galley.size().x + (label_padding * 2.0);
-            let label_h = galley.size().y + (label_padding * 2.0);
-
-            // Smart positioning: Flig to left if near right edge
-            let mut label_pos = hover_pos + egui::vec2(15.0, 0.0); // Default, right of cursor
-            if label_pos.x + label_w > rect.right() {
-                label_pos.x = hover_pos.x - label_w - 15.0; // Flip to left side
-            }
-            // Clamp Y to be inside view
-            label_pos.y = label_pos.y.clamp(rect.top(), rect.bottom() - label_h);
-
-            let label_rect = egui::Rect::from_min_size(label_pos, egui::vec2(label_w, label_h));
-
-            // Background box
-            painter.rect_filled(
-                label_rect,
-                4.0,
-                egui::Color32::from_black_alpha((config.inspector_opacity * 255.0) as u8)
-            );
-
-            // Border
-            painter.rect_stroke(
-                label_rect,
-                4.0,
-                egui::Stroke::new(1.0, egui::Color32::WHITE.linear_multiply(config.inspector_opacity))
-            );
-
-            // Text
-            painter.galley(
-                label_rect.min + egui::vec2(label_padding, label_padding),
-                galley,
-                egui::Color32::WHITE
-            );
+            self.draw_inspector_overlay(&painter, &rect, config, viz_data, perf, index, bar_slot_width);
         }
 
-        // Draw performance stats if enabled
         if config.show_stats {
             let perf_clone = perf.clone();
-            drop(state);  // Release lock before rendering text
+            drop(state); // Release lock before rendering stats
             self.render_stats(ui, &rect, &perf_clone);
         }
     }
 
+    // ========== DRAWING HELPERS ==========
+
+    /// Draw solid gradient bars
+    fn draw_solid_bars(
+        &self, 
+        painter: &egui::Painter, 
+        rect: &egui::Rect, 
+        config: &crate::shared_state::AppConfig, 
+        data: &crate::shared_state::VisualizationData,
+        bar_width: f32,
+        slot_width: f32,
+        hovered_index: Option<usize>,
+    ) {
+        let (low_c, high_c, peak_c) = config.get_colors();
+        let low = to_egui_color(low_c).linear_multiply(config.bar_opacity);
+        let high = to_egui_color(high_c).linear_multiply(config.bar_opacity);
+        let peak = to_egui_color(peak_c).linear_multiply(config.bar_opacity);
+
+        use egui::epaint::Vertex;
+
+        for (i, &db) in data.bars.iter().enumerate() {
+            let x = rect.left() + (i as f32 * slot_width);
+            let bar_height = self.db_to_px(db, config, rect.height());
+            // Safe clamp for gradient
+            let norm_height = (bar_height / rect.height()).clamp(0.0, 1.0);
+
+            // Gradient Base Color
+            let mut bar_color = lerp_color(low, high, norm_height);
+            if Some(i) == hovered_index {
+                bar_color = lerp_color(bar_color, egui::Color32::WHITE, 0.5);
+            }
+
+            let bar_rect;
+            let mesh_base;
+            let mesh_tip;
+
+            if config.inverted_spectrum {
+                bar_rect = egui::Rect::from_min_max(
+                    egui::pos2(x, rect.top()),
+                    egui::pos2(x + bar_width, rect.top() + bar_height ),
+                );
+                mesh_base = low;
+                mesh_tip = bar_color;
+            } else {
+                bar_rect = egui::Rect::from_min_max(
+                    egui::pos2(x, rect.bottom() - bar_height),
+                    egui::pos2(x + bar_width, rect.bottom()),
+                );
+                mesh_base = low;
+                mesh_tip = bar_color;
+            }
+
+            // Draw Mesh
+            let mut mesh = egui::Mesh::default();
+            if config.inverted_spectrum {
+                mesh.vertices.push(Vertex {pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_base});
+                mesh.vertices.push(Vertex {pos: bar_rect.right_top(),uv: egui::Pos2::ZERO, color: mesh_base});
+                mesh.vertices.push(Vertex {pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip});
+                mesh.vertices.push(Vertex {pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip});
+            } else {
+                mesh.vertices.push(Vertex {pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_base});
+                mesh.vertices.push(Vertex {pos: bar_rect.right_bottom(),uv: egui::Pos2::ZERO, color: mesh_base});
+                mesh.vertices.push(Vertex {pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: mesh_tip});
+                mesh.vertices.push(Vertex {pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_tip});
+            }
+            mesh.add_triangle(0, 1, 2);
+            mesh.add_triangle(0, 2, 3);
+            painter.add(egui::Shape::mesh(mesh));
+
+            // Peaks
+            if config.show_peaks && i < data.peaks.len() {
+                let peak_h = self.db_to_px(data.peaks[i], config, rect.height());
+                
+                let peak_rect = if config.inverted_spectrum {
+                    let y = rect.top() + peak_h;
+                    egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(bar_width, 2.0))
+                } else {
+                    let y = rect.bottom() - peak_h;
+                    egui::Rect::from_min_size(egui::pos2(x, y - 2.0), egui::vec2(bar_width, 2.0))
+                };
+                painter.rect_filled(peak_rect, 0.0, peak);
+            }
+        }
+    }
+    
+    ///  Draw segmented bars helper function
+    fn draw_segmented_bars(
+        &self, 
+        painter: &egui::Painter, 
+        rect: &egui::Rect,
+        config: &crate::shared_state::AppConfig, 
+        data: &crate::shared_state::VisualizationData,
+        bar_width: f32,
+        slot_width: f32,
+        hovered_index: Option<usize>,
+    ) {
+        let (low_c, high_c, peak_c) = config.get_colors();
+        let low = to_egui_color(low_c).linear_multiply(config.bar_opacity);
+        let high = to_egui_color(high_c).linear_multiply(config.bar_opacity);
+        let peak = to_egui_color(peak_c).linear_multiply(config.bar_opacity);
+
+        let seg_h = config.segment_height_px;
+        let total_seg_size = seg_h + config.segment_gap_px;
+
+        for (i, &db) in data.bars.iter().enumerate() {
+            let x = rect.left() + (i as f32 * slot_width);
+
+            // 1. Calculate active segments
+            let height_px = self.db_to_px(db, config, rect.height());
+            let active_segments = (height_px / total_seg_size).floor() as i32;
+
+            // 2. Calculate peak position
+            let mut peak_seg_idx = -1;
+            if config.show_peaks && i < data.peaks.len() {
+                let peak_px = self.db_to_px(data.peaks[i], config, rect.height());
+                peak_seg_idx = (peak_px / total_seg_size).floor() as i32;
+            }
+
+            // 3. Determine how high to draw loop
+            let limit = if config.fill_peaks {
+                peak_seg_idx.max(active_segments)
+            } else {
+                active_segments
+            };
+
+            for s in 0..limit {
+                let offset = s as f32 * total_seg_size;
+                // Safety, don't draw outside bounds
+                if offset + seg_h > rect.height() {break; }
+
+                // Color logic: Gradient if signal, solid peak color if extension
+                let color = if s < active_segments {
+                    let norm_pos = (offset + (seg_h / 2.0)) / rect.height();
+                    let mut c = lerp_color(low, high, norm_pos);
+                    if Some(i) == hovered_index { c = lerp_color(c, egui::Color32::WHITE, 0.5); }
+                    c
+                } else {
+                    // in "extension" zone
+                    if !config.fill_peaks { continue; }
+                    peak
+                };
+
+                let seg_rect = if config.inverted_spectrum {
+                    egui::Rect::from_min_size(egui::pos2(x, rect.top() + offset),egui::vec2( bar_width,seg_h))
+                } else {
+                    egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - offset - seg_h), egui::vec2(bar_width, seg_h))
+                };
+
+                painter.rect_filled(seg_rect, 1.0, color);
+            }
+
+            // 4. Floating Peak (if not filling)
+            if config.show_peaks && !config.fill_peaks && peak_seg_idx >= 0 {
+                // Ensure floating peak doesn't overlap active segment
+                if peak_seg_idx >= active_segments {
+                    let offset = peak_seg_idx as f32 * total_seg_size;
+                    let seg_rect = if config.inverted_spectrum {
+                        egui::Rect::from_min_size(egui::pos2(x, rect.top() + offset), egui::vec2(bar_width, seg_h))
+                    } else {
+                        egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - offset - seg_h), egui::vec2(bar_width, seg_h))
+                    };
+                    painter.rect_filled(seg_rect, 1.0, peak);
+                }
+            }
+        }
+    }
 
 
+    fn draw_line_spectrum(
+        &self, 
+        painter: &egui::Painter, 
+        rect: &egui::Rect, 
+        config: &crate::shared_state::AppConfig, 
+        data: &crate::shared_state::VisualizationData,
+        hovered_index: Option<usize>,
+    ) {
+        if data.bars.is_empty() { return;}
+
+        // Pre-calculate points
+        let points: Vec<egui::Pos2> = data.bars.iter().enumerate().map(|(i, &db)| {
+            let x = rect.left() + (i as f32 / data.bars.len() as f32) * rect.width();
+            let height = self.db_to_px(db, config, rect.height());
+        
+            let y = if config.inverted_spectrum {
+                rect.top() + height
+            } else {
+                rect.bottom() - height
+            };
+
+            egui::pos2(x, y)
+        }).collect();
+            
+        // Draw Glow (thick transparent line)
+        let (_, high, _) = config.get_colors();
+        let glow_c = to_egui_color(high).linear_multiply(0.3);
+        painter.add(egui::Shape::line(points.clone(), egui::Stroke::new(2.0, glow_c)));
+
+        // Draw Core (thin bright line)
+        let core_c = to_egui_color(high);
+        painter.add(egui::Shape::line(points.clone(), egui::Stroke::new(2.0, core_c)));
+
+        // Draw hover Indicator
+        if let Some(idx) = hovered_index {
+            if let Some(point) = points.get(idx){
+                // Bright white dot with colored glow
+                painter.circle_filled(*point, 4.0, egui::Color32::WHITE);
+                painter.circle_stroke(*point, 5.0, egui::Stroke::new(1.0, core_c));
+            }
+        }
+    }
+     
+    fn draw_oscilloscope(
+        &self, 
+        painter: &egui::Painter, 
+        rect: &egui::Rect,
+        config: &crate::shared_state::AppConfig, 
+        data: &crate::shared_state::VisualizationData,
+    ) {
+        if data.waveform.is_empty() { return; }
+    
+        let center_y = rect.center().y;
+        // Scale: Audio is +/- 1.0, we map that to +/- half height
+        // Sensitivity scales the amplitude
+        let scale = (rect.height() / 2.0 ) * config.sensitivity;
+
+        // Downsampling for performance if buffer is huge
+        // Just drawing every Nth sample or average could work, but simple stride is fast
+        let step_x = rect.width() / (data.waveform.len() as f32 - 1.0);
+
+        let points: Vec<egui::Pos2> = data.waveform.iter().enumerate().map(|(i, &sample)| {
+            let x = rect.left() + (i as f32 * step_x);
+            let y = center_y - (sample.clamp(-1.0, 1.0) * scale);
+            egui::pos2(x, y)
+        }).collect();
+        
+        let (_, high, _) = config.get_colors();
+        let color = to_egui_color(high);
+        painter.add(egui::Shape::line(points, egui::Stroke::new(1.5, color)));
+    }
+    
+    // === OVERLAYS ===
+    fn draw_inspector_overlay(
+        &self, 
+        painter: &egui::Painter, 
+        rect: &egui::Rect, 
+        config: &crate::shared_state::AppConfig, 
+        data: &crate::shared_state::VisualizationData,
+        perf: &crate::shared_state::PerformanceStats,
+        index: usize,
+        slot_width: f32,
+    ) {
+
+        // Crosshair
+        let center_x = rect.left() + (index as f32 * slot_width) + (slot_width / 2.0);
+        painter.line_segment(
+            [egui::pos2(center_x, rect.top()), egui::pos2(center_x, rect.bottom())],
+            egui::Stroke::new(1.0, egui::Color32::WHITE.linear_multiply(0.5))
+        );
+
+        // Label Calculation
+        let amp_db = data.bars[index];
+        let freq_hz = FFTProcessor::calculate_bar_frequency(
+            index, 
+            data.bars.len(),
+            perf.fft_info.sample_rate,
+            perf.fft_info.fft_size
+        );
+
+        let freq_text = if freq_hz >= 1000.0 {
+            format!("{:.1} kHz", freq_hz / 1000.0)
+        } else {
+            format!("{:.0} Hz", freq_hz)
+        };
+        let label = format!("{} | {:+.1} dB", freq_text, amp_db);
+
+        // ToolTip
+        let font_id = egui::FontId::proportional(14.0);
+        let galley = painter.layout_no_wrap(label,  font_id, egui::Color32::WHITE);
+        let padding = 6.0;
+        let w =  galley.size().x + padding * 2.0;
+        let h = galley.size().y + padding * 2.0;
+
+        let mut pos = if let Some(mouse) = painter.ctx().input(|i| i.pointer.hover_pos()) {
+            mouse + egui::vec2(15.0, 0.0)
+        } else {
+            rect.center()
+        };
+
+        // Screen bounds check
+        if pos.x + w > rect.right() { pos.x -= w + 30.0; }
+        pos.y = pos.y.clamp(rect.top(), rect.bottom() - h);
+
+        let label_rect = egui::Rect::from_min_size(pos, egui::vec2(w, h));
+        painter.rect_filled(label_rect, 4.0,
+             egui::Color32::from_black_alpha((config.inspector_opacity * 255.0) as u8));
+        painter.rect_stroke(label_rect, 4.0, 
+            egui::Stroke::new(1.0, egui::Color32::WHITE.linear_multiply(config.inspector_opacity)));
+        painter.galley(label_rect.min + egui::vec2(padding, padding), galley, egui::Color32::WHITE);
+    }
+    
     /// Render performance statitstics overlay
     fn render_stats(&self, ui: &mut egui::Ui, rect: &egui::Rect, perf: &crate::shared_state::PerformanceStats){
         let state = match self.shared_state.lock() {
@@ -572,24 +712,38 @@ impl SpectrumApp {
                     ui.heading("Visual Configuration");
                     ui.add_space(5.0);
                     
-                    // Use a Group for a "Card" look
                     ui.group(|ui| {
                         egui::Grid::new("visual_grid")
                             .num_columns(2)
                             .spacing(grid_spacing)
-                            .striped(true) // Subtle alternating row colors (very spreadsheet/windows like)
+                            .striped(true)
                             .show(ui, |ui| {
                                 
-                                ui.label("Bar Count");
-                                ui.add(egui::Slider::new(&mut state.config.num_bars, 10..=512)
-                                    .step_by(1.0)
-                                    .drag_value_speed(1.0)
-                                    .smart_aim(false));
+                                // Visual Mode Selector
+                                ui.label("Mode");
+                                egui::ComboBox::from_id_salt("viz_mode")
+                                    .selected_text(format!("{:?}", state.config.visual_mode))
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut state.config.visual_mode, VisualMode::SolidBars, "Solid Bars");
+                                        ui.selectable_value(&mut state.config.visual_mode, VisualMode::SegmentedBars, "Segmented (LED)");
+                                        ui.selectable_value(&mut state.config.visual_mode, VisualMode::LineSpectrum, "Line Spectrum");
+                                        ui.selectable_value(&mut state.config.visual_mode, VisualMode::Oscilloscope, "Oscilloscope");
+                                    });
                                 ui.end_row();
 
-                                ui.label("Bar Gap");
-                                ui.add(egui::Slider::new(&mut state.config.bar_gap_px, 0..=10).suffix(" px"));
-                                ui.end_row();
+                                // Controls specific to Spectrum Modes
+                                if state.config.visual_mode != VisualMode::Oscilloscope {
+                                    ui.label("Bar Count");
+                                    ui.add(egui::Slider::new(&mut state.config.num_bars, 10..=512)
+                                        .step_by(1.0)
+                                        .drag_value_speed(1.0)
+                                        .smart_aim(false));
+                                    ui.end_row();
+
+                                    ui.label("Bar Gap");
+                                    ui.add(egui::Slider::new(&mut state.config.bar_gap_px, 0..=10).suffix(" px"));
+                                    ui.end_row();
+                                }
 
                                 ui.label("Bar Opacity");
                                 ui.add(egui::Slider::new(&mut state.config.bar_opacity, 0.0..=1.0));
@@ -599,9 +753,28 @@ impl SpectrumApp {
                                 ui.add(egui::Slider::new(&mut state.config.background_opacity, 0.0..=1.0));
                                 ui.end_row();
 
-                                ui.label("Peak Indicators");
-                                ui.checkbox(&mut state.config.show_peaks, "Enabled");
-                                ui.end_row();
+                                // Segmented Mode Options
+                                if state.config.visual_mode == VisualMode::SegmentedBars {
+                                    ui.label("Segment Height");
+                                    ui.add(egui::Slider::new(&mut state.config.segment_height_px, 1.0..=20.0).suffix(" px"));
+                                    ui.end_row();
+
+                                    ui.label("Segment Gap");
+                                    ui.add(egui::Slider::new(&mut state.config.segment_gap_px, 0.0..=10.0).suffix(" px"));
+                                    ui.end_row();
+                                }
+
+                                // Peaks (Disable for O-scope)
+                                if state.config.visual_mode != VisualMode::Oscilloscope {
+                                    ui.label("Peak Indicators");
+                                    ui.horizontal(|ui| {
+                                        ui.checkbox(&mut state.config.show_peaks, "Show");
+                                        if state.config.show_peaks && state.config.visual_mode == VisualMode::SegmentedBars {
+                                            ui.checkbox(&mut state.config.fill_peaks, "Fill to Peak");
+                                        }
+                                    });
+                                    ui.end_row();
+                                }
                             });
                     });
 
@@ -969,6 +1142,15 @@ impl SpectrumApp {
             }
         });
     }  
+
+    // == Helper Functions ==
+    fn db_to_px(&self, db: f32, config: &crate::shared_state::AppConfig, max_height: f32) -> f32 {
+        let floor = config.noise_floor_db;
+        let range = (0.0 - floor).max(1.0);
+        let normalized = ((db - floor) / range).clamp(0.0, 1.0);
+        normalized * max_height
+    }
+
 }
 
 

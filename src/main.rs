@@ -23,6 +23,7 @@ use directories::ProjectDirs;
 
 use crate::audio_device::AudioDeviceEnumerator;
 use crate::fft_processor::{FFTProcessor, FFTConfig};
+use crate::shared_state::{SILENCE_DB, VisualMode};
 use shared_state::SharedState;
 use crate::gui::SpectrumApp;
 use crate::audio_capture::{AudioCaptureManager, AudioPacket};
@@ -290,107 +291,123 @@ fn start_fft_processing(
                     // Convert to mono (FFT expects single channel
                     let mono = packet.to_mono();
                     
-                    let process_start = Instant::now();
-                    
-                    // Process through FFT
-                    let (bars, peaks) = processor.process(&mono);
-                    let process_time = process_start.elapsed();
+                    let mode  = { shared_state.lock().unwrap().config.visual_mode };
 
-                    // Track min/max/total
-                    total_process_time += process_time;
-                    min_process_time = min_process_time.min(process_time);
-                    max_process_time = max_process_time.max(process_time);
-
-                   // Update shared state
-                   let pending_config_update = {
-                        let mut state = shared_state.lock().unwrap();
-                        // Update  visualization  data
-                        state.visualization.bars = bars;
-                        state.visualization.peaks = peaks;
-                        state.visualization.timestamp = Instant::now();
-
-                        // Update performance stats
-                        state.performance.frame_count = frame_count;
-                        state.performance.fft_ave_time = total_process_time / frame_count as u32;
-                        state.performance.fft_min_time = min_process_time;
-                        state.performance.fft_max_time = max_process_time;
-                        state.performance.fft_info = fft_config.info();
-
-                        
-
-                        // Check if any config parameters changed
-                        // 1. Check for changes that require a rebuild
-                        let needs_update = state.config.num_bars != state.visualization.bars.len();
-
-                        let config_differs = |current: &FFTConfig| -> bool {
-                            state.config.sensitivity != current.sensitivity ||
-                            state.config.attack_time_ms != current.attack_time_ms ||
-                            state.config.release_time_ms != current.release_time_ms ||
-                            state.config.peak_hold_time_ms != current.peak_hold_time_ms ||
-                            state.config.peak_release_time_ms != current.peak_release_time_ms ||
-                            state.config.use_peak_aggregation != current.use_peak_aggregation
-                        };
-                                              
-                        
-                        if needs_update {
-                            //Major change - needs FFT rebuild
-                            tracing::debug!(
-                                "[FFT] Config change requires rebuild (bar count: {} → {})",
-                                state.visualization.bars.len(),
-                                state.config.num_bars
-                            );
-                         
-                            Some(FFTConfig {
-                                fft_size: FIXED_FFT_SIZE,
-                                sample_rate: fft_config.get_sample_rate(),
-                                num_bars: state.config.num_bars,
-                                sensitivity: state.config.sensitivity,
-                                attack_time_ms: state.config.attack_time_ms,
-                                release_time_ms: state.config.release_time_ms,
-                                peak_hold_time_ms: state.config.peak_hold_time_ms,
-                                peak_release_time_ms: state.config.peak_release_time_ms,
-                                use_peak_aggregation: state.config.use_peak_aggregation,
-                            })
-                        } else {
-                            // Check for minor config changes that don't require a rebuild
-
-                            let current = processor.get_config();
-
-                            if config_differs(&current) {
-                                // Log specific changes for debugging
-                                if state.config.use_peak_aggregation != current.use_peak_aggregation {
-                                    tracing::info!{
-                                        "[FFT] Aggregation mode changed: {} → {}",
-                                        if current.use_peak_aggregation { "Peak" } else { "Average" },
-                                        if state.config.use_peak_aggregation { "Peak" } else { "Average" }
-                                    };
-                                }
-                            
-
-                                Some(FFTConfig {
-                                    fft_size: FIXED_FFT_SIZE,
-                                    sample_rate: fft_config.get_sample_rate(),
-                                    num_bars: state.config.num_bars,
-                                    sensitivity: state.config.sensitivity,
-                                    attack_time_ms: state.config.attack_time_ms,
-                                    release_time_ms: state.config.release_time_ms,
-                                    peak_hold_time_ms: state.config.peak_hold_time_ms,
-                                    peak_release_time_ms: state.config.peak_release_time_ms,
-                                    use_peak_aggregation: state.config.use_peak_aggregation,
-                                })
-                            } else {
-                                None
-                            }
+                    match mode {
+                        VisualMode::Oscilloscope => {
+                            // === SCOPE MODE: BYPASS FFT ===
+                            // Just normalize/copy raw samples directly to visualization
+                            // We might want to decimate or window here if the packet is huge.
+                            let mut state = shared_state.lock().unwrap();
+                            state.visualization.waveform = mono;
+                            state.visualization.bars.fill(SILENCE_DB);
                         }
-                    };
-                    // Apply confiig update if needed
-                    if let Some(new_config) = pending_config_update {
-                        if new_config.num_bars != processor.get_config().num_bars {
-                            tracing::debug!("[FFT]♻️ Recreating processor for new bar count: {}", new_config.num_bars);
-                            *processor = FFTProcessor::new(new_config);
-                        } else {
-                            tracing::debug!("[FFT]🔧 Updating processor config");
-                            processor.update_config(new_config);
+                        _ => {
+                            // A. Start the timer!
+                            let process_start = Instant::now();
+
+                            // B. Heavy Math (FFT)
+                            let (bars, peaks) = processor.process(&mono);
+
+                            // C. Stop Timer
+                            let process_time = process_start.elapsed();
+
+                            // D. Track Performance Stats
+                            total_process_time += process_time;
+                            min_process_time = min_process_time.min(process_time);
+                            max_process_time = max_process_time.max(process_time);
+
+                            // E. Update shared state
+                            // Update shared state
+                            let pending_config_update = {
+                                let mut state = shared_state.lock().unwrap();
+                                // Update  visualization  data
+                                state.visualization.bars = bars;
+                                state.visualization.peaks = peaks;
+                                state.visualization.timestamp = Instant::now();
+
+                                // Update performance stats
+                                state.performance.frame_count = frame_count;
+                                state.performance.fft_ave_time = total_process_time / frame_count as u32;
+                                state.performance.fft_min_time = min_process_time;
+                                state.performance.fft_max_time = max_process_time;
+                                state.performance.fft_info = fft_config.info();
+
+                                // Check if any config parameters changed
+                                // 1. Check for changes that require a rebuild
+                                let needs_update = state.config.num_bars != state.visualization.bars.len();
+
+                                let config_differs = |current: &FFTConfig| -> bool {
+                                    state.config.sensitivity != current.sensitivity ||
+                                    state.config.attack_time_ms != current.attack_time_ms ||
+                                    state.config.release_time_ms != current.release_time_ms ||
+                                    state.config.peak_hold_time_ms != current.peak_hold_time_ms ||
+                                    state.config.peak_release_time_ms != current.peak_release_time_ms ||
+                                    state.config.use_peak_aggregation != current.use_peak_aggregation
+                                };
+                                                    
+                                
+                                if needs_update {
+                                    //Major change - needs FFT rebuild
+                                    tracing::debug!(
+                                        "[FFT] Config change requires rebuild (bar count: {} → {})",
+                                        state.visualization.bars.len(),
+                                        state.config.num_bars
+                                    );
+                                
+                                    Some(FFTConfig {
+                                        fft_size: FIXED_FFT_SIZE,
+                                        sample_rate: fft_config.get_sample_rate(),
+                                        num_bars: state.config.num_bars,
+                                        sensitivity: state.config.sensitivity,
+                                        attack_time_ms: state.config.attack_time_ms,
+                                        release_time_ms: state.config.release_time_ms,
+                                        peak_hold_time_ms: state.config.peak_hold_time_ms,
+                                        peak_release_time_ms: state.config.peak_release_time_ms,
+                                        use_peak_aggregation: state.config.use_peak_aggregation,
+                                    })
+                                } else {
+                                    // Check for minor config changes that don't require a rebuild
+
+                                    let current = processor.get_config();
+
+                                    if config_differs(&current) {
+                                        // Log specific changes for debugging
+                                        if state.config.use_peak_aggregation != current.use_peak_aggregation {
+                                            tracing::info!{
+                                                "[FFT] Aggregation mode changed: {} → {}",
+                                                if current.use_peak_aggregation { "Peak" } else { "Average" },
+                                                if state.config.use_peak_aggregation { "Peak" } else { "Average" }
+                                            };
+                                        }
+                                    
+
+                                        Some(FFTConfig {
+                                            fft_size: FIXED_FFT_SIZE,
+                                            sample_rate: fft_config.get_sample_rate(),
+                                            num_bars: state.config.num_bars,
+                                            sensitivity: state.config.sensitivity,
+                                            attack_time_ms: state.config.attack_time_ms,
+                                            release_time_ms: state.config.release_time_ms,
+                                            peak_hold_time_ms: state.config.peak_hold_time_ms,
+                                            peak_release_time_ms: state.config.peak_release_time_ms,
+                                            use_peak_aggregation: state.config.use_peak_aggregation,
+                                        })
+                                    } else {
+                                        None
+                                    }
+                                }
+                            };
+                            // Apply confiig update if needed
+                            if let Some(new_config) = pending_config_update {
+                                if new_config.num_bars != processor.get_config().num_bars {
+                                    tracing::debug!("[FFT]♻️ Recreating processor for new bar count: {}", new_config.num_bars);
+                                    *processor = FFTProcessor::new(new_config);
+                                } else {
+                                    tracing::debug!("[FFT]🔧 Updating processor config");
+                                    processor.update_config(new_config);
+                                }
+                            }
                         }
                     }
                 }

@@ -71,6 +71,10 @@ pub struct VisualizationData {
     /// Peak indicator heights in dB
     pub peaks: Vec<f32>,
 
+    /// Raw Audio wavefor for oscilloscope mode 
+    // We keep a small buffer for drawing
+    pub waveform: Vec<f32>,
+
     /// When this data was last updated
     pub timestamp: Instant,
 }
@@ -80,6 +84,7 @@ impl VisualizationData {
         Self {
             bars: vec![SILENCE_DB; num_bars],
             peaks: vec![SILENCE_DB; num_bars],
+            waveform: vec![0.0; 2048],
             timestamp: Instant::now(),
         }
     }
@@ -107,6 +112,16 @@ pub struct PerformanceStats {
     pub fft_info: FFTInfo,
 }
 
+/// Visualization Mode
+/// 
+/// Set by user, GUI render loop uses this to choose rendering method
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
+pub enum VisualMode {
+    SolidBars,
+    SegmentedBars,
+    LineSpectrum,
+    Oscilloscope,
+}
 
 /// Application configuration (users settings)
 /// 
@@ -114,6 +129,10 @@ pub struct PerformanceStats {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     // === Visual Settings ===
+
+    /// Visualization Mode
+    pub visual_mode: VisualMode,
+
     /// Number of frequency bars to display (16-512)
     pub num_bars: usize,
 
@@ -137,6 +156,15 @@ pub struct AppConfig {
 
     /// Invert the spectrum (bars grow from top to bottom)
     pub inverted_spectrum: bool,
+
+    /// Segment height (for segmented mode)
+    pub segment_height_px: f32,    
+
+    /// Gap betwixt bar segments (for segmented mode)
+    pub segment_gap_px: f32,
+
+    /// Fill Peaks true (solid) or false (floating peak)
+    pub fill_peaks: bool,
 
     // === Inspector Settings ===
     /// Enable the mouse-over inspector tool
@@ -191,6 +219,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
+            visual_mode: VisualMode::SolidBars,
             num_bars: 150,
             bar_gap_px: 2,
             bar_opacity: 1.0,
@@ -199,6 +228,9 @@ impl Default for AppConfig {
             show_stats: false,
             stats_opacity: 0.3,
             inverted_spectrum: false,
+            segment_height_px: 4.0,
+            segment_gap_px: 2.0,
+            fill_peaks: false,
 
             // Inspector Settings
             inspector_enabled: true,
