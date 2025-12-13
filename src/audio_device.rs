@@ -6,8 +6,6 @@ use cpal::traits::{DeviceTrait, HostTrait};
 use cpal::Device;
 use std::fmt;
 
-use tracing::{info, error};
-
 /// Represents a single audio output device with metadata
 #[derive(Clone, Debug)]
 pub struct AudioDeviceInfo {
@@ -18,6 +16,7 @@ pub struct AudioDeviceInfo {
     pub name: String,
 
     ///  Sample Rate(s) supported by this device (Hz)
+    #[allow(dead_code)]
     pub sample_rates: Vec<u32>,
 
     /// Default/recommended sample rate for this device (Hz)

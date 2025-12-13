@@ -9,8 +9,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tracing::{info, error};
-
 use crate::audio_device::{AudioDeviceEnumerator, AudioDeviceInfo, AudioDeviceError};
 
 /// Audio packet containing raw samples and metadata
@@ -19,6 +17,7 @@ pub struct AudioPacket {
     pub samples: Vec<f32>,
     pub sample_rate: u32,
     pub channels: u16,
+    #[allow(dead_code)]
     pub timestamp: Instant,
 }
 
@@ -41,6 +40,7 @@ impl AudioPacket {
     }
 
     /// Get the duration of audio in this packet (in seconds)
+    #[allow(dead_code)]
     pub fn duration_secs(&self) -> f32 {
         let num_samples = self.samples.len() / self.channels as usize;
         num_samples as f32 / self.sample_rate as f32
@@ -323,6 +323,7 @@ impl AudioCaptureManager {
     }
 
     /// get the current device info
+    #[allow(dead_code)]
     pub fn device_info(&self) -> AudioDeviceInfo {
         self.device_info.lock().unwrap().clone()
     }

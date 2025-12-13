@@ -1,9 +1,6 @@
 use eframe:: egui;
-use egui::Galley;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-
-use tracing::{info, error};
 
 use crate::fft_config::FIXED_FFT_SIZE;
 use crate::shared_state::{Color32 as StateColor32, SharedState, VisualMode};
@@ -298,8 +295,7 @@ impl SpectrumApp {
 
         // 4. Calculate Common Layout Helpers
         // Ensure we don't eveide by zero even if bars are missing
-        let safe_num_bars = num_bars.max(1);
-        let bar_slot_width = rect.width() / num_bars as f32;
+        let bar_slot_width = rect.width() / num_bars.max(1) as f32;
         let bar_width = (bar_slot_width - config.bar_gap_px as f32).max(1.0);
 
         // 5. Handle mouse interactions (for frequency modes)
@@ -932,10 +928,6 @@ impl SpectrumApp {
                                         if ui.selectable_label(current_scheme == preset_name, &preset_name).clicked() {
                                             state.config.apply_preset(&preset_name);
                                         }
-                                    }
-                                    ui.separator();
-                                    if ui.selectable_label(current_scheme == "Rainbow", "Rainbow").clicked() {
-                                        state.config.color_scheme = crate::shared_state::ColorScheme::Rainbow;
                                     }
                                 });
                         });

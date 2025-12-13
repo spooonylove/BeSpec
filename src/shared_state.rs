@@ -5,8 +5,6 @@ use std::fs;
 use std::path::PathBuf;
 use directories::ProjectDirs;
 
-use tracing::{info, error};
-
 pub const SILENCE_DB: f32 = -140.0;
 
 /// Main Shared state container -- wrapped in Arc<Mutx<>> for thread safety
@@ -14,6 +12,16 @@ pub const SILENCE_DB: f32 = -140.0;
 ///  This struct is shared between:
 ///  - FFT thread (writes visualization data, reads config)
 ///  - GUI thread (reads visualization data, writes config)
+
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
+pub enum VisualMode {
+    SolidBars,
+    SegmentedBars,
+    LineSpectrum,
+    Oscilloscope,
+}
+
+// ==== Main Shared State ====
 pub struct SharedState{
     /// Current visualization datda (bars, peaks)
     pub visualization: VisualizationData,
@@ -27,7 +35,6 @@ pub struct SharedState{
     // === Audio Device State === 
     pub audio_devices: Vec<String>,
 
-
     /// Flag: GUI requested a device switch (handled by main thread)
     pub device_changed: bool,
 
@@ -37,12 +44,8 @@ pub struct SharedState{
 }
 
 impl SharedState {
-
-    
-    /// Create new shated state with default values
     pub fn new() -> Self {
         let config = AppConfig::load();
-        
         Self {
             visualization: VisualizationData::new(config.num_bars),
             performance: PerformanceStats::default(),
@@ -50,19 +53,11 @@ impl SharedState {
             audio_devices: Vec::new(),
             device_changed: false,
             refresh_devices_requested: false,
-        
         }
     }
-
 }
+// === Data Structures ====
 
-impl Default for SharedState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Current visualization data (updated by FFT thread)
 #[derive(Clone)]
 pub struct VisualizationData {
     /// Bar heights in dB ( typically -80 to +40 range)
@@ -93,39 +88,17 @@ impl VisualizationData {
 /// Performance statistics (updated by both threads, yo)
 #[derive(Clone, Default)]
 pub struct PerformanceStats {
-    /// Total audio frames processed
     pub frame_count: u64,
-
-    /// Average FFT processing time
     pub fft_ave_time: Duration,
-
-    /// Min FFT processing time
     pub fft_min_time: Duration,
-
-    /// Max FFT processing time
     pub fft_max_time: Duration,
-
-    /// Current GUI frame rate (updated by GUI)
     pub gui_fps: f32,
-
-    /// Ya know.. the stats.
     pub fft_info: FFTInfo,
 }
 
-/// Visualization Mode
-/// 
-/// Set by user, GUI render loop uses this to choose rendering method
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
-pub enum VisualMode {
-    SolidBars,
-    SegmentedBars,
-    LineSpectrum,
-    Oscilloscope,
-}
 
-/// Application configuration (users settings)
-/// 
-/// GUI writes these values, FFT thread reads them
+// ==== Configuration ====
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     // === Visual Settings ===
@@ -313,13 +286,6 @@ impl AppConfig {
         }
     }
     
-    
-    /// Check if this config requires rebuilding the FFT processor
-    pub fn needs_fft_rebuild(&self, other: &AppConfig) -> bool {
-        self.num_bars != other.num_bars
-    }
-
-
     /// Apply a color preset by name
     pub fn apply_preset(&mut self, preset_name: &str) {
         if let Some(preset) = ColorPreset::find(preset_name) {
@@ -337,10 +303,7 @@ impl AppConfig {
         match &self.color_scheme {
             ColorScheme::Preset { name, ..} => name.clone(),
             ColorScheme::Custom { .. } => "Custom".to_string(),
-            ColorScheme::Rainbow => "Rainbow".to_string(),
         }
- 
- 
     }
 
     /// Get the colors from current scheme (low, high, peak)
@@ -348,19 +311,10 @@ impl AppConfig {
         match &self.color_scheme {
             ColorScheme::Preset { low, high, peak, .. } => (*low, *high, *peak),
             ColorScheme::Custom { low, high, peak } => (*low, *high, *peak),
-            ColorScheme::Rainbow => {
-                // Rainboe doesnt used fixed colors, but returns default for UI display
-                (Color32::RED, Color32::BLUE, Color32::WHITE)
             }
-            
         }
-    }
-
-    /// Set Custom Colors (switches to Custom mode)
-    pub fn set_custom_colors(&mut self, low: Color32, high: Color32, peak: Color32) {
-        self.color_scheme = ColorScheme::Custom { low, high, peak };
-    }
 }
+
 
 /// Color scheme options for Visualization
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -379,9 +333,6 @@ pub enum ColorScheme {
         high: Color32,
         peak: Color32,
     },
-
-    /// Rainbow effect across frequenct spectrum
-    Rainbow,
 }
 
 /// Named color preset with name and colors
@@ -652,25 +603,12 @@ impl Color32 {
         Self {r, g, b, a: 255}
     }
 
-    pub const WHITE: Self = Self::from_rgb(255, 255, 255);
-    pub const BLACK: Self = Self::from_rgb(0, 0, 0);
-    pub const RED: Self = Self::from_rgb(255, 0, 0);
-
     #[allow(dead_code)]
-    pub const GREEN: Self = Self::from_rgb(0, 255, 0);
-    pub const BLUE: Self = Self::from_rgb(0, 0, 255);
-
-    /// Linear interpolation between two colors
-    pub fn lerp(self, other: Self, t: f32) -> Self {
-        let t = t.clamp(0.0, 1.0);
-        Self {
-            r: (self.r as f32 + (other.r as f32 - self.r as f32) * t) as u8,
-            g: (self.g as f32 + (other.g as f32 - self.g as f32) * t) as u8,
-            b: (self.b as f32 + (other.b as f32 - self.b as f32) * t) as u8,
-            a: (self.a as f32 + (other.a as f32 - self.a as f32) * t) as u8,
-            
-        }
-    }
+    pub const WHITE: Self = Self::from_rgb(255, 255, 255);
+    #[allow(dead_code)]
+    pub const BLACK: Self = Self::from_rgb(0, 0, 0);
+    #[allow(dead_code)]
+    pub const RED: Self = Self::from_rgb(255, 0, 0);
 
     /// Multiply color by opacity (for transparency)
     #[allow(dead_code)]
@@ -689,160 +627,103 @@ impl Color32 {
 mod tests {
     use super::*;
 
-    // === Tests for Complex Logic ===
+
+    // 1. Test Configuration Defaults
     #[test]
-    fn test_needs_fft_rebuild() {
-        let mut config1 = AppConfig::default();
-        let config2 =  AppConfig::default();
-
-        // Same config - no rebuild needed
-        assert!(!config1.needs_fft_rebuild(&config2));
-
-        // change bar count -- needs rebuild
-        config1.num_bars = 256;
-        assert!(config1.needs_fft_rebuild(&config2));
-
-        // Change sensitivity - NO rebuild needed 
-        config1.num_bars = 150;
-        config1.sensitivity = 5.0;
-        assert!(!config1.needs_fft_rebuild(&config2));
+    fn test_default_config() {
+        let config = AppConfig::default();
         
-        // Change attack time - No Rebuild Required!
-        config1.attack_time_ms = 20.0;
-        assert!(!config1.needs_fft_rebuild(&config2));
+        // Assert Critical Defaults are sensible
+        assert_eq!(config.num_bars, 150);
+        assert_eq!(config.visual_mode, VisualMode::SolidBars);
+        assert!(config.show_peaks);
+        assert_eq!(config.segment_height_px, 4.0); // verify new fields exist and have defaults
 
-    }
-
-    // === Test for invariants ===
-
-    #[test]
-    fn test_color_lerp_boundaries() {
-        let black = Color32::BLACK;
-        let white = Color32::WHITE;
-
-        // Test 0% (should be first color)
-        let result = black.lerp(white, 0.0);
-        assert_eq!(result, black);
-
-        // Test 100% (should be second color)
-        let result = black.lerp(white, 1.0);
-        assert_eq!(result, white);
-
-        // Testin clamping below 0
-        let result = black.lerp(white, -0.1);
-        assert_eq!(result, black);
-
-        // Test clamping above 1
-        let result = black.lerp(white, 1.1);
-        assert_eq!(result, white);
-    
-        // test midpoint (should be gray)
-        let gray  = black.lerp(white, 0.5);
-        assert_eq!(gray.r, 127);
-        assert_eq!(gray.g, 127);
-        assert_eq!(gray.b, 127);
-    }
-
-    // === Tests for State Transitions
-
-    #[test]
-    fn test_preset_to_custom_transition() {
-        let mut config = AppConfig::default();
-
-        // start with preset
-        assert_eq!(config.scheme_name(), "Classic Winamp");
-
-        //Switch to custom colors
-        config.set_custom_colors(
-            Color32::from_rgb(100, 0, 0),
-            Color32::from_rgb(200, 0, 0),
-            Color32::WHITE,
-        );
-
-        // Scheme mode should be in Custom
-        assert_eq!(config.scheme_name(), "Custom");
-
-        // Colors should match what we set
-        let (low, high, peak) = config.get_colors();
-        assert_eq!(low.r, 100);
-        assert_eq!(high.r, 200);
-        assert_eq!(peak, Color32::WHITE);
-    }
-
-    #[test]
-    fn test_custom_to_preset_transition() {
-        let mut config = AppConfig::default();
-
-        // start with custom
-        config. set_custom_colors(
-            Color32::BLACK,
-            Color32::WHITE,
-            Color32::RED,
-        );
-        assert_eq!(config.scheme_name(), "Custom");
-
-        // Switch to preset
-        config.apply_preset("Synthwave");
-        assert_eq!(config.scheme_name(), "Synthwave");
-
-        // Colors should match SynthWave Preset
-        let(low, high, peak) = config.get_colors();
-        assert_eq!(low, Color32::from_rgb(255, 0, 255));    // Magenta
-        assert_eq!(high, Color32::from_rgb(0, 255, 255));   // Cyan
-        assert_eq!(peak, Color32::from_rgb(255, 255, 0));   // Yellow
-    }
-
-    #[test]
-    fn test_rainbow_mode () {
-        let mut config = AppConfig::default();
-
-        // switch to  with Rainbow
-        config.color_scheme = ColorScheme::Rainbow;
-        assert_eq!(config.scheme_name(), "Rainbow");
-
-        //get_colors() should return default colors (rainbox does use fixed colors)
-        let (low, high, peak) = config.get_colors();
-        assert_eq!(low, Color32::RED);
-        assert_eq!(high, Color32::BLUE);
-        assert_eq!(peak, Color32::WHITE);
-    
-    }
-
-    // === Test for Data Integrity ===
-
-    #[test]
-    fn test_preset_data_integrity() {
-        // Verifyt a few key presets have correct colors
-        let classic = ColorPreset::find("Classic Winamp").unwrap();
-        assert_eq!(classic.low, Color32::from_rgb(50, 205, 50));     //LimeGreen
-        assert_eq!(classic.high, Color32::from_rgb(255, 255, 0));    // Yellow
-        assert_eq!(classic.peak, Color32::from_rgb(255, 0, 0));      // Red
-
-        let synthwave = ColorPreset::find("Synthwave").unwrap();
-        assert_eq!(synthwave.low, Color32::from_rgb(255, 0, 255));   //Magenta
-        assert_eq!(synthwave.high, Color32::from_rgb(0, 255, 255));  // Cyan
-        assert_eq!(synthwave.peak, Color32::from_rgb(255, 255, 0));  // Yellow
-    }
-
-    #[test]
-    fn test_all_presets_accessible() {
-        let presets = ColorPreset::all_presets();
-        
-        // Should have at least 25 presets
-        assert!(presets.len() >= 25);
-
-        // Each preset should be findable by name
-        for preset in &presets {
-            let found = ColorPreset::find(&preset.name);
-            assert!(found.is_some(), "Preset '{}' not findable", preset.name);
+        // Assert Default Color Scheme
+        match config.color_scheme {
+            ColorScheme::Preset { name, .. } => assert_eq!(name, "Classic Winamp"),
+            _ => panic!("Default should be Classic Winamp"),
         }
-
-        // No duplicate names
-        let names: Vec<String> = presets.iter().map(|p| p.name.clone()).collect();
-        let mut sorted_names = names.clone();
-        sorted_names.sort();
-        sorted_names.dedup();
-        assert_eq!(names.len(), sorted_names.len(), "Duplicate preset names found");
     }
+
+    // 2. Test Data Structure Initialization
+    #[test]
+    fn test_visualization_buffer_init() {
+        let viz = VisualizationData::new(100);
+        
+        assert_eq!(viz.bars.len(), 100);
+        assert_eq!(viz.peaks.len(), 100);
+        assert_eq!(viz.waveform.len(), 2048); // Fixed buffer size
+        
+        // Ensure initialized to silence
+        assert_eq!(viz.bars[0], SILENCE_DB);
+        assert_eq!(viz.peaks[0], SILENCE_DB);
+        assert_eq!(viz.waveform[0], 0.0);
+    }
+
+    // 3. Test Color Scheme Logic & Transitions
+    #[test]
+    fn test_scheme_transitions() {
+        let mut config = AppConfig::default();
+
+        // A. Starts as Preset
+        assert_eq!(config.scheme_name(), "Classic Winamp");
+        let (low1, _, _) = config.get_colors();
+
+        // B. Switch to a different Preset
+        config.apply_preset("Cyberpunk");
+        assert_eq!(config.scheme_name(), "Cyberpunk");
+        let (low2, _, _) = config.get_colors();
+        assert_ne!(low1, low2); // Colors should change
+
+        // C. Switch to Custom
+        config.color_scheme = ColorScheme::Custom { 
+            low: Color32::WHITE, 
+            high: Color32::BLACK, 
+            peak: Color32::RED 
+        };
+        assert_eq!(config.scheme_name(), "Custom");
+        
+        let (c_low, c_high, c_peak) = config.get_colors();
+        assert_eq!(c_low, Color32::WHITE);
+        assert_eq!(c_high, Color32::BLACK);
+        assert_eq!(c_peak, Color32::RED);
+
+        // D. Switch back to Preset
+        config.apply_preset("Classic Winamp");
+        assert_eq!(config.scheme_name(), "Classic Winamp");
+    }
+
+    // 4. Test Preset Integrity
+    #[test]
+    fn test_presets_exist() {
+        let names = ColorPreset::preset_names();
+        assert!(names.contains(&"Classic Winamp".to_string()));
+        assert!(names.contains(&"Synthwave".to_string()));
+        assert!(!names.contains(&"Non Existent Preset 12345".to_string()));
+
+        // Ensure find() works
+        let found = ColorPreset::find("Ocean Blue");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name, "Ocean Blue");
+    }
+
+    // 5. Test Color Math
+    #[test]
+    fn test_color_opacity() {
+        let white = Color32::WHITE; // 255, 255, 255, 255
+
+        // Half opacity
+        let semi = white.with_opacity(0.5);
+        assert_eq!(semi.a, 127); // 255 * 0.5 = 127.5 -> 127
+
+        // Clamp validation
+        let over = white.with_opacity(2.0);
+        assert_eq!(over.a, 255);
+
+        let under = white.with_opacity(-1.0);
+        assert_eq!(under.a, 0);
+    }
+    
 }
 
