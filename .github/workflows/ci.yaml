@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest  # Linux builds are fastest/cheapest for a quick check
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Install Linux Deps
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+
+    - name: Check
+      run: cargo check --verbose
+
+    - name: Test
+      run: cargo test --verbose
