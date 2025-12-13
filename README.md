@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Release Build](https://github.com/BeSpec-Dev/beanal/actions/workflows/release.yml/badge.svg)](https://github.com/BeSpec-Dev/beanal/actions/workflows/release.yml)
-[![CI](https://github.com/BeSpec-Dev/beanal/actions/workflows/ci.yml/badge.svg)](https://github.com/BeSpec-Dev/beanal/actions/workflows/ci.yml)
+[![CI](https://github.com/BeSpec-Dev/beanal/actions/workflows/ci.yaml/badge.svg)](https://github.com/BeSpec-Dev/beanal/actions/workflows/ci.yaml)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)]()
 
 A high-performance, cross-platform, real-time audio spectrum visualizer written in **Rust**.
