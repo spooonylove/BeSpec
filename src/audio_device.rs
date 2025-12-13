@@ -231,7 +231,7 @@ mod tests {
                 assert!(!devices.is_empty(), "Should find at least one audio device");
 
                 for device in &devices {
-                    assert!(
+                    assert!(   
                         !device.name.is_empty(),
                         "Device name should not be empty"
                     );
