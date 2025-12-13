@@ -487,6 +487,58 @@ mod tests {
         assert_eq!(peaks[0], 50.0);
     }
     
+    #[test]
+    fn test_frequency_mapping_boundaries() {
+        let mut config = FFTConfig::default();
+        config.num_bars = 100;
+        
+        // Check specific indices to ensure the linear/log split is happening where expected
+        let knee_freq = FFTProcessor::calculate_bar_frequency(
+            15, // Approx knee index for 15% linear proportion
+            100, 48000, 2048
+        );
+        
+        // Verify it's close to 500Hz
+        assert!(knee_freq > 400.0 && knee_freq < 600.0);
+    }
+
+    #[test]
+    fn test_hermite_interpolation() {
+        // Simple linear ramp: 0.0, 1.0, 2.0, 3.0
+        // At t=0.5 between 1.0 and 2.0, result should be 1.5
+        let result = FFTProcessor::interpolate_hermite(0.0, 1.0, 2.0, 3.0, 0.5);
+        assert!((result - 1.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_smoothing_release() {
+        let mut config = FFTConfig::default();
+        config.num_bars = 1;
+        config.release_time_ms = 100.0; // Release over 100ms
+        
+        let mut processor = FFTProcessor::new(config);
+        
+        // 1. Manually set the internal state to a "Loud" value (0.0 dB)
+        // This simulates that the previous frame was at max volume
+        processor.last_bar_heights[0] = 0.0;
+        
+        // 2. Apply smoothing with SILENCE input and 50ms elapsed
+        // 50ms is half of the 100ms release time
+        let raw_bars = vec![crate::shared_state::SILENCE_DB; 1]; 
+        let smoothed_bars = processor.apply_smoothing(&raw_bars, 50.0);
+        
+        // 3. Verify decay Math
+        // Start: 0.0 dB
+        // Target: -140.0 dB
+        // Factor: 50ms / 100ms = 0.5
+        // Expected: 0.0 + (-140.0 - 0.0) * 0.5 = -70.0 dB
+        
+        assert!(smoothed_bars[0] < -10.0, "Bar did not decay at all");
+        assert!(smoothed_bars[0] > -100.0, "Bar decayed too fast (instant release)");
+        
+        // Precise check
+        assert!((smoothed_bars[0] - -70.0).abs() < 0.1, "Decay math is incorrect, expected ~ -70.0");
+    }   
 }
 
 

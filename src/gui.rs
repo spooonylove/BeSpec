@@ -1204,4 +1204,37 @@ fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
     )
 }
 
+// =============== Tests ==================
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    use crate::shared_state::AppConfig;
+
+    #[test]
+    fn test_db_to_px_scaling() {
+        let app = SpectrumApp::new(Arc::new(Mutex::new(SharedState::new())));
+        let config = AppConfig { noise_floor_db: -100.0, ..Default::default() };
+        
+        // Test Floor
+        assert_eq!(app.db_to_px(-100.0, &config, 500.0), 0.0);
+        // Test Max
+        assert_eq!(app.db_to_px(0.0, &config, 500.0), 500.0);
+        // Test Middle (-50dB is half of -100dB range)
+        assert_eq!(app.db_to_px(-50.0, &config, 500.0), 250.0);
+    }
+
+
+    #[test]
+    fn test_lerp_color() {
+        let c1 = egui::Color32::from_rgb(0, 0, 0);       // Black
+        let c2 = egui::Color32::from_rgb(200, 100, 50); // Orange-ish
+        
+        let res = lerp_color(c1, c2, 0.5);
+        
+        assert_eq!(res.r(), 100);
+        assert_eq!(res.g(), 50);
+        assert_eq!(res.b(), 25);
+    }
+
+}
