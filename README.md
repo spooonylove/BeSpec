@@ -8,28 +8,44 @@ A high-performance, cross-platform, real-time audio spectrum visualizer written 
 
 **BeAnal** listens to your system audio loopback (what you hear from your speakers) and renders a customizable frequency spectrum overlay on your desktop. It is designed to be minimal, beautiful, and efficient.
 
-> **Note:** This is a modern rewrite of the original [C#/WPF implementation](https://github.com/BeSpec-Dev/beanal-legacy), leveraging Rust and `egui` for lower latency and cross-platform compatibility.
 
-![BeAnal Demo](docs/images/main_window_animation01.gif)
+![BeAnal Demo](docs/images/main_window_animation02.gif)
 ---
 
 ## ✨ Features
 
 * **⚡ High Performance:** Built with `egui` (immediate mode GUI) and `realfft` for low-latency rendering and audio processing.
-* **🎧 Cross-Platform Audio:** * Uses `cpal` to capture system audio on Windows (WASAPI), Linux (ALSA/Pulse/Jack), and macOS (CoreAudio).
+* **🎧 Cross-Platform Audio:**
+    * Uses `cpal` to capture system audio on Windows (WASAPI), Linux (ALSA/Pulse/Jack), and macOS (CoreAudio).
     * **Hot-Swappable Devices:** Select specific input devices and refresh hardware lists on the fly without restarting.
 * **🎛️ Deep Customization:**
-    * **Optimized FFT Engine:** Uses a fixed 2048-point FFT for excellent frequency resolution across all sample rates (e.g., 23.4 Hz/bin @ 48kHz, 21ms latency @ 96kHz).
-    * **Visual Modes:** * **Standard/Inverted:** Render bars from bottom-up or top-down.
-        * **Aggregation:** Choose between "Peak" (Dramatic/Sharp) or "Average" (Smooth/Accurate) bin grouping.
-    * **Responsiveness:** Configure Attack/Release times for bars and Peak Hold/Decay times for indicators.
-* **🎨 Theming:** * Select from 25+ preset color schemes (Neon Tokyo, Lava Lamp, Cyberpunk, Winamp Classic).
-    * Define custom gradients or use the dynamic "Rainbow" mode.
+    * **4 Visualization Modes:**
+        * **📊 Solid Bars:** Classic smooth gradients with adjustable opacity.
+        * **📟 Retro LED (Segmented):** Old-school segmented bars with customizable segment height and gap. Includes a "Fill to Peak" warning mode.
+        * **📈 Line Spectrum:** A continuous, glowing frequency contour.
+        * **〰️ Oscilloscope:** Real-time raw waveform monitoring (Time Domain).
+    * **Optimized FFT Engine:** Uses a fixed 2048-point FFT for excellent frequency resolution across all sample rates (e.g., 23.4 Hz/bin @ 48kHz).
+    * **Responsiveness:** Configure Attack/Release times for bars and Peak Hold/Decay mechanics.
+* **🎨 Theming:**
+    * **Presets:** Select from 25+ hand-crafted color schemes (Neon Tokyo, Cyberpunk, Winamp Classic, Molten Core).
+    * **Custom:** Define your own Low/High/Peak colors to match your setup.
 * 🔍 **Interactive Inspector:** Turn the visualizer into a precision analysis tool. Hover over the spectrum to activate a vertical crosshair that highlights specific frequency bins and displays exact Frequency (Hz) and Amplitude (dB) metrics.
 * **🖥️ Modern UI:**
     * **Borderless Window:** A clean, chrome-less window that floats on your desktop with "Always on Top" and "Click-through" support.
     * **Persistent Settings:** Configuration is automatically saved to your OS's standard application data folder.
-    * **Performance HUD:** Real-time overlay displaying FPS, FFT latency (with health indicators ⚡/🟢/🔴), and frequency resolution.
+    * **Performance HUD:** Real-time overlay displaying FPS, FFT latency, and frequency resolution.
+
+    ## 📸 Visual Styles
+
+| **Solid Bars** | **Retro LED** |
+| :---: | :---: |
+| ![Solid Mode](docs/images/mode_solid.gif) | ![LED Mode](docs/images/mode_led.gif) |
+| *Classic smooth gradients* | *Segmented bars with peak filling* |
+
+| **Line Spectrum** | **Oscilloscope** |
+| :---: | :---: |
+| ![Line Mode](docs/images/mode_line.gif) | ![Scope Mode](docs/images/mode_scope.gif) |
+| *Glowing frequency contour* | *Raw waveform monitoring* |
 
 ## 🚀 Installation & Usage
 
@@ -43,6 +59,8 @@ No installation required. BeAnal is a standalone application.
     * **Linux:** `beanal-linux`
 3.  Run the application!
     * *(Linux/macOS users may need to allow execution: `chmod +x beanal`)*
+
+macOS Users: To visualize system audio, you must set up a loopback driver. See the [macOS Setup Guide](docs/macos_setup.md).
 
 ### Option B: Build from Source
 If you prefer to build it yourself, you will need the [Rust toolchain](https://www.rust-lang.org/tools/install) installed.
