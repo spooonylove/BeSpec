@@ -82,6 +82,7 @@ jobs:
           mkdir beanal-dist
           cp "target/${{ matrix.target }}/release/beanal" beanal-dist/
           cp assets/icon.png beanal-dist/
+          cp install.sh beanal-dist/   # <--- Add this!
           
           echo "[Desktop Entry]
           Type=Application
