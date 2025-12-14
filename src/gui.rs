@@ -194,8 +194,7 @@ impl eframe::App for SpectrumApp {
                     .with_title("BeAnal Settings")
                     .with_inner_size([450.0, 500.0])
                     .with_resizable(false)
-                    .with_maximize_button(false)
-                    .with_always_on_top(),
+                    .with_maximize_button(false),
                 |ctx, _class| {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         // Handle closing the viewport  via the OS "X" button
