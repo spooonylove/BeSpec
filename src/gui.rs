@@ -34,6 +34,7 @@ pub struct SpectrumApp {
     /// Track window size to only log changes
     last_window_size: Option<egui::Vec2>,
     last_window_pos: Option<egui::Pos2>,
+    last_passthrough_state: bool,
 }
 
 impl SpectrumApp {
@@ -46,6 +47,7 @@ impl SpectrumApp {
             frame_times: Vec::with_capacity(60),
             last_window_size: None,
             last_window_pos: None,
+            last_passthrough_state: false,
         }
     }
 
@@ -133,15 +135,38 @@ impl eframe::App for SpectrumApp {
 
         // === Main Window ===
         
+        // === 1. Acquire Critical State ===
         // Grab the background opacity from the shared state
-        let bg_opacity = if let Ok(state) = self.shared_state.lock() {
-            state.config.background_opacity
+        let (bg_opacity, window_locked) = if let Ok(state) = self.shared_state.lock() {
+            (state.config.background_opacity, state.config.window_locked)
         } else {
-            1.0 // Default to opaque on error
+            (1.0, false) // Default to opaque on error
         };
 
-        // Create the custom frame for the centralPanel
-        // This frame will draw the background and handle window interactions
+        // === 2. Ghost Mode Logic === (Focus-to-Wake) ===
+        // Logic:
+        // - If Locked AND Transparent : we want to be a ghost (click-thru)
+        // - BUT: If the user alt-tabs to us (is-focused), we must wake up so
+        //        they can click the lock
+        let is_focused = ctx.input(|i| i.focused);
+        let is_transparent = bg_opacity <= 0.05; // Threshold for "invisible"
+
+        let should_passthrough = if window_locked && is_transparent{
+            !is_focused // If focused, disable passthrough. If not focused, enable it
+        } else {
+            false // Not locked or not transparent, no passthrough
+        };
+
+        // Only send command if state changed (prevents spamming the OS Window manager)
+        if should_passthrough != self.last_passthrough_state {
+            let status = if should_passthrough { "GHOST MODE" } else { "INTERACTIVE" };
+            tracing::info!("[GUI] Window State: {}", status);
+
+            ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(should_passthrough));
+            self.last_passthrough_state = should_passthrough;
+        }
+
+        // === 3. Render Window ===
         let bg_color = egui::Color32::from_black_alpha((bg_opacity * 255.0) as u8);
 
         // Use egui::Frame::central_panel() as the base
@@ -158,7 +183,7 @@ impl eframe::App for SpectrumApp {
                 // 1. Render the main visualization content
                 self.render_visualizer(ui);
                 // 2. Handle window controls (dragging and resizing)
-                self.window_controls(ctx, ui);
+                self.window_controls(ctx, ui, is_focused);
             });
         
         //  === SETTINGS WINDOW (Separate Viewport) ===
@@ -189,7 +214,7 @@ impl eframe::App for SpectrumApp {
 impl SpectrumApp {
 
     /// Draw invisible resize handles, handle window moverment, and context menu
-    fn window_controls(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+    fn window_controls(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, is_focused: bool) {
         // use max_rect to get the area of everyhting drawn so far (the whole window!)
         let rect = ui.max_rect();
 
@@ -214,6 +239,14 @@ impl SpectrumApp {
    
             if ui.button("⚙ Settings").clicked() {
                 self.settings_open = true;
+
+                // Force the settings window to the front
+                //    ... this ensures it pops up even if it was open but hidden
+                ctx.send_viewport_cmd_to(
+                    egui::ViewportId::from_hash_of("settings_viewport"),
+                    egui::ViewportCommand::Focus,
+                );
+
                 ui.close_menu();
             }
 
@@ -224,41 +257,11 @@ impl SpectrumApp {
             }
         });
 
-        // 2. Lower-Right Resize Grip
-        let corner_size = 20.0; // Size of the resize handle area
+        // 2. Resize Grip (Bottom Right Corner)
+        self.draw_resize_grip(ctx, ui, &rect);
 
-        // Calculate the rectangel for the bottom-right corner
-        let grip_rect = egui::Rect::from_min_size(
-        egui::pos2(rect.right() - corner_size, rect.bottom() - corner_size),
-        egui::Vec2::splat(corner_size)
-        );
-
-        let response = ui.interact(grip_rect, ui.id()
-            .with("resize_grip"), egui::Sense::drag());
-
-        if response.hovered() {
-            ctx.set_cursor_icon(egui::CursorIcon::ResizeSouthEast);
-        }
-
-        if response.dragged() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(egui::ResizeDirection::SouthEast));
-        }
-
-        if ui.is_rect_visible(grip_rect) {
-            let painter = ui.painter();
-            let stroke = egui::Stroke::new(2.0, egui::Color32::from_white_alpha(50));
-            
-            for i in 0..4 {
-                let offset = i as f32 * 4.0;
-                painter.line_segment(
-                    [
-                        egui::pos2(rect.right() - 4.0 - offset, rect.bottom() - 4.0),
-                        egui::pos2(rect.right() - 4.0, rect.bottom() - 4.0 - offset),
-                    ],
-                    stroke,
-                );
-            }
-        }
+        // 3. Lock Button (Bottom Left Corner)
+        self.draw_lock_button(ui, rect, is_focused);
     }
 
     /// Render the main spectrum visualizer
@@ -578,6 +581,118 @@ impl SpectrumApp {
     }
     
     // === OVERLAYS ===
+
+    fn draw_resize_grip(&self, ctx: &egui::Context, ui: &mut egui::Ui, rect: &egui::Rect) {
+        let corner_size = 20.0;
+        let grip_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.right() - corner_size, rect.bottom() - corner_size),
+            egui::Vec2::splat(corner_size)
+        );
+
+        let response = ui.interact(grip_rect, ui.id().with("resize_grip"), egui::Sense::drag());
+
+        if response.hovered() {
+            ctx.set_cursor_icon(egui::CursorIcon::ResizeSouthEast);
+        }
+
+        if response.dragged() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(egui::ResizeDirection::SouthEast));
+        }
+
+        if ui.is_rect_visible(grip_rect) {
+            let painter = ui.painter();
+            let stroke = egui::Stroke::new(2.0, egui::Color32::from_white_alpha(50));
+            
+            for i in 0..4 {
+                let offset = i as f32 * 4.0;
+                painter.line_segment(
+                    [
+                        egui::pos2(rect.right() - 4.0 - offset, rect.bottom() - 4.0),
+                        egui::pos2(rect.right() - 4.0, rect.bottom() - 4.0 - offset),
+                    ],
+                    stroke,
+                );
+            }
+        }
+    }
+
+    fn draw_lock_button(&self, ui: &mut egui::Ui, rect: egui::Rect, is_focused: bool) {
+        // we need mutable access to the toggle the state
+        let mut state = match self.shared_state.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        // Only show if background is transparent, otherwise its confusing
+        if state.config.background_opacity > 0.05 {
+            return;
+        }
+
+        let is_locked = state.config.window_locked;
+        let size = 24.0;
+        let padding = 8.0;
+
+        // Position: Bottom left with padding
+        let lock_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + padding, rect.bottom() - size - padding),
+            egui::Vec2::splat(size)
+        );
+
+        // Handle Click
+        let response = ui.interact(lock_rect, ui.id().with("lock_btn"), 
+            egui::Sense::click());
+        if response.clicked() {
+            state.config.window_locked = !state.config.window_locked;
+        }
+
+        // ---- Visuals ----
+        let painter = ui.painter();
+
+        // Color Logic:
+        // -- Locked and Focused : Bright Red (wake up!)
+        // -- Locked and Unfocused : Dim Red (ghost mode)
+        // -- Unlocked : White/ Grey (passive)
+        let color = if is_locked {
+            if is_focused { egui::Color32::from_rgb(255,100,100) }
+            else { egui::Color32::from_rgb(200,50,50) }
+        } else {
+            if response.hovered() { egui::Color32::WHITE } else { egui::Color32::from_white_alpha(100) }
+        };
+
+        // Draw Body (Main square)
+        let body_h = size * 0.6;
+        let body_rect = egui::Rect::from_min_max(
+            egui::pos2(lock_rect.left(), lock_rect.bottom() - body_h),
+            lock_rect.right_bottom()
+        );
+        painter.rect_filled(body_rect, 4.0, color);
+
+        // Draw Shackle (the Loop)
+        let shackle_w = size * 0.6;
+        let shackle_h = size * 0.5;
+
+        // If unlocked, shift the schakle up/right to look "open"
+        let (shackle_x_off, shackle_y_off) = if is_locked { (0.0, 0.0)} else { (-4.0, -4.0)};
+
+        let shackle_rect = egui::Rect::from_center_size(
+            egui::pos2(
+                lock_rect.center().x + shackle_x_off,
+                body_rect.top() - (shackle_h/2.0) + 4.0 + shackle_y_off
+            ), 
+            egui::vec2(shackle_w, shackle_h)
+        );
+
+        //Draw the arch
+        painter.rect_stroke(
+            shackle_rect,
+            egui::Rounding { nw: 10.0, ne: 10.0, sw: 0.0, se: 0.0},
+            egui::Stroke::new(3.0, color)
+        );
+
+        // Keyhole detail
+        painter.circle_filled(body_rect.center(), 2.5, egui::Color32::BLACK);
+    }
+
     fn draw_inspector_overlay(
         &self, 
         painter: &egui::Painter, 

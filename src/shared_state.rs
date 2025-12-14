@@ -149,8 +149,8 @@ pub struct AppConfig {
     /// Keep window above all others
     pub always_on_top: bool,
 
-    /// Allow clicking through windo (pass events to windows below)
-    pub click_through: bool,
+    ///  "Ghost Mode": Window is click-through until focused with alt-tab
+    pub window_locked: bool,
 
     /// Shop window title bar and borders
     pub window_decorations: bool,
@@ -207,11 +207,11 @@ impl Default for AppConfig {
 
             // Inspector Settings
             inspector_enabled: true,
-            inspector_opacity: 0.9,
+            inspector_opacity: 0.3,
 
             // Window Settings
             always_on_top: false,
-            click_through: false,
+            window_locked: false,
             window_decorations: false,
             window_size: [800.0, 400.0],
             window_position: None,

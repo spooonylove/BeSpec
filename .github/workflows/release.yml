@@ -17,6 +17,8 @@ jobs:
   build-release:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    env:
+      ASSET_NAME: ""  # Placeholder to silence VSCode warnings
     strategy:
       fail-fast: false
       matrix:

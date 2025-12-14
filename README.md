@@ -36,8 +36,6 @@ A high-performance, cross-platform, real-time audio spectrum visualizer written 
     * **Persistent Settings:** Configuration is automatically saved to your OS's standard application data folder.
     * **Performance HUD:** Real-time overlay displaying FPS, FFT latency, and frequency resolution.
 
-    ## 📸 Visual Styles
-
 | **Solid Bars** | **Retro LED** |
 | :---: | :---: |
 | ![Solid Mode](docs/images/mode_solid.gif) | ![LED Mode](docs/images/mode_led.gif) |
@@ -48,10 +46,14 @@ A high-performance, cross-platform, real-time audio spectrum visualizer written 
 | ![Line Mode](docs/images/mode_line.gif) | ![Scope Mode](docs/images/mode_scope.gif) |
 | *Glowing frequency contour* | *Raw waveform monitoring* |
 
+## 📚 Case Studies
+
+BeAnal is designed for precision. See how it uncovers hidden artifacts in professional audio production:
+
+* **[Queens of the Stone Age Analysis](./docs/case_study.md):** Detecting a 15.75 kHz CRT whine hidden in the outro of *I Was a Teenage Hand Model* using the 512-bar high-resolution mode.
+
 ## 🚀 Installation & Usage
 
-### Option A: Download (Recommended)
-No installation required. BeAnal is a standalone application.
 
 1.  Go to the [Releases Page](../../releases/latest).
 2.  Download the executable for your OS:
