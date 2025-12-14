@@ -59,16 +59,23 @@ jobs:
       # PACKAGING STEPS
       # =========================================
 
+      # --- Define the Versioned Name ---
+      # e.g., "beanal-v1.2.0-windows.exe"
+      - name: Generate Asset Name
+        shell: bash
+        run: echo "ASSET_NAME=beanal-${{ github.ref_name }}-${{ matrix.suffix }}" >> $GITHUB_ENV
+
       # --- Windows Packaging ---
-      # Just copy the exe. The icon is already embedded by build.rs
+      # Rename the raw exe to the versioned name
       - name: Package Windows
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          cp "target/${{ matrix.target }}/release/beanal.exe" "${{ matrix.artifact_name }}"
+          cp "target/${{ matrix.target }}/release/beanal.exe" "${{ env.ASSET_NAME }}"
 
       # --- Linux Packaging ---
-      # Create a folder with binary + icon + desktop file, then compress
+      # 1. Create static folder (beanal-dist)
+      # 2. Tar it up into the Versioned Filename
       - name: Package Linux
         if: runner.os == 'Linux'
         run: |
@@ -76,7 +83,6 @@ jobs:
           cp "target/${{ matrix.target }}/release/beanal" beanal-dist/
           cp assets/icon.png beanal-dist/
           
-          # Create a simple desktop shortcut
           echo "[Desktop Entry]
           Type=Application
           Name=BeAnal
@@ -87,24 +93,21 @@ jobs:
           chmod +x beanal-dist/beanal
           chmod +x beanal-dist/beanal.desktop
           
-          tar -czvf "${{ matrix.artifact_name }}" beanal-dist
+          tar -czvf "${{ env.ASSET_NAME }}" beanal-dist
 
       # --- macOS Packaging ---
-      # Create .app bundle structure, add Info.plist and Icon, then Zip
+      # 1. Create static App Bundle (BeAnal.app)
+      # 2. Zip it into the Versioned Filename
       - name: Package macOS
         if: runner.os == 'macOS'
         run: |
           APP_NAME="BeAnal"
-          
-          # 1. Create Structure
           mkdir -p "$APP_NAME.app/Contents/MacOS"
           mkdir -p "$APP_NAME.app/Contents/Resources"
           
-          # 2. Copy Binary & Icon
           cp "target/${{ matrix.target }}/release/beanal" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
           cp "assets/icon.icns" "$APP_NAME.app/Contents/Resources/"
           
-          # 3. Create Info.plist (Essential for the OS to recognize the app and icon)
           cat <<EOF > "$APP_NAME.app/Contents/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -126,13 +129,14 @@ jobs:
           </plist>
           EOF
           
-          # 4. Permissions & Zip
           chmod +x "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-          zip -r "${{ matrix.artifact_name }}" "$APP_NAME.app"
+          
+          # Zip the app into the versioned asset name
+          zip -r "${{ env.ASSET_NAME }}" "$APP_NAME.app"
 
       # --- Upload ---
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ${{ matrix.artifact_name }}
+          files: ${{ env.ASSET_NAME }}
