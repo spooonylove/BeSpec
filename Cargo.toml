@@ -5,6 +5,9 @@ edition = "2021"
 authors = ["BeSpec-Dev"]
 description = "A lightweight, highly configurable, real-time audio spectrum visualizer"
 
+[build-dependencies]
+winres = "0.1"
+
 [dependencies]
 # Audio capture and processing
 cpal = "0.15"
