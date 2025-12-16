@@ -35,6 +35,10 @@ pub struct SpectrumApp {
     last_window_size: Option<egui::Vec2>,
     last_window_pos: Option<egui::Pos2>,
     last_passthrough_state: bool,
+
+    // Sonar Ping State
+    was_focused: bool,
+    flash_start: Option<Instant>,
 }
 
 impl SpectrumApp {
@@ -48,6 +52,8 @@ impl SpectrumApp {
             last_window_size: None,
             last_window_pos: None,
             last_passthrough_state: false,
+            was_focused: true,
+            flash_start: Some(Instant::now()),
         }
     }
 
@@ -134,22 +140,51 @@ impl eframe::App for SpectrumApp {
         ctx.request_repaint();
 
         // === Main Window ===
+
+        // === Sonpar Pin ===
+        // 1. Flash on Focus logic
+        let is_focused = ctx.input(|i| i.focused);
+
+        // Trigger flash if focus gained
+        if is_focused && !self.was_focused {
+            self.flash_start = Some(Instant::now());
+        }
+        self.was_focused = is_focused;
         
-        // === 1. Acquire Critical State ===
-        // Grab the background opacity from the shared state
-        let (bg_opacity, window_locked) = if let Ok(state) = self.shared_state.lock() {
+        // Calculate Animnation strength (0.0 to 1.0)
+        let mut flash_strength = 0.0;
+        if let Some(start) = self.flash_start {
+            let elapsed = start.elapsed().as_secs_f32();
+            let duration = 0.8; // slightly longer duration for the glow
+
+            if elapsed < duration {
+                // easing function: cubic out (starts fast, slows down)
+                let t = 1.0 - (elapsed / duration);
+                flash_strength = t.powi(3);
+
+                ctx.request_repaint();
+            } else {
+                self.flash_start = None;
+            }
+        }
+
+        // === 2. Acquire State and Apply Flash ===
+        let (base_opacity, window_locked) = if let Ok(state) = self.shared_state.lock() {
             (state.config.background_opacity, state.config.window_locked)
         } else {
             (1.0, false) // Default to opaque on error
         };
 
-        // === 2. Ghost Mode Logic === (Focus-to-Wake) ===
+        // 1. Boost background slightly so the window body is found  ( max + 0.2 opacity)
+        let final_opacity = (base_opacity + (flash_strength * 0.2)).min(1.0);
+
+    
+        // === 3. Ghost Mode Logic === (Focus-to-Wake) ===
         // Logic:
         // - If Locked AND Transparent : we want to be a ghost (click-thru)
         // - BUT: If the user alt-tabs to us (is-focused), we must wake up so
         //        they can click the lock
-        let is_focused = ctx.input(|i| i.focused);
-        let is_transparent = bg_opacity <= 0.05; // Threshold for "invisible"
+        let is_transparent = base_opacity <= 0.05; // Threshold for "invisible"
 
         let should_passthrough = if window_locked && is_transparent{
             !is_focused // If focused, disable passthrough. If not focused, enable it
@@ -166,8 +201,8 @@ impl eframe::App for SpectrumApp {
             self.last_passthrough_state = should_passthrough;
         }
 
-        // === 3. Render Window ===
-        let bg_color = egui::Color32::from_black_alpha((bg_opacity * 255.0) as u8);
+        // === 4. Render Window ===
+        let bg_color = egui::Color32::from_black_alpha((final_opacity * 255.0) as u8);
 
         // Use egui::Frame::central_panel() as the base
         // this base has window drag/resize enabled by default.
@@ -180,9 +215,16 @@ impl eframe::App for SpectrumApp {
         egui::CentralPanel::default()
             .frame(custom_frame)
             .show(ctx, |ui| {
-                // 1. Render the main visualization content
+                // A. Render the main visualization content
                 self.render_visualizer(ui);
-                // 2. Handle window controls (dragging and resizing)
+                
+                // B. Render Sonar Ping overlay (the glow!)
+                if flash_strength > 0.0 {
+                    let draw_rect = ui.max_rect().shrink(5.0);
+                    self.draw_sonar_ping(ui, draw_rect, flash_strength);
+                }
+                
+                // C. Handle window controls (dragging and resizing)
                 self.window_controls(ctx, ui, is_focused);
             });
         
@@ -644,6 +686,15 @@ impl SpectrumApp {
             state.config.window_locked = !state.config.window_locked;
         }
 
+        if response.hovered() {
+            let text = if is_locked {
+                "GHOST MODE ACTIVE\n\n1. Window is click-through (ignore mouse).\n2. Alt-Tab away to engage.\n3. Alt-Tab back to unlock."
+            } else {
+                "ENTER GHOST MODE\n\nClick to make window click-through.\n(Must be transparent first)"
+            };
+            response.clone().on_hover_text(text);
+        }
+
         // ---- Visuals ----
         let painter = ui.painter();
 
@@ -691,6 +742,50 @@ impl SpectrumApp {
         // Keyhole detail
         painter.circle_filled(body_rect.center(), 2.5, egui::Color32::BLACK);
     }
+
+    fn draw_sonar_ping(&self, ui: &mut egui::Ui, rect: egui::Rect, strength: f32) {
+        // 1. Setup
+        // We grab the 'High' color from your theme for the glow
+        let (_, high_color, _) = self.shared_state.lock().unwrap().config.get_colors();
+        let base_color = to_egui_color(high_color);
+        let rounding = 12.0;
+
+        // 2. Calculate Animation State based on 'strength' (1.0 -> 0.0)
+        
+        // Alpha: Directly use strength (starts bright, fades to 0)
+        // We square it so it stays bright a bit longer then drops off
+        let global_alpha = strength.powi(2);
+        
+        // Expansion: Invert strength so we start at 0 expansion and grow outward
+        // Grows up to 12px outward
+        let progress = 1.0 - strength; 
+        let expansion = 2.0 + (10.0 * progress); 
+
+        let painter = ui.painter();
+
+        // 3. Draw Multi-Pass Glow
+        
+        // Pass 1: The "Haze" (Wide, Outer, Very Transparent)
+        painter.rect_stroke(
+            rect.expand(expansion + 4.0), 
+            rounding,
+            egui::Stroke::new(6.0, base_color.linear_multiply(0.10 * global_alpha))
+        );
+
+        // Pass 2: The "Glow" (Medium, Middle, Medium Transparent)
+        painter.rect_stroke(
+            rect.expand(expansion + 2.0), 
+            rounding,
+            egui::Stroke::new(3.0, base_color.linear_multiply(0.3 * global_alpha))
+        );
+
+        // Pass 3: The "Filament" (Thin, Inner, Bright)
+        painter.rect_stroke(
+            rect.expand(expansion), 
+            rounding,
+            egui::Stroke::new(1.0, base_color.linear_multiply(0.8 * global_alpha))
+        );
+    }   
 
     fn draw_inspector_overlay(
         &self, 
@@ -1168,6 +1263,20 @@ impl SpectrumApp {
                                         egui::ViewportCommand::WindowLevel(level)
                                     );
                                 }
+                                ui.end_row();
+
+                                ui.label("Ghost Mode 👻");
+                                ui.horizontal(|ui| {
+                                    ui.label("Enable via Lock Icon 🔒");
+                                    ui.add(egui::Label::new("❓").sense(egui::Sense::hover()))
+                                        .on_hover_text(
+                                            "How to use Ghost Mode:\n\
+                                            1. Click the Lock icon (bottom-left) to enable click-through.\n\
+                                            2. The window will ignore mouse clicks so you can work through it.\n\
+                                            3. To UNLOCK: Alt-Tab (switch focus) back to this window.\n\
+                                            The lock will reactivate temporarily."
+                                        );
+                                });
                                 ui.end_row();
 
                                 ui.label("Decorations");
