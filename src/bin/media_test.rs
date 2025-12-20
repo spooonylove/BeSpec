@@ -34,7 +34,7 @@ fn main() {
     let manager = Arc::new(PlatformMedia::new());
 
     // 2. Setup Channel
-    let (tx, rx) = bounded(10);
+    let (tx, rx) = bounded::<MediaTrackInfo>(10);
 
     // 3. Start Monitoring Thread
     println!("[*] Starting monitor thread...");
