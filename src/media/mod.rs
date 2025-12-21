@@ -8,7 +8,7 @@ pub struct MediaTrackInfo {
     pub album: String, 
     pub is_playing: bool,
     pub source_app: String,
-    //pub album_art: Option<Vec<u8>>,
+    pub album_art: Option<Vec<u8>>,
 }
 
 /// Trait for controlling media playback (Commands)

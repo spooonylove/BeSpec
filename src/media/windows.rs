@@ -1,4 +1,5 @@
 use crossbeam_channel::Sender;
+use windows::Storage::Streams::DataReader;
 use std::time::Duration;
 use super::{MediaController, MediaMonitor, MediaTrackInfo};
 
@@ -43,8 +44,11 @@ fn clean_app_name(raw_id: &str) -> String {
     let stage2 = stage1.split('.').next().unwrap_or(stage1);
 
     // 3. Option: Fix capitalization (e.g. "SPOTIFY" -> "Spotify")
-    // for now, just return as is
-    stage2.to_string()
+    let mut chars = stage2.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(f) => format!("{}{}", f.to_uppercase(), chars.as_str().to_lowercase()),
+    }
 }
 
 impl MediaController for WindowsMediaManager {
@@ -99,6 +103,34 @@ impl MediaMonitor for WindowsMediaManager {
                                     let artist = props.Artist().ok().map(|h| h.to_string()).unwrap_or_default();
                                     let album = props.AlbumTitle().ok().map(|h| h.to_string()).unwrap_or_default();
 
+                                    let mut album_art_data = None;
+
+                                    // Try to get the alubm thumbnail reference
+                                    if let Ok(thumb_ref) = props.Thumbnail() {
+                                        // Open the stream for reading
+                                        if let Ok(stream_op) = thumb_ref.OpenReadAsync() {
+                                            if let Ok(stream) = stream_op.await {
+                                                // get size
+                                                let size = stream.Size().unwrap_or(0);
+                                                if size > 0 {
+                                                    // create DataReader
+                                                    if let Ok(reader) = DataReader::CreateDataReader(&stream) {
+                                                        // load data into reader
+                                                        if let Ok(load_op) = reader.LoadAsync(size as u32) {
+                                                            if load_op.await.is_ok() {
+                                                                // read bytes into buffer
+                                                                let mut bytes = vec![0u8; size as usize];
+                                                                if reader.ReadBytes(&mut bytes).is_ok() {
+                                                                    album_art_data = Some(bytes);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     if !title.is_empty() {
                                         let current_info = MediaTrackInfo {
                                             title,
@@ -106,6 +138,7 @@ impl MediaMonitor for WindowsMediaManager {
                                             album,
                                             is_playing,
                                             source_app: clean_app,
+                                            album_art: album_art_data,
                                         };
 
                                         // Only send if the datda is different from last sent
@@ -132,23 +165,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_clean_app_name_exe() {
+    fn test_clean_app_name_standard_exe() {
         assert_eq!(clean_app_name("Spotify.exe"), "Spotify");
-        assert_eq!(clean_app_name("chrome.exe"), "chrome");
+        assert_eq!(clean_app_name("chrome.exe"), "Chrome"); // Checks capitalization
+        assert_eq!(clean_app_name("firefox"), "Firefox");
     }
 
     #[test]
     fn test_clean_app_name_uwp() {
-        // UWP apps often have complex IDs
+        // UWP apps have a "PackageFamilyName!AppId" format
         let raw = "Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic";
+        // Logic splits at '!' then at '.' -> "Microsoft"
         assert_eq!(clean_app_name(raw), "Microsoft"); 
-        // Note: Logic splits at '.', so 'Microsoft.ZuneMusic' becomes 'Microsoft'.
-        // You can tweak the helper function if you prefer 'Microsoft ZuneMusic'
     }
 
     #[test]
-    fn test_clean_app_name_simple() {
-        assert_eq!(clean_app_name("Firefox"), "Firefox");
+    fn test_clean_app_name_edge_cases() {
+        assert_eq!(clean_app_name(""), "");
+        assert_eq!(clean_app_name("My.Cool.App.exe"), "My"); // Takes first segment
+        assert_eq!(clean_app_name("simple"), "Simple");
     }
 }
                                   
