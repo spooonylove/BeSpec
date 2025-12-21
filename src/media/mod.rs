@@ -34,12 +34,12 @@ mod windows;
 #[cfg(target_os = "windows")]
 pub type PlatformMedia = windows::WindowsMediaManager;
 
-/*
+
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
 pub type PlatformMedia = linux::LinuxMediaManager;
-
+/*
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
@@ -52,7 +52,7 @@ pub type PlatformMedia = dummy::DummyMediaManager;
 */
 
 // Fallback for unsupported OS (Currently catches Linux/Mac too)
-#[cfg(not(any(target_os = "windows")))] // Removed linux/macos from this check so they fall here
+#[cfg(not(any(target_os = "windows", target_os = "linux")))] 
 mod dummy;
-#[cfg(not(any(target_os = "windows")))]
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub type PlatformMedia = dummy::DummyMediaManager;
