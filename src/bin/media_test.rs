@@ -15,6 +15,13 @@ fn print_track_info(info: &MediaTrackInfo) {
     println!("   Track:  {}", info.title);
     println!("   Artist: {}", info.artist);
     println!("   Album:  {}", info.album);
+
+    // Check for album art
+    match &info.album_art {
+        Some(bytes) => println!("   Art:    [Image data Found: {} bytes]", bytes.len()),
+        None => println!("   Art:    [No Image Data]"),
+    }
+
     println!("   State:  {}", if info.is_playing { "▶ Playing" } else { "⏸ Paused" });
 }
 
