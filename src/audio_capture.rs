@@ -428,6 +428,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_capture_manager_creation() {
         // This test will only work if audio devices are available
         match AudioCaptureManager::new() {
@@ -443,6 +444,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_list_devices() {
         match AudioCaptureManager::list_devices() {
             Ok(devices) => {

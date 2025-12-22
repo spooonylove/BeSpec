@@ -489,13 +489,14 @@ mod tests {
     
     #[test]
     fn test_frequency_mapping_boundaries() {
-        let mut config = FFTConfig::default();
-        config.num_bars = 100;
+        let num_bars = 100;
+        let sample_rate = 48000;
+        let fft_size = 2048;
         
         // Check specific indices to ensure the linear/log split is happening where expected
         let knee_freq = FFTProcessor::calculate_bar_frequency(
             15, // Approx knee index for 15% linear proportion
-            100, 48000, 2048
+            num_bars,sample_rate, fft_size
         );
         
         // Verify it's close to 500Hz
