@@ -53,14 +53,17 @@ fn clean_app_name(raw_id: &str) -> String {
 
 impl MediaController for WindowsMediaManager {
     fn try_play_pause(&self) {
+        tracing::debug!("[Media/Windows] Toggling Play/Pause");
         Self::with_session(|s| { let _ = s.TryTogglePlayPauseAsync(); });
     }
 
     fn try_next(&self) {
+        tracing::debug!("[Media/Windows] Skipping Next");
         Self::with_session(|s| { let _ = s.TrySkipNextAsync(); });
     }
 
     fn try_prev(&self) {
+        tracing::debug!("[Media/Windows] Skipping Previous");
         Self::with_session(|s| { let _ = s.TrySkipPreviousAsync(); });
     }
 }
@@ -74,13 +77,18 @@ impl MediaMonitor for WindowsMediaManager {
             // State tracking to prevent duplicate spam
             let mut last_sent_info: Option<MediaTrackInfo> = None;
 
+            tracing::info!("[Media/Windows] Background monitor started");
+
             // Polling loop (simple and robuts)
             loop {
                 rt.block_on(async {
                     // 1. Get manager
-                    let manager = match GlobalSystemMediaTransportControlsSessionManager::RequestAsync().ok() {
-                        Some(op) => op.await.ok(),
-                        None => None,
+                    let manager = match GlobalSystemMediaTransportControlsSessionManager::RequestAsync() {
+                        Ok(op) => op.await.ok(),
+                        Err(e) => {
+                            tracing::warn!("[Media/Windows] Failed to request SessionManager: {}", e);
+                            None
+                        },
                     };
                     
                     if let Some(mgr) = manager {
@@ -143,6 +151,11 @@ impl MediaMonitor for WindowsMediaManager {
 
                                         // Only send if the datda is different from last sent
                                         if last_sent_info.as_ref() != Some(&current_info) {
+                                            tracing::info!("[Media/Windows] Update: {} - {} ({})", 
+                                                current_info.artist, 
+                                                current_info.title, 
+                                                current_info.source_app
+                                            );
                                             let _ = tx.send(current_info.clone());
                                             last_sent_info = Some(current_info);
                                         }
