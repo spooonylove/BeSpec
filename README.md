@@ -54,7 +54,7 @@ BeAnal is designed for precision. See how it uncovers hidden artifacts in profes
 
 ## 🚀 Installation & Usage
 
-
+### Option A: Pre-built Binaries
 1.  Go to the [Releases Page](../../releases/latest).
 2.  Download the executable for your OS:
     * **Windows:** `beanal-windows.exe`
@@ -72,6 +72,13 @@ If you prefer to build it yourself, you will need the [Rust toolchain](https://w
     ```bash
     git clone [https://github.com/BeSpec-Dev/beanal.git](https://github.com/BeSpec-Dev/beanal.git)
     cd beanal
+    ```
+
+    **Linux Dependencies:**
+    If building from source, ensure you have the development headers installed:
+    ```bash
+    # Ubuntu/Debian
+    sudo apt-get install libasound2-dev libudev-dev pkg-config
     ```
 2.  Run in release mode:
     ```bash
