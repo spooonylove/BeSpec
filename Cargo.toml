@@ -53,6 +53,7 @@ mpris = "2.0"
 # macOS: Uses private MediaRemote framework bindings
 [target.'cfg(target_os = "macos")'.dependencies]
 mediaremote-rs = "0.1"
+base64 = "0.22"
 
 [profile.release]
 opt-level = 3
