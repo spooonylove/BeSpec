@@ -43,7 +43,7 @@ pub type PlatformMedia = linux::LinuxMediaManager;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-pub type PlatformMedia = macos::MacOSMediaManager;
+pub type PlatformMedia = macos::MacMediaManager;
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 mod dummy;

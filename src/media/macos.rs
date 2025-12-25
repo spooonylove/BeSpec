@@ -1,7 +1,10 @@
 use crossbeam_channel::Sender;
 use std::time::{Duration, Instant};
+use std::process::Command;
 use super::{MediaController, MediaMonitor, MediaTrackInfo};
-use mediaremote_rs::{self, MediaRemote, RemoteCommand};
+
+// We need base64 decoding to handle the image data from JXA
+use base64::{Engine as _, engine::general_purpose};
 
 pub struct MacMediaManager;
 
@@ -9,147 +12,144 @@ impl MacMediaManager {
     pub fn new() -> Self { Self }
 }
 
+// === READ-ONLY IMPLEMENTATION ===
+// We stub out the control methods to be safe and simple.
 impl MediaController for MacMediaManager {
     fn try_play_pause(&self) {
-        tracing::debug!("[Media/MacOS] Toggling Play/Pause");
-        // Using the mediaremote crate to send commands
-        if let Ok(client) = MediaRemote::new() {
-            if let Err(e) = client.send_command(RemoteCommand::TogglePlayPause) {
-                tracing::warn!("[Media/MacOS] Failed to send TogglePlayPause command: {:?}", e);
-            }
-        }
+        tracing::debug!("[Media/MacOS] Control disabled: Play/Pause");
     }
 
     fn try_next(&self) {
-        tracing::debug!("[Media/MacOS] Skipping Next");
-        if let Ok(client) = MediaRemote::new() {
-            if let Err(e) = client.send_command(RemoteCommand::NextTrack) {
-                tracing::warn!("[Media/MacOS] Failed to send NextTrack command: {:?}", e);
-            }
-        }
+        tracing::debug!("[Media/MacOS] Control disabled: Next");
     }
 
     fn try_prev(&self) {
-        tracing::debug!("[Media/MacOS] Skipping Previous");
-        if let Ok(client) = MediaRemote::new() {
-            if let Err(e) = client.send_command(RemoteCommand::PreviousTrack) {
-                tracing::warn!("[Media/MacOS] Failed to send PreviousTrack command: {:?}", e);
-            }
-        }
+        tracing::debug!("[Media/MacOS] Control disabled: Previous");
     }
 }
 
 impl MediaMonitor for MacMediaManager {
     fn start(&self, tx: Sender<MediaTrackInfo>) {
         std::thread::spawn(move || {
-            // Attempt to connect to the MediaRemote framework
-            let client = match MediaRemote::new() {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::error!("[Media/MacOS] Failed to initialize MediaRemote: {:?}", e);
-                    return;
-                }
-            };
-
             let mut last_sent_info: Option<MediaTrackInfo> = None;
-            let mut last_debug_print = Instant::now();
-
-            tracing::info!("[Media/MacOS] Monitor thread started");
+            tracing::info!("[Media/MacOS] Read-Only Monitor started");
 
             loop {
-                // Fetch current info
-                // Note: mediaremote-rs might return an error if nothing is playing
-                //  or permission denied
-                match client.get_now_playing_info() {
-                    Ok(info) => {
-                        let title = info.title.unwrap_or_default();
-                        let artist = info.artist.unwrap_or_default();
-                        let album = info.album.unwrap_or_default();
+                if let Some(info) = get_macos_media_info() {
+                    let current_info = MediaTrackInfo {
+                        title: info.title.clone(),
+                        artist: info.artist.clone(),
+                        album: info.album.clone(),
+                        is_playing: info.is_playing,
+                        source_app: info.source_app.clone(),
+                        album_art: info.album_art, 
+                    };
 
-                        // App Bundle ID (eg "com.spotify.client")
-                        let bundle_id = info.client_bundle_identifier.unwrap_or_default();
-                        let source_app = clean_bundle_id(&bundle_id);
-
-                        // Artwork comes directly as bytes!
-                        let album_art = info.artwork_data;
-
-                        // Playback state is often an enum, we simplify to bool
-                        // there isn't a clear way to pull play/pause from MacOS MediaRemote
-                        //     We pull playback speed. if its greater than 0.0 (paused), 
-                        //     we consider it playing.
-                        let is_playing = info.playback_speed.unwrap_or(0.0) > 0.0;
-
-                        if !title.is_empty() {
-                            let current_info = MediaTrackInfo {
-                                title,
-                                artist,
-                                album,
-                                is_playing,
-                                source_app,
-                                album_art,
-                            };
-
-                            if last_sent_info.as_ref() != Some(&current_info) {
-                                tracing::info!("[Media/MacOS] Update: {} - {}", current_info.artist, current_info.title);
-                                let _ = tx.send(current_info.clone());
-                                last_sent_info = Some(current_info);
-                            }
-                        }
-                    },
-                    Err(_) => {
-                        // Silent failre is common when nothing is playing
-                        if last_debug_print.elapsed() > Duration::from_secs(60) {
-                            tracing::debug!("[Media/MacOS] No active media info retrieved");
-                            last_debug_print = Instant::now();
-                        }
+                    if last_sent_info.as_ref() != Some(&current_info) {
+                        tracing::info!("[Media/MacOS] Update: {} - {}", current_info.artist, current_info.title);
+                        let _ = tx.send(current_info.clone());
+                        last_sent_info = Some(current_info);
                     }
                 }
-
-                std::thread::sleep(Duration::from_millis(1000));
+                
+                std::thread::sleep(Duration::from_secs(2));
             }
         });
     }
 }
 
-/// Helper to make bundle IDs readable
-/// com.spotify.client -> Spotify
-/// com.apple.Music -> Apple Music
-fn clean_bundle_id(bundle_id: &str) -> String {
-    if bundle_id.is_empty() { return "Unknown".to_string(); }
-
-    // 1. Specific Overrides (for names with spaces or unique casing)
-    if bundle_id == "com.apple.Music" {
-        return "Apple Music".to_string();
-    }
-
-    // 2. Generic Parser: Split by dot, read backwards, skip generic words
-    bundle_id.split('.')
-        .rev()
-        .find(|&part| !matches!(part.to_lowercase().as_str(), "com" | "org" | "net" | "io" | "client" | "player" | "app" | "beta" | "stable"))
-        .map(|part| {
-            // Heuristic: if short (eg "vlc", "mpv"), assume acronmym -> "VLC"
-            if part.len() <= 3 {
-                return part.to_uppercase();
-            }
-            // Title Case: "spotift" -> "Spotify"
-            let mut chars = parts.chars();
-            match chars.next() {
-                Some(f) => format!("{}{}", f.to_uppercase(), chars.as_str()),
-                None => part.to_string(),
-            }
-        })
-        .unwrap_or_else(|| bundle_id.to_string())
+struct RawTrackInfo {
+    title: String,
+    artist: String,
+    album: String,
+    source_app: String,
+    is_playing: bool,
+    album_art: Option<Vec<u8>>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+const JXA_SCRIPT: &str = r#"
+(function() {
+    function toBase64(data) {
+        if (!data) return null;
+        try {
+            var nsData = ObjC.unwrap(data);
+            var base64Str = nsData.base64EncodedStringWithOptions(0);
+            return ObjC.unwrap(base64Str);
+        } catch (e) { return null; }
+    }
 
-    #[test]
-    fn test_clean_bundle_id() {
-        assert_eq!(clean_bundle_id("com.spotify.client"), "Spotify");
-        assert_eq!(clean_bundle_id("com.apple.Music"), "Apple Music");
-        assert_eq!(clean_bundle_id("org.videolan.vlc"), "VLC");
-        assert_eq!(clean_bundle_id("com.custom.MyApp"), "MyApp");
+    var appNames = ["Music", "Spotify", "YouTube Music"];
+    var activeApp = null;
+    
+    for (var i = 0; i < appNames.length; i++) {
+        try {
+            if (Application(appNames[i]).running()) {
+                activeApp = Application(appNames[i]);
+                break;
+            }
+        } catch(e) {}
+    }
+
+    if (!activeApp) return "null";
+
+    try {
+        var state = activeApp.playerState();
+        if (state === "stopped") return "null";
+        
+        var track = activeApp.currentTrack;
+        var artBase64 = null;
+
+        try {
+            var artworks = track.artworks();
+            if (artworks.length > 0) {
+                var rawData = artworks[0].rawData(); 
+                artBase64 = toBase64(rawData);
+            }
+        } catch (e) {}
+
+        return JSON.stringify({
+            app: activeApp.name(),
+            title: track.name(),
+            artist: track.artist(),
+            album: track.album(),
+            playing: (state === "playing"),
+            art: artBase64
+        });
+    } catch(e) {
+        return "null";
+    }
+})();
+"#;
+
+fn get_macos_media_info() -> Option<RawTrackInfo> {
+    let output = Command::new("osascript")
+        .arg("-l")
+        .arg("JavaScript")
+        .arg("-e")
+        .arg(JXA_SCRIPT)
+        .output()
+        .ok()?;
+
+    if !output.status.success() { return None; }
+
+    let json_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if json_str == "null" || json_str.is_empty() { return None; }
+
+    match serde_json::from_str::<serde_json::Value>(&json_str) {
+        Ok(v) => {
+            let album_art = v["art"].as_str().and_then(|b64| {
+                general_purpose::STANDARD.decode(b64).ok()
+            });
+
+            Some(RawTrackInfo {
+                source_app: v["app"].as_str().unwrap_or("Unknown").to_string(),
+                title: v["title"].as_str().unwrap_or("").to_string(),
+                artist: v["artist"].as_str().unwrap_or("").to_string(),
+                album: v["album"].as_str().unwrap_or("").to_string(),
+                is_playing: v["playing"].as_bool().unwrap_or(false),
+                album_art,
+            })
+        },
+        Err(_) => None
     }
 }
