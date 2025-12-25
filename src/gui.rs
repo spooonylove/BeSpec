@@ -448,7 +448,7 @@ impl SpectrumApp {
         // 4. Draw time!
         let rect = ui.max_rect();
         // Position: Top Right, with some padding
-        let pos = egui::pos2(rect.right() - 20.0, rect.top() + 40.0);
+        let pos = egui::pos2(rect.right() - 20.0, rect.top() + 20.0);
 
         // Use an "Area" so it floats over the specturm without pushing layout
         egui::Area::new(egui::Id::new("media_overlay"))

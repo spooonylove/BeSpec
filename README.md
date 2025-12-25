@@ -30,6 +30,9 @@ A high-performance, cross-platform, real-time audio spectrum visualizer written 
 * **🎨 Theming:**
     * **Presets:** Select from 25+ hand-crafted color schemes (Neon Tokyo, Cyberpunk, Winamp Classic, Molten Core).
     * **Custom:** Define your own Low/High/Peak colors to match your setup.
+* **🎵 Media Integration:**
+    * Now Playing Overlay: Elegantly displays current track details (Title, Artist, Album) in the corner of the visualizer.
+    * Smart Behavior: Configurable to fade out after updates, remain persistent, or hide completely.
 * 🔍 **Interactive Inspector:** Turn the visualizer into a precision analysis tool. Hover over the spectrum to activate a vertical crosshair that highlights specific frequency bins and displays exact Frequency (Hz) and Amplitude (dB) metrics.
 * **🖥️ Modern UI:**
     * **Borderless Window:** A clean, chrome-less window that floats on your desktop with "Always on Top" and "Click-through" support.
