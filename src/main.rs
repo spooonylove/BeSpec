@@ -6,6 +6,7 @@ mod fft_config;
 mod fft_processor;
 mod gui;
 mod shared_state;
+mod media;
 
 use core::panic;
 use std::thread;
@@ -28,6 +29,7 @@ use shared_state::SharedState;
 use crate::gui::SpectrumApp;
 use crate::audio_capture::{AudioCaptureManager, AudioPacket};
 use crate::fft_config::{FFTConfigManager, FIXED_FFT_SIZE};
+use crate::media::{PlatformMedia, MediaMonitor};
 
 // ========================================================================
 // AUDIO CAPTURE THREAD
@@ -288,7 +290,7 @@ fn start_fft_processing(
                          
                     }
 
-                    // Convert to mono (FFT expects single channel
+                    // Convert to mono (FFT expects single channel)
                     let mono = packet.to_mono();
                     
                     let mode  = { shared_state.lock().unwrap().config.visual_mode };
@@ -568,6 +570,13 @@ fn main (){
     // Start FFT processing thread
     start_fft_processing(audio_rx, shared_state.clone(), shutdown.clone());
 
+    // Start Media Monitoring thread
+    tracing::info!("[Main] Starting Media Monitor...");
+    let media_manager = Arc::new(PlatformMedia::new());
+    let (media_tx, media_rx) = bounded(10);
+    media_manager.start(media_tx);
+
+
     tracing::info!("[Main] Starting GUI...\n");
 
     // Load the icon
@@ -606,7 +615,7 @@ fn main (){
     let _result = eframe::run_native(
         "BeAnal",
         options, 
-        Box::new(|_cc| Ok(Box::new(SpectrumApp::new(shared_state.clone())))),
+        Box::new(|_cc| Ok(Box::new(SpectrumApp::new(shared_state.clone(), media_rx)))),
     );
 
     // The window has closed. Now we force a save to sensure settings persist

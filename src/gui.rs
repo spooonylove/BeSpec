@@ -1,9 +1,10 @@
+use crossbeam_channel::Receiver;
 use eframe:: egui;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::fft_config::FIXED_FFT_SIZE;
-use crate::shared_state::{Color32 as StateColor32, SharedState, VisualMode};
+use crate::shared_state::{Color32 as StateColor32, MediaDisplayMode, SharedState, VisualMode};
 use crate::fft_processor::FFTProcessor;
 
 // Tabs for the settings windowe
@@ -20,6 +21,9 @@ enum SettingsTab {
 pub struct SpectrumApp {
     /// shared state between FFT and GUI threads
     shared_state: Arc<Mutex<SharedState>>,
+
+    /// Receiver for media updates (local to GUI thread)
+    media_rx: Receiver<crate::media::MediaTrackInfo>,
     
     /// Settings window state
     settings_open: bool,
@@ -42,9 +46,13 @@ pub struct SpectrumApp {
 }
 
 impl SpectrumApp {
-    pub fn new(shared_state: Arc<Mutex<SharedState>>) -> Self {
+    pub fn new(
+        shared_state: Arc<Mutex<SharedState>>,
+        media_rx: Receiver<crate::media::MediaTrackInfo>,
+    ) -> Self {
         Self {
             shared_state,
+            media_rx,
             settings_open: false,
             active_tab: SettingsTab::Visual,
             last_frame_time: Instant::now(),
@@ -80,6 +88,20 @@ impl eframe::App for SpectrumApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         
+        // --- Poll for Media Updates ---
+        let mut new_track = None;
+        while let Ok(info) = self.media_rx.try_recv() {
+            new_track = Some(info);
+        }
+
+        if let Some(track) = new_track {
+            if let Ok(mut state) = self.shared_state.lock() {
+                state.media_info = Some(track);
+                state.last_media_update = Some(Instant::now());
+            }
+        }
+        
+
         // --- Main Window Size tracking ---
         if let Some(rect) = ctx.input(|i| i.viewport().inner_rect){
             let current_size = rect.size();
@@ -223,8 +245,11 @@ impl eframe::App for SpectrumApp {
                     let draw_rect = ui.max_rect().shrink(5.0);
                     self.draw_sonar_ping(ui, draw_rect, flash_strength);
                 }
+
+                // C. Render Meida Overlay
+                self.render_media_overlay(ui);
                 
-                // C. Handle window controls (dragging and resizing)
+                // D. Handle window controls (dragging and resizing)
                 self.window_controls(ctx, ui, is_focused);
             });
         
@@ -382,6 +407,83 @@ impl SpectrumApp {
     }
 
     // ========== DRAWING HELPERS ==========
+
+    fn render_media_overlay(&self, ui: &mut egui::Ui) {
+        let state = self.shared_state.lock().unwrap();
+        let config = &state.config;
+
+        // 1. Check Mode
+        if config.media_display_mode == MediaDisplayMode::Off {
+            return;
+        }
+
+        // 2. Check Data
+        let info = match &state.media_info {
+            Some(i) => i, 
+            None => return,
+        };
+        
+        // 3. Calculate Opacity 
+        let mut opacity = 1.0;
+
+        if config.media_display_mode == MediaDisplayMode::FadeOnUpdate {
+            if let Some(last_update) = state.last_media_update {
+                let elapsed = last_update.elapsed().as_secs_f32();
+                let duration = config.media_fade_duration_sec;
+                let fade_time = 1.5; // Time to fully fade out after duration
+
+                if elapsed > (duration + fade_time) {
+                    return; // Fully faded out
+                } else if elapsed > duration {
+                    // Fading out
+                    let fade_progress = (elapsed - duration) / fade_time;
+                    opacity = 1.0 - fade_progress;
+                }
+            } else {
+                // should not happen if data exists, but fail safe
+                return;
+            }
+        }
+
+        // 4. Draw time!
+        let rect = ui.max_rect();
+        // Position: Top Right, with some padding
+        let pos = egui::pos2(rect.right() - 20.0, rect.top() + 40.0);
+
+        // Use an "Area" so it floats over the specturm without pushing layout
+        egui::Area::new(egui::Id::new("media_overlay"))
+            .fixed_pos(pos)
+            .pivot(egui::Align2::RIGHT_TOP)
+            .interactable(false)
+            .show(ui.ctx(), |ui| {
+                ui.scope(|ui| {
+                    // Apply Opacity
+                    ui.visuals_mut().widgets.noninteractive.fg_stroke.color = 
+                        egui::Color32::WHITE.linear_multiply(opacity);
+
+                    // --- Font Choices
+                    // Using "Heading" for Song, 'Body' for Artist looks clean and native
+                    ui.label(egui::RichText::new(&info.title)
+                        .font(egui::FontId::proportional(24.0))
+                        .strong()
+                        .color(egui::Color32::WHITE.linear_multiply(opacity))
+                    );
+
+                    ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
+                        .font(egui::FontId::proportional(16.0))
+                        .color(egui::Color32::from_white_alpha(200).linear_multiply(opacity))
+                    );
+
+                    ui.add_space(4.0);
+                    
+                    // Small Source app badge (eg. "Spotfiy")
+                    ui.label(egui::RichText::new(format!("via {}", info.source_app))
+                        .font(egui::FontId::monospace(10.0))
+                        .color(egui::Color32::from_white_alpha(120).linear_multiply(opacity))
+                    );
+                });
+            });
+    }
 
     /// Draw solid gradient bars
     fn draw_solid_bars(
@@ -1297,6 +1399,17 @@ impl SpectrumApp {
                                     ui.add(egui::Slider::new(&mut state.config.inspector_opacity, 0.1..=1.0));
                                     ui.end_row();
                                 }
+
+                                // === Media Settings ===
+                                ui.label("Now Playing");
+                                egui::ComboBox::from_id_salt("media_mode")
+                                    .selected_text(format!("{:?}", state.config.media_display_mode))
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::FadeOnUpdate, "Fade On Update");
+                                        ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::AlwaysOn, "Always On");
+                                        ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::Off, "Off");
+                                    });
+                                ui.end_row();
                             });
                     });
 
@@ -1436,7 +1549,10 @@ mod tests {
 
     #[test]
     fn test_db_to_px_scaling() {
-        let app = SpectrumApp::new(Arc::new(Mutex::new(SharedState::new())));
+        let app = SpectrumApp::new(
+            Arc::new(Mutex::new(SharedState::new())),
+            crossbeam_channel::bounded(1).1 // Dummy channel for test
+        );
         let config = AppConfig { noise_floor_db: -100.0, ..Default::default() };
         
         // Test Floor

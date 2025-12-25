@@ -21,6 +21,14 @@ pub enum VisualMode {
     Oscilloscope,
 }
 
+// === Media Options ===
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
+pub enum MediaDisplayMode {
+    FadeOnUpdate,   // Fade for N seconds the fade
+    AlwaysOn,       // Always visible
+    Off,            // Hidden
+}
+
 // ==== Main Shared State ====
 pub struct SharedState{
     /// Current visualization datda (bars, peaks)
@@ -41,6 +49,12 @@ pub struct SharedState{
     /// Flag: GUI requests a hardware scan (handled by main thread
     pub refresh_devices_requested: bool,
 
+    // === Media Player State ===
+    /// Curreently playing track info
+    pub media_info: Option<crate::media::MediaTrackInfo>,
+    /// When the track info was last updated
+    pub last_media_update: Option<Instant>,
+
 }
 
 impl SharedState {
@@ -53,6 +67,8 @@ impl SharedState {
             audio_devices: Vec::new(),
             device_changed: false,
             refresh_devices_requested: false,
+            media_info: None,
+            last_media_update: None,
         }
     }
 }
@@ -185,6 +201,10 @@ pub struct AppConfig {
     /// Use peak aggregation (true) or average (false) for bar grouping
     pub use_peak_aggregation: bool,
 
+    // === Media Settings ===
+    pub media_display_mode: MediaDisplayMode,
+    pub media_fade_duration_sec: f32,
+
     // === Color Settings === 
     pub color_scheme: ColorScheme,
 }
@@ -225,6 +245,10 @@ impl Default for AppConfig {
             peak_hold_time_ms: 1000.0,
             peak_release_time_ms: 1500.0,
             use_peak_aggregation: true,
+
+            // Media Settings
+            media_display_mode: MediaDisplayMode::FadeOnUpdate,
+            media_fade_duration_sec: 5.0,
 
             // Color Settings 
             color_scheme: ColorScheme::default(),
