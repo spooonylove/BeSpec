@@ -103,19 +103,23 @@ impl eframe::App for SpectrumApp {
         
 
         // --- Main Window Size tracking ---
-        if let Some(rect) = ctx.input(|i| i.viewport().inner_rect){
-            let current_size = rect.size();
-               
-            // Only print if the size has changed since the last fraome (or is None)
-            if self.last_window_size != Some(current_size) {
-                // Filter out 0x0 or tiny screens
-                if current_size.x > 10.0 && current_size.y > 10.0 {
-                    tracing::debug!("[GUI] Main Window Resized: {:.0} x {:.0}", current_size.x, current_size.y);
-                    self.last_window_size = Some(current_size);
+        let current_rect = ctx.screen_rect();
+        let current_size = current_rect.size();
 
-                    if let Ok(mut state) = self.shared_state.lock() {
-                        state.config.window_size = [current_size.x, current_size.y];
-                    }
+        // Check if size changed (ignoring tiny sub-pixel float differences)
+        let size_changed = self.last_window_size.map_or(true, |old|{
+            (old.x - current_size.x).abs() > 1.0 || (old.y - current_size.y).abs() > 1.0
+        });
+
+        if size_changed {
+            // Filter out 0x0 or tiny screens (startup  artifacts)
+            if current_size.x > 10.0 && current_size.y > 10.0 {
+                // Log at INFO level so we can verify it happens
+                tracing::info!("[GUI] Main Window Resized: w: {:.0}, h: {:.0}", current_size.x, current_size.y);
+                self.last_window_size = Some(current_size);
+
+                if let Ok(mut state) = self.shared_state.lock() {
+                    state.config.window_size = [current_size.x, current_size.y];
                 }
             }
         }

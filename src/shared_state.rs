@@ -262,7 +262,7 @@ impl AppConfig {
     /// MacOS: /Users/Username/Library/Application Support/BeAnal
     /// Linux: /home/username/.config/BeAnal
     fn get_config_path() -> PathBuf {
-        if let Some(proj_dirs) = ProjectDirs::from("","","beanal") {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
             let config_dir = proj_dirs.config_dir();
 
             // Ensure directory exists
