@@ -47,6 +47,70 @@ impl AudioPacket {
     }
 }
 
+// ============================================================================
+//  StderrSilencer: Linux Implementation (The real logic)
+// ============================================================================
+/// a helper to temporarily silence `stderr` out from C libaries (ALSA, Jack)
+/// Useful on Linux to suppress unwanted error messages from audio backends
+#[cfg(target_os = "linux")]
+struct StderrSilencer {
+    original_stderr: Option<i32>,
+}
+
+#[cfg(target_os = "linux")]
+impl StderrSilencer {
+    fn new() -> Self {
+        let mut silencer = Self { original_stderr: None };
+        unsafe {
+            // 1. Duplicate the current stderr (file descriptor 2) so we can restore it later
+            let stderr_fd = libc::STDERR_FILENO;
+            let original = libc::dup(stderr_fd);
+
+            if original >= 0 {
+                silencer.original_stderr = Some(original);
+
+                // 2. Open /dev/null (the black hole waits for nothing)
+                let null_path = std::ffi::CString::new("/dev/null").unwrap();
+                let null_fd = libc::open(null_path.as_ptr(), libc::O_WRONLY);
+
+                if null_fd >= 0 {
+                    // 3. Overrite  stderr with /dev/null file descriptor
+                    libc::dup2(null_fd, stderr_fd);
+                    libc::close(null_fd);
+                }
+            }
+        }
+        silencer
+    }
+}
+
+// ============================================================================
+//  StderrSilencer: Windows/macOS Implementation (Dummy / No-Op)
+// ============================================================================
+// On other platforms, we don't need to suppress anything, so this struct does nothing.
+// The compiler optimizes it away completely (zero cost).
+#[cfg(not(target_os = "linux"))]
+struct StderrSilencer;
+
+#[cfg(not(target_os = "linux"))]
+impl StderrSilencer {
+    fn new() -> Self {
+        Self // Returns the empty struct
+    }
+}
+
+impl Drop for StderrSilencer {
+    fn drop(&mut self) {
+        // Restore stderr immediately when this struct goes out of scope
+        if let Some(original) = self.original_stderr {
+            unsafe {
+                libc::dup2(original, libc::STDERR_FILENO);
+                libc::close(original);
+            }
+        }
+    }
+}
+
 /// Handles audio capture from a specific device
 pub struct AudioCaptureManager {
     /// Information about the currently active device
@@ -68,14 +132,28 @@ pub struct AudioCaptureManager {
 impl AudioCaptureManager {
     /// Create a new audio capture manager with default device
     pub fn new() -> Result<Self, AudioDeviceError> {
+        // Silence the ALSA/Jack error spam on Linux during device enumeration
+        let _silencer = StderrSilencer::new();
+
+        // This call generaates the noise, but returns a proper Rust result
         let (_device, device_info) = AudioDeviceEnumerator::get_default_device()?;
+
+        // Drop silence (restore stderr) explicitly before continuing (though Rust does it automatically)
+        drop(_silencer);
+
         Self::with_device(device_info)
     }
 
     /// Create a capture manager with a specific device ID
     pub fn with_device_id(device_id: &str) -> Result<Self, AudioDeviceError> {
+        // Shhhh linux, hush up now
+        let _silencer = StderrSilencer::new();
+
         let _device = AudioDeviceEnumerator::get_device_by_id(device_id)?;
         let devices = AudioDeviceEnumerator::enumerate_devices()?;
+        
+        drop(_silencer);
+                
         let device_info = devices
             .into_iter()
             .find(|d| d.id == device_id)
@@ -121,6 +199,11 @@ impl AudioCaptureManager {
         shutdown: &Arc<AtomicBool>,
     ) -> Result<(), AudioDeviceError> {
         
+        // ===========================================================================
+        // Silence Linux error spam  (silenced after step 4)
+        // ===========================================================================
+        let _silencer = StderrSilencer::new();
+
         // ============================================================================
         // STEP 1: GET THE AUDIO DEVICE
         // ============================================================================
@@ -288,6 +371,9 @@ impl AudioCaptureManager {
             .play()
             .map_err(|e| AudioDeviceError::StreamCreationFailed(e.to_string()))?;
 
+        // Drop silence (restore stderr) explicitly before continuing
+        drop(_silencer);
+
         tracing::info!("[AudioCapture] ✓ Audio stream started successfully");
 
         // ============================================================================
@@ -330,8 +416,14 @@ impl AudioCaptureManager {
 
     /// Switch to a different audio device (can be called while capturing)
     pub fn switch_device(&mut self, device_id: &str) -> Result<(), AudioDeviceError> {
+        // Quiet Linux!
+        let _silencer = StderrSilencer::new();
+        
         let _device = AudioDeviceEnumerator::get_device_by_id(device_id)?;
         let devices = AudioDeviceEnumerator::enumerate_devices()?;
+
+        drop(_silencer);
+
         let new_device_info = devices
             .into_iter()
             .find(|d| d.id == device_id)
@@ -363,8 +455,13 @@ impl AudioCaptureManager {
 
     /// List all available devices
     pub fn list_devices() -> Result<Vec<AudioDeviceInfo>, AudioDeviceError> {
-        AudioDeviceEnumerator::enumerate_devices()
+        // Silence Linux error spam
+        let _silencer = StderrSilencer::new();
+
+        let result = AudioDeviceEnumerator::enumerate_devices();
+        result
     }
+
 }
 
 impl Drop for AudioCaptureManager {
