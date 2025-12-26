@@ -509,21 +509,6 @@ fn main (){
     if let Err(e) = fs::create_dir_all(&log_dir) {
         tracing::error!("[Main] ❌ Failed to create log directory {:?}: {}", log_dir, e);
     }
-    // =======================================================================
-    // [DEBUG] FORCE PRINT THE PATH TO TERMINAL
-    println!("\n🔍 DIAGNOSTIC: Attempting to use log directory: {:?}", log_dir);
-
-    // Ensure the directory exists
-    if let Err(e) = fs::create_dir_all(&log_dir) {
-        // [FIX] Use eprintln! because tracing isn't active yet!
-        eprintln!("\n❌ CRITICAL ERROR: Could not create log directory!");
-        eprintln!("   Path: {:?}", log_dir);
-        eprintln!("   Error: {}\n", e);
-        // We probably want to exit or fall back here, but for now let's just see the error.
-    } else {
-        println!("✅ Log directory verified/created.");
-    }
-    // =======================================================================
 
     // Set up the file appender
     let file_appender = tracing_appender::rolling::daily(&log_dir, "beanal.log");
