@@ -103,19 +103,23 @@ impl eframe::App for SpectrumApp {
         
 
         // --- Main Window Size tracking ---
-        if let Some(rect) = ctx.input(|i| i.viewport().inner_rect){
-            let current_size = rect.size();
-               
-            // Only print if the size has changed since the last fraome (or is None)
-            if self.last_window_size != Some(current_size) {
-                // Filter out 0x0 or tiny screens
-                if current_size.x > 10.0 && current_size.y > 10.0 {
-                    tracing::debug!("[GUI] Main Window Resized: {:.0} x {:.0}", current_size.x, current_size.y);
-                    self.last_window_size = Some(current_size);
+        let current_rect = ctx.screen_rect();
+        let current_size = current_rect.size();
 
-                    if let Ok(mut state) = self.shared_state.lock() {
-                        state.config.window_size = [current_size.x, current_size.y];
-                    }
+        // Check if size changed (ignoring tiny sub-pixel float differences)
+        let size_changed = self.last_window_size.map_or(true, |old|{
+            (old.x - current_size.x).abs() > 1.0 || (old.y - current_size.y).abs() > 1.0
+        });
+
+        if size_changed {
+            // Filter out 0x0 or tiny screens (startup  artifacts)
+            if current_size.x > 10.0 && current_size.y > 10.0 {
+                // Log at INFO level so we can verify it happens
+                tracing::info!("[GUI] Main Window Resized: w: {:.0}, h: {:.0}", current_size.x, current_size.y);
+                self.last_window_size = Some(current_size);
+
+                if let Ok(mut state) = self.shared_state.lock() {
+                    state.config.window_size = [current_size.x, current_size.y];
                 }
             }
         }
@@ -290,7 +294,10 @@ impl SpectrumApp {
             egui::Sense::click_and_drag());
 
         // Dragging moves the window
-        if interaction.dragged() {
+        // Use button_pressed() for instant, single-fire trigger
+        // This fires ONCE exactly when the button goes down, preventing spam (stuck window)
+        // and avoiding the drag threshold delay (double click issue).
+        if interaction.hovered() && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
         
@@ -464,13 +471,13 @@ impl SpectrumApp {
                     // --- Font Choices
                     // Using "Heading" for Song, 'Body' for Artist looks clean and native
                     ui.label(egui::RichText::new(&info.title)
-                        .font(egui::FontId::proportional(24.0))
+                        .font(egui::FontId::proportional(20.0))
                         .strong()
                         .color(egui::Color32::WHITE.linear_multiply(opacity))
                     );
 
                     ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                        .font(egui::FontId::proportional(16.0))
+                        .font(egui::FontId::proportional(12.0))
                         .color(egui::Color32::from_white_alpha(200).linear_multiply(opacity))
                     );
 
@@ -478,7 +485,7 @@ impl SpectrumApp {
                     
                     // Small Source app badge (eg. "Spotfiy")
                     ui.label(egui::RichText::new(format!("via {}", info.source_app))
-                        .font(egui::FontId::monospace(10.0))
+                        .font(egui::FontId::monospace(8.0))
                         .color(egui::Color32::from_white_alpha(120).linear_multiply(opacity))
                     );
                 });
@@ -725,7 +732,7 @@ impl SpectrumApp {
     
     // === OVERLAYS ===
 
-    fn draw_resize_grip(&self, ctx: &egui::Context, ui: &mut egui::Ui, rect: &egui::Rect) {
+    fn draw_resize_grip(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, rect: &egui::Rect) {
         let corner_size = 20.0;
         let grip_rect = egui::Rect::from_min_size(
             egui::pos2(rect.right() - corner_size, rect.bottom() - corner_size),
@@ -738,7 +745,8 @@ impl SpectrumApp {
             ctx.set_cursor_icon(egui::CursorIcon::ResizeSouthEast);
         }
 
-        if response.dragged() {
+        // Use button_pressed() for instant resize start
+        if response.hovered() && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(egui::ResizeDirection::SouthEast));
         }
 

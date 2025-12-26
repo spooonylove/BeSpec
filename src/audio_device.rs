@@ -84,6 +84,31 @@ impl AudioDeviceEnumerator {
             .output_devices()
             .map_err(|_| AudioDeviceError::NoDevicesFound)? 
         {
+            // === LINUX SAFETY FILTER ===
+            // Filter out raw hardware/plugins before probing to prevent hangs/spam
+            if let Ok(name) = device.name() {
+                if cfg!(target_os = "linux") {
+                    // 1. Skip 'dmix' (direct mix) and 'dsnoop' (Direct Snoop)
+                    // These are internal ALSA plugins that often fail configuration queries
+                    // and cause the console spam. YUCK.
+                    if name.starts_with("dmix") || name.starts_with("dsnoop") {
+                        continue;
+                    }
+
+                    // 2. Skip 'hw:' and 'plughw:' (Raw Hardware)
+                    // Accessing these can block the app if the device is busy or sleeping
+                    if name.starts_with("hw:") || name.starts_with("plughw:") {
+                        continue;
+                    }
+
+                    // 3. Skip 'Surround' / 'iec958' (Raw Digital)
+                    // These are rarely useful for loopback and slow to probe.
+                    if name.starts_with("surround") || name.starts_with("iec958") {
+                        continue;
+                    }
+
+                }
+            }
             match Self::extract_device_info(&device, default_device.as_ref()) {
                 
                 Ok(info) => devices.push(info),
