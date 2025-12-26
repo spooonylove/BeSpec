@@ -68,6 +68,8 @@ BeAnal is designed for precision. See how it uncovers hidden artifacts in profes
 
 macOS Users: To visualize system audio, you must set up a loopback driver. See the [macOS Setup Guide](docs/macos_setup.md).
 
+Linux Users: To visualize system audio, you must route audio into BeAnal via `pavucontro` or equivlant. See the [linuxS Setup Guide](docs/linux_setup.md).
+
 ### Option B: Build from Source
 If you prefer to build it yourself, you will need the [Rust toolchain](https://www.rust-lang.org/tools/install) installed.
 
