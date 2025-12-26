@@ -84,6 +84,19 @@ impl StderrSilencer {
     }
 }
 
+#[cfg(target_os = "linux")]
+impl Drop for StderrSilencer {
+    fn drop(&mut self) {
+        // Restore stderr immediately when this struct goes out of scope
+        if let Some(original) = self.original_stderr {
+            unsafe {
+                libc::dup2(original, libc::STDERR_FILENO);
+                libc::close(original);
+            }
+        }
+    }
+}
+
 // ============================================================================
 //  StderrSilencer: Windows/macOS Implementation (Dummy / No-Op)
 // ============================================================================
@@ -99,17 +112,7 @@ impl StderrSilencer {
     }
 }
 
-impl Drop for StderrSilencer {
-    fn drop(&mut self) {
-        // Restore stderr immediately when this struct goes out of scope
-        if let Some(original) = self.original_stderr {
-            unsafe {
-                libc::dup2(original, libc::STDERR_FILENO);
-                libc::close(original);
-            }
-        }
-    }
-}
+
 
 /// Handles audio capture from a specific device
 pub struct AudioCaptureManager {
