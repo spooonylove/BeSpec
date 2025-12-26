@@ -290,7 +290,10 @@ impl SpectrumApp {
             egui::Sense::click_and_drag());
 
         // Dragging moves the window
-        if interaction.dragged() {
+        // Use button_pressed() for instant, single-fire trigger
+        // This fires ONCE exactly when the button goes down, preventing spam (stuck window)
+        // and avoiding the drag threshold delay (double click issue).
+        if interaction.hovered() && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
         
@@ -725,7 +728,7 @@ impl SpectrumApp {
     
     // === OVERLAYS ===
 
-    fn draw_resize_grip(&self, ctx: &egui::Context, ui: &mut egui::Ui, rect: &egui::Rect) {
+    fn draw_resize_grip(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, rect: &egui::Rect) {
         let corner_size = 20.0;
         let grip_rect = egui::Rect::from_min_size(
             egui::pos2(rect.right() - corner_size, rect.bottom() - corner_size),
@@ -738,7 +741,8 @@ impl SpectrumApp {
             ctx.set_cursor_icon(egui::CursorIcon::ResizeSouthEast);
         }
 
-        if response.dragged() {
+        // Use button_pressed() for instant resize start
+        if response.hovered() && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(egui::ResizeDirection::SouthEast));
         }
 
