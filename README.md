@@ -120,6 +120,16 @@ BeAnal uses a concurrent architecture to ensure the UI never stutters, even unde
 * **GUI Thread:** Renders the visualization at 60+ FPS using `egui` + `wgpu`.
 * **State Management:** Threads communicate via `crossbeam_channel` for high-speed audio data and `Arc<Mutex<SharedState>>` for configuration synchronization.
 
+## 🔒 Why does my OS say the "Microphone" is on?
+
+You might notice a "Microphone Active" indicator (often an orange icon) in your system tray or taskbar while BeAnal is running.
+
+**This is normal and expected behavior.**
+
+* **How it works:** To visualize your music, BeAnal must "listen" to your system's audio output (a technique called *loopback*).
+* **Why the icon appears:** Modern operating systems (Ubuntu/GNOME, macOS, etc.) classify *any* audio input stream as "Microphone Usage," even if the app is only listening to what the computer is playing.
+* **Privacy Promise:** BeAnal processes audio data **locally in real-time** solely to generate the graphics. No audio is ever recorded to disk, and no audio data is ever transmitted over the network.
+
 ## 🔧 Troubleshooting & Logging
 
 BeAnal runs silently by default. If you encounter issues, logs are automatically rotated daily and stored in your OS standard data directory:

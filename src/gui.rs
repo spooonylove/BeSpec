@@ -471,13 +471,13 @@ impl SpectrumApp {
                     // --- Font Choices
                     // Using "Heading" for Song, 'Body' for Artist looks clean and native
                     ui.label(egui::RichText::new(&info.title)
-                        .font(egui::FontId::proportional(24.0))
+                        .font(egui::FontId::proportional(20.0))
                         .strong()
                         .color(egui::Color32::WHITE.linear_multiply(opacity))
                     );
 
                     ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                        .font(egui::FontId::proportional(16.0))
+                        .font(egui::FontId::proportional(12.0))
                         .color(egui::Color32::from_white_alpha(200).linear_multiply(opacity))
                     );
 
@@ -485,7 +485,7 @@ impl SpectrumApp {
                     
                     // Small Source app badge (eg. "Spotfiy")
                     ui.label(egui::RichText::new(format!("via {}", info.source_app))
-                        .font(egui::FontId::monospace(10.0))
+                        .font(egui::FontId::monospace(8.0))
                         .color(egui::Color32::from_white_alpha(120).linear_multiply(opacity))
                     );
                 });
