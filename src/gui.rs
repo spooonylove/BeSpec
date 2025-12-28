@@ -457,33 +457,41 @@ impl SpectrumApp {
         // Position: Top Right, with some padding
         let pos = egui::pos2(rect.right() - 20.0, rect.top() + 20.0);
 
-        // Use an "Area" so it floats over the specturm without pushing layout
+        // Use an "Area" so it floats over the spectrum without pushing layout
         egui::Area::new(egui::Id::new("media_overlay"))
             .fixed_pos(pos)
             .pivot(egui::Align2::RIGHT_TOP)
             .interactable(false)
             .show(ui.ctx(), |ui| {
-                ui.scope(|ui| {
+                // Change layout to Top-Down with Right Alignment (Align::Max)
+                // This biases the text to the corner.
+                ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                    
+                    // Allow the box to take up to 50% of the screen width if needed
+                    // This solves the "too narrow" stacking issue.
+                    ui.set_max_width(rect.width() * 0.5);
+
                     // Apply Opacity
                     ui.visuals_mut().widgets.noninteractive.fg_stroke.color = 
                         egui::Color32::WHITE.linear_multiply(opacity);
 
                     // --- Font Choices
-                    // Using "Heading" for Song, 'Body' for Artist looks clean and native
+                    // Reduced size to 16.0 for a more elegant header
                     ui.label(egui::RichText::new(&info.title)
-                        .font(egui::FontId::proportional(20.0))
+                        .font(egui::FontId::proportional(16.0))
                         .strong()
                         .color(egui::Color32::WHITE.linear_multiply(opacity))
                     );
 
+                    // Reduced size to 11.0 for details
                     ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                        .font(egui::FontId::proportional(12.0))
+                        .font(egui::FontId::proportional(11.0))
                         .color(egui::Color32::from_white_alpha(200).linear_multiply(opacity))
                     );
 
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
                     
-                    // Small Source app badge (eg. "Spotfiy")
+                    // Small Source app badge (eg. "Spotify")
                     ui.label(egui::RichText::new(format!("via {}", info.source_app))
                         .font(egui::FontId::monospace(8.0))
                         .color(egui::Color32::from_white_alpha(120).linear_multiply(opacity))
