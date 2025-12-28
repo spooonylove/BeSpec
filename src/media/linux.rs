@@ -15,8 +15,6 @@ impl LinuxMediaManager {
 
 /// Helper function to load album art from a file:// URL
 fn load_art_from_url(art_url: &str) -> Option<Vec<u8>> {
-    tracing::debug!("[Media/Linux] Processing art URL: '{}'", art_url);
-
     // 1. Handle Local Files
     if art_url.starts_with("file://") {
         // Strip the schema
@@ -29,7 +27,8 @@ fn load_art_from_url(art_url: &str) -> Option<Vec<u8>> {
         if path.exists() {
             match fs::read(&path) {
                 Ok(bytes) => {
-                    tracing::info!("[Media/Linux] Successfully loaded art from file: {:?}", path);
+                    // Changed to DEBUG (hidden by default)
+                    tracing::debug!("[Media/Linux] Loaded art from file: {:?}", path);
                     return Some(bytes);
                 },
                 Err(e) => {
@@ -37,7 +36,7 @@ fn load_art_from_url(art_url: &str) -> Option<Vec<u8>> {
                 }
             }
         } else {
-            // Log this specifically - it implies a decoding error or a phantom file
+            // Keep WARN: frequent "File not found" usually means our URL decoding is wrong
             tracing::warn!("[Media/Linux] File not found at path: {:?} (Original: '{}')", path, art_url);
         }
     } 
@@ -54,7 +53,8 @@ fn load_art_from_url(art_url: &str) -> Option<Vec<u8>> {
                 let mut reader = response.into_reader();
                 let mut bytes = Vec::new();
                 if let Ok(_) = reader.read_to_end(&mut bytes) {
-                    tracing::info!("[Media/Linux] Successfully downloaded art from URL: '{}'", art_url);
+                    // Changed to DEBUG
+                    tracing::debug!("[Media/Linux] Downloaded art from URL: '{}'", art_url);
                     return Some(bytes);
                 } else {
                     tracing::warn!("[Media/Linux] Failed to read art data from URL response: '{}'", art_url);
