@@ -50,6 +50,7 @@ tokio = { version = "1.0", default-features = false, features = ["rt", "time", "
 # Linux: Uses the MPRIS standard via D-Bus
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris = "2.0"
+ureq = "2.9"
 
 # macOS: Uses private MediaRemote framework bindings
 [target.'cfg(target_os = "macos")'.dependencies]
