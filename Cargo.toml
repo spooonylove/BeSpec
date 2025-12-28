@@ -24,7 +24,7 @@ time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
 libc = "0.2"
 
 # Icon Generation
-image = {version = "0.24", default-features = false, features = ["png"] }
+image = {version = "0.24", default-features = false, features = ["png", "jpeg"] }
 
 # GUI framework
 eframe = "0.29"

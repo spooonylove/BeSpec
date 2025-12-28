@@ -24,6 +24,9 @@ pub struct SpectrumApp {
 
     /// Receiver for media updates (local to GUI thread)
     media_rx: Receiver<crate::media::MediaTrackInfo>,
+
+    // cached album art texture
+    album_art_texture: Option<egui::TextureHandle>,
     
     /// Settings window state
     settings_open: bool,
@@ -53,6 +56,7 @@ impl SpectrumApp {
         Self {
             shared_state,
             media_rx,
+            album_art_texture: None,
             settings_open: false,
             active_tab: SettingsTab::Visual,
             last_frame_time: Instant::now(),
@@ -96,8 +100,32 @@ impl eframe::App for SpectrumApp {
 
         if let Some(track) = new_track {
             if let Ok(mut state) = self.shared_state.lock() {
-                state.media_info = Some(track);
+                state.media_info = Some(track.clone());
                 state.last_media_update = Some(Instant::now());
+            }
+
+            // Process album art
+            if let Some(bytes) = &track.album_art {
+                if let Ok(image) = image::load_from_memory(bytes) {
+                    let size = [image.width() as _, image.height() as _];
+                    let image_buffer = image.into_rgba8();
+                    let pixels = image_buffer.as_flat_samples();
+                    let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                        size,
+                        pixels.as_slice(),
+                    );
+
+                    // load into GPU
+                    self.album_art_texture  = Some(ctx.load_texture(
+                        "album_art", 
+                        color_image,
+                        egui::TextureOptions::LINEAR,
+                    ));
+                } else {
+                    self.album_art_texture = None;
+                }
+            } else {
+                self.album_art_texture = None;
             }
         }
         
@@ -419,83 +447,88 @@ impl SpectrumApp {
         let state = self.shared_state.lock().unwrap();
         let config = &state.config;
 
-        // 1. Check Mode
         if config.media_display_mode == MediaDisplayMode::Off {
             return;
         }
 
-        // 2. Check Data
         let info = match &state.media_info {
             Some(i) => i, 
             None => return,
         };
         
-        // 3. Calculate Opacity 
         let mut opacity = 1.0;
-
         if config.media_display_mode == MediaDisplayMode::FadeOnUpdate {
             if let Some(last_update) = state.last_media_update {
                 let elapsed = last_update.elapsed().as_secs_f32();
                 let duration = config.media_fade_duration_sec;
-                let fade_time = 1.5; // Time to fully fade out after duration
+                let fade_time = 1.5; 
 
                 if elapsed > (duration + fade_time) {
-                    return; // Fully faded out
+                    return; 
                 } else if elapsed > duration {
-                    // Fading out
                     let fade_progress = (elapsed - duration) / fade_time;
                     opacity = 1.0 - fade_progress;
                 }
-            } else {
-                // should not happen if data exists, but fail safe
-                return;
             }
         }
 
-        // 4. Draw time!
+        // Layout Logic
         let rect = ui.max_rect();
-        // Position: Top Right, with some padding
         let pos = egui::pos2(rect.right() - 20.0, rect.top() + 20.0);
 
-        // Use an "Area" so it floats over the spectrum without pushing layout
         egui::Area::new(egui::Id::new("media_overlay"))
             .fixed_pos(pos)
             .pivot(egui::Align2::RIGHT_TOP)
             .interactable(false)
             .show(ui.ctx(), |ui| {
-                // Change layout to Top-Down with Right Alignment (Align::Max)
-                // This biases the text to the corner.
-                ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                // Use Right-to-Left layout. 
+                // This ensures the first item we add (Art) is pinned to the right anchor.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     
-                    // Allow the box to take up to 50% of the screen width if needed
-                    // This solves the "too narrow" stacking issue.
-                    ui.set_max_width(rect.width() * 0.5);
+                    // 1. Album Art (Rightmost)
+                    if let Some(texture) = &self.album_art_texture {
+                        let tint = egui::Color32::WHITE.linear_multiply(opacity);
+                        ui.add(
+                            egui::Image::new(texture)
+                                .max_height(50.0)
+                                .rounding(4.0)
+                                .tint(tint)
+                        );
+                        
+                        // Spacer between Art and Text
+                        ui.add_space(10.0); 
+                    }
 
-                    // Apply Opacity
-                    ui.visuals_mut().widgets.noninteractive.fg_stroke.color = 
-                        egui::Color32::WHITE.linear_multiply(opacity);
+                    // 2. Text Stack (Left of Art)
+                    // We wrap this in a vertical layout so the text lines stack top-to-bottom
+                    ui.vertical(|ui| {
+                        // Inside the stack, align text to the Right (towards the art)
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                            
+                            ui.set_max_width(rect.width() * 0.5);
 
-                    // --- Font Choices
-                    // Reduced size to 16.0 for a more elegant header
-                    ui.label(egui::RichText::new(&info.title)
-                        .font(egui::FontId::proportional(16.0))
-                        .strong()
-                        .color(egui::Color32::WHITE.linear_multiply(opacity))
-                    );
+                            // Song Title
+                            ui.label(egui::RichText::new(&info.title)
+                                .font(egui::FontId::proportional(16.0))
+                                .strong()
+                                .color(egui::Color32::WHITE.linear_multiply(opacity))
+                            );
 
-                    // Reduced size to 11.0 for details
-                    ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                        .font(egui::FontId::proportional(11.0))
-                        .color(egui::Color32::from_white_alpha(200).linear_multiply(opacity))
-                    );
+                            // Artist - Album
+                            ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
+                                .font(egui::FontId::proportional(11.0))
+                                .color(egui::Color32::from_white_alpha(200).linear_multiply(opacity))
+                            );
 
-                    ui.add_space(2.0);
-                    
-                    // Small Source app badge (eg. "Spotify")
-                    ui.label(egui::RichText::new(format!("via {}", info.source_app))
-                        .font(egui::FontId::monospace(8.0))
-                        .color(egui::Color32::from_white_alpha(120).linear_multiply(opacity))
-                    );
+                            ui.add_space(2.0);
+                            
+                            // Source App
+                            ui.label(egui::RichText::new(format!("via {}", info.source_app))
+                                .font(egui::FontId::monospace(8.0))
+                                .color(egui::Color32::from_white_alpha(120).linear_multiply(opacity))
+                            );
+                        });
+                    });
                 });
             });
     }
