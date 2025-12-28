@@ -1,9 +1,10 @@
 use crossbeam_channel::Sender;
 use std::time::{Duration, Instant};
 use std::process::Command;
+use std::io::Read; // Needed for ureq response reading
 use super::{MediaController, MediaMonitor, MediaTrackInfo};
 
-// We need base64 decoding to handle the image data from JXA
+// We need base64 decoding for Apple Music, and ureq for Spotify
 use base64::{Engine as _, engine::general_purpose};
 
 pub struct MacMediaManager;
@@ -13,26 +14,17 @@ impl MacMediaManager {
 }
 
 // === READ-ONLY IMPLEMENTATION ===
-// We stub out the control methods to be safe and simple.
 impl MediaController for MacMediaManager {
-    fn try_play_pause(&self) {
-        tracing::debug!("[Media/MacOS] Control disabled: Play/Pause");
-    }
-
-    fn try_next(&self) {
-        tracing::debug!("[Media/MacOS] Control disabled: Next");
-    }
-
-    fn try_prev(&self) {
-        tracing::debug!("[Media/MacOS] Control disabled: Previous");
-    }
+    fn try_play_pause(&self) {}
+    fn try_next(&self) {}
+    fn try_prev(&self) {}
 }
 
 impl MediaMonitor for MacMediaManager {
     fn start(&self, tx: Sender<MediaTrackInfo>) {
         std::thread::spawn(move || {
             let mut last_sent_info: Option<MediaTrackInfo> = None;
-            tracing::info!("[Media/MacOS] Read-Only Monitor started");
+            tracing::info!("[Media/MacOS] Monitor started (Smart Mode: Raw + URL)");
 
             loop {
                 if let Some(info) = get_macos_media_info() {
@@ -45,8 +37,13 @@ impl MediaMonitor for MacMediaManager {
                         album_art: info.album_art, 
                     };
 
+                    // Send only on change
                     if last_sent_info.as_ref() != Some(&current_info) {
-                        tracing::info!("[Media/MacOS] Update: {} - {}", current_info.artist, current_info.title);
+                        tracing::info!("[Media/MacOS] Update: {} - {} (Art: {})", 
+                            current_info.artist, 
+                            current_info.title,
+                            if current_info.album_art.is_some() { "Yes" } else { "No" }
+                        );
                         let _ = tx.send(current_info.clone());
                         last_sent_info = Some(current_info);
                     }
@@ -67,6 +64,7 @@ struct RawTrackInfo {
     album_art: Option<Vec<u8>>,
 }
 
+// Updated JXA: Tries Raw Data first (Apple Music), then URL (Spotify)
 const JXA_SCRIPT: &str = r#"
 (function() {
     function toBase64(data) {
@@ -98,7 +96,9 @@ const JXA_SCRIPT: &str = r#"
         
         var track = activeApp.currentTrack;
         var artBase64 = null;
+        var artUrl = null;
 
+        // 1. Try Raw Data (Standard for Apple Music)
         try {
             var artworks = track.artworks();
             if (artworks.length > 0) {
@@ -107,13 +107,22 @@ const JXA_SCRIPT: &str = r#"
             }
         } catch (e) {}
 
+        // 2. If no raw data, try Artwork URL (Standard for Spotify)
+        if (!artBase64) {
+            try {
+                // Spotify often provides this property
+                artUrl = track.artworkUrl();
+            } catch (e) {}
+        }
+
         return JSON.stringify({
             app: activeApp.name(),
             title: track.name(),
             artist: track.artist(),
             album: track.album(),
             playing: (state === "playing"),
-            art: artBase64
+            art_base64: artBase64,
+            art_url: artUrl
         });
     } catch(e) {
         return "null";
@@ -137,9 +146,27 @@ fn get_macos_media_info() -> Option<RawTrackInfo> {
 
     match serde_json::from_str::<serde_json::Value>(&json_str) {
         Ok(v) => {
-            let album_art = v["art"].as_str().and_then(|b64| {
-                general_purpose::STANDARD.decode(b64).ok()
-            });
+            let mut final_art = None;
+
+            // Strategy 1: Base64 Data (Apple Music)
+            if let Some(b64) = v["art_base64"].as_str() {
+                if !b64.is_empty() {
+                    match general_purpose::STANDARD.decode(b64) {
+                        Ok(bytes) => final_art = Some(bytes),
+                        Err(_) => tracing::warn!("[Media/MacOS] Failed to decode Base64 art"),
+                    }
+                }
+            }
+
+            // Strategy 2: URL Download (Spotify)
+            if final_art.is_none() {
+                if let Some(url) = v["art_url"].as_str() {
+                    if !url.is_empty() {
+                        // tracing::debug!("[Media/MacOS] Fetching art from URL: {}", url);
+                        final_art = download_art(url);
+                    }
+                }
+            }
 
             Some(RawTrackInfo {
                 source_app: v["app"].as_str().unwrap_or("Unknown").to_string(),
@@ -147,9 +174,31 @@ fn get_macos_media_info() -> Option<RawTrackInfo> {
                 artist: v["artist"].as_str().unwrap_or("").to_string(),
                 album: v["album"].as_str().unwrap_or("").to_string(),
                 is_playing: v["playing"].as_bool().unwrap_or(false),
-                album_art,
+                album_art: final_art,
             })
         },
-        Err(_) => None
+        Err(e) => {
+            tracing::warn!("[Media/MacOS] Failed to parse JXA output: {}", e);
+            None
+        }
     }
+}
+
+fn download_art(url: &str) -> Option<Vec<u8>> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout_read(Duration::from_secs(2))
+        .timeout_write(Duration::from_secs(2))
+        .build();
+
+    match agent.get(url).call() {
+        Ok(response) => {
+            let mut reader = response.into_reader();
+            let mut bytes = Vec::new();
+            if reader.read_to_end(&mut bytes).is_ok() {
+                return Some(bytes);
+            }
+        },
+        Err(e) => tracing::warn!("[Media/MacOS] Art download failed: {}", e),
+    }
+    None
 }
