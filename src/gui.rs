@@ -317,14 +317,20 @@ impl SpectrumApp {
         let rect = ui.max_rect();
 
         // 1. Handle Window Movement (Dragging the background)
-        // We keep this so we can still move the window!!
+        // CHANGE: Switch from click_and_drag() to click().
+        //
+        // EXPLANATION:
+        // - click_and_drag() makes egui overly sensitive to mouse movement. If you right-click
+        //   and move 1 pixel, it counts as a "drag" and suppresses the "click" event, preventing
+        //   the context menu from opening.
+        // - click() fixes the context menu.
+        // - Window Dragging still works because we trigger StartDrag manually via
+        //   pointer.button_pressed() below, which doesn't depend on egui's high-level drag state.
         let interaction = ui.interact(rect, ui.id().with("window_drag"), 
-            egui::Sense::click_and_drag());
+            egui::Sense::click());
 
         // Dragging moves the window
         // Use button_pressed() for instant, single-fire trigger
-        // This fires ONCE exactly when the button goes down, preventing spam (stuck window)
-        // and avoiding the drag threshold delay (double click issue).
         if interaction.hovered() && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
@@ -342,7 +348,6 @@ impl SpectrumApp {
                 self.settings_open = true;
 
                 // Force the settings window to the front
-                //    ... this ensures it pops up even if it was open but hidden
                 ctx.send_viewport_cmd_to(
                     egui::ViewportId::from_hash_of("settings_viewport"),
                     egui::ViewportCommand::Focus,
@@ -384,8 +389,10 @@ impl SpectrumApp {
 
         // 2. Allocate Drawing Space
         let available_size = ui.available_size();
-        let (response, painter) = ui.allocate_painter(available_size, egui::Sense::hover());
-        let rect = response.rect;
+        let (_, rect) = ui.allocate_space(available_size);
+
+        // We grab the painter directly to draw on top of the empty space
+        let painter = ui.painter();
 
         // 3. Early exit if no data (unless in Oscope mode)
         let num_bars = viz_data.bars.len();
