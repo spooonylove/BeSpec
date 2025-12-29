@@ -10,7 +10,7 @@ A high-performance, cross-platform, real-time audio spectrum visualizer written 
 **BeAnal** listens to your system audio loopback (what you hear from your speakers) and renders a customizable frequency spectrum overlay on your desktop. It is designed to be minimal, beautiful, and efficient.
 
 
-![BeAnal Demo](docs/images/main_window_animation02.gif)
+![BeAnal Demo](docs/images/main_window_animation03.gif)
 ---
 
 ## ✨ Features
@@ -31,8 +31,9 @@ A high-performance, cross-platform, real-time audio spectrum visualizer written 
     * **Presets:** Select from 25+ hand-crafted color schemes (Neon Tokyo, Cyberpunk, Winamp Classic, Molten Core).
     * **Custom:** Define your own Low/High/Peak colors to match your setup.
 * **🎵 Media Integration:**
-    * Now Playing Overlay: Elegantly displays current track details (Title, Artist, Album) in the corner of the visualizer.
-    * Smart Behavior: Configurable to fade out after updates, remain persistent, or hide completely.
+    * **Now Playing Overlay:** Elegantly displays current track details (Title, Artist, Album) and full-color **Album Art**.
+    * **Interactive Controls:** Control your music (Play/Pause, Next, Previous) directly from the overlay (Windows/Linux only).
+    * **Smart Behavior:** Configurable to fade out after updates, remain persistent, or hide completely.
 * 🔍 **Interactive Inspector:** Turn the visualizer into a precision analysis tool. Hover over the spectrum to activate a vertical crosshair that highlights specific frequency bins and displays exact Frequency (Hz) and Amplitude (dB) metrics.
 * **🖥️ Modern UI:**
     * **Borderless Window:** A clean, chrome-less window that floats on your desktop with "Always on Top" and "Click-through" support.
@@ -56,17 +57,18 @@ BeAnal is designed for precision. See how it uncovers hidden artifacts in profes
 * **[Queens of the Stone Age Analysis](./docs/case_study.md):** Detecting a 15.75 kHz CRT whine hidden in the outro of *I Was a Teenage Hand Model* using the 512-bar high-resolution mode.
 
 ## New in v1.3-rc1
-* **Album Art Integration:** Now fetches cover art on Windows, Linux (Spotify/Web), and macOS (Spotify).
+* **Media Transport Controls:** Added Play, Pause, Previous, and Next buttons to the media overlay (Windows/Linux).
+* **Album Art Integration:** Now fetches high-res cover art with optimized "Lazy Loading" to keep CPU usage near zero.
 * **Ghost Mode 2.0:** Improved "Click-through" behavior with transparent background. The window ignores mouse clicks until focused via Alt-Tab.
-* **UI Polish:** New Right-to-Left media overlay layout and improved window interaction logic.
+* **UI Polish:** New Right-to-Left media layout and cohesive control clusters.
 
 ## Compatibility & Support
 
-| Platform | Support Status | Notes |
+| Platform | Support Status | Media Capabilities |
 | :--- | :--- | :--- |
-| **Windows** | ✅ Fully Supported | Works with Spotify, System Media Transport, and standard audio devices. |
-| **Linux** | ✅ Fully Supported | Supports PulseAudio/PipeWire capturing. Media tracking via MPRIS (Spotify, VLC, etc). |
-| **macOS** | ⚠️ Beta / RC | **Spotify:** Fully supported.<br>**Apple Music:** Experimental (Needs validation). |
+| **Windows** | ✅ Fully Supported | Metadata, Album Art, & **Transport Controls**. |
+| **Linux** | ✅ Fully Supported | Metadata, Album Art, & **Transport Controls** (MPRIS). |
+| **macOS** | ⚠️ Beta / RC | Metadata & Album Art supported.<br>*(Transport controls unavailable due to API restrictions)* |
 
 ## 🚀 Installation & Usage
 
@@ -118,11 +120,11 @@ The settings window is organized into tabs for easy navigation:
 
 | Tab | Description |
 | :--- | :--- |
-| **🎨 Visual** | Adjust bar count (16-512), spacing, and transparency. Toggle Inverted Mode (Top-Down) and Aggregation (Peak vs Average). |
-| **🔊 Audio** | Hot-swappable input device selection, and fine-tune the FFT engine (Sensitivity, Noise Floor, Attack/Release). |
-| **🌈 Colors** | Choose from 25+ retro and modern color presets. The UI themes itself to match your selection! |
-| **🪟 Window** | Toggle "Always on Top", window decorations (Title Bar), and the performance stats overlay. |
-| **📊 Stats** | View diagnostics like Sample Rate, specific Latency (ms), and connection health indicators. |
+| **🎨 Visual** | **Modes:** Switch between Solid Bars, Retro LED, Line Spectrum, or Oscilloscope.<br>**Layout:** Adjust Bar Count (10-512), Gap (px), and Segment Height/Gap (LED mode).<br>**Style:** Independently tune Bar Opacity and Background Opacity.<br>**Behavior:** Toggle Inverted Mode (Top-Down) and Aggregation (Peak vs Average). |
+| **🔊 Audio** | **Input:** Hot-swap input devices and refresh hardware lists instantly.<br>**Dynamics:** Tune Sensitivity (dB) and Noise Floor to match your volume.<br>**Timing:** Precise control over Bar Attack/Release (Rise/Fall) and Peak Hold/Decay times. |
+| **🌈 Colors** | **Presets:** Choose from 25+ themes (Neon Tokyo, Cyberpunk, Molten Core). Includes a live preview of the selected palette. |
+| **🪟 Window** | **Behavior:** Toggle "Always on Top" and Window Decorations (Title Bar).<br>**Media Overlay:** Configure "Now Playing" behavior (Fade on Update, Always On, or Off).<br>**Inspector:** Enable/Disable the mouse-hover frequency analyzer and adjust its opacity.<br>**OSD:** Toggle the real-time Performance Stats overlay. |
+| **📊 Stats** | **Diagnostics:** Real-time metrics for Sample Rate, FFT Size, Frequency Resolution (Hz/bin), Latency (ms), and GUI FPS. |
 
 ## 🛠️ Architecture
 
@@ -157,22 +159,3 @@ To view granular details (like window resize events or specific FFT rebuild trig
 **Windows (PowerShell):**
 ```powershell
 $env:RUST_LOG="debug"; .\beanal.exe
-```
-**macOS / Linux:**
-``` bash
-RUST_LOG=debug ./beanal
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! This project is a learning journey into Rust audio programming.
-
-1.  Fork the project.
-2.  Create your feature branch (`git checkout -b feature/AmazingFeature`).
-3.  Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-4.  Push to the branch (`git push origin feature/AmazingFeature`).
-5.  Open a Pull Request.
-
-## 📄 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
