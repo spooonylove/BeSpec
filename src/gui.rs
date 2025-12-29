@@ -1820,7 +1820,8 @@ mod tests {
     fn test_db_to_px_scaling() {
         let app = SpectrumApp::new(
             Arc::new(Mutex::new(SharedState::new())),
-            crossbeam_channel::bounded(1).1 // Dummy channel for test
+            crossbeam_channel::bounded(1).1, // Dummy channel for test
+            Arc::new(PlatformMedia::new())
         );
         let config = AppConfig { noise_floor_db: -100.0, ..Default::default() };
         
