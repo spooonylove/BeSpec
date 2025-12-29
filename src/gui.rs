@@ -463,6 +463,7 @@ impl SpectrumApp {
             None => return,
         };
         
+        // ... (Opacity logic remains the same) ...
         let mut opacity = 1.0;
         if config.media_display_mode == MediaDisplayMode::FadeOnUpdate {
             if let Some(last_update) = state.last_media_update {
@@ -479,65 +480,69 @@ impl SpectrumApp {
             }
         }
 
-        // Layout Logic
+        // --- NEW LAYOUT LOGIC ---
+        // 1. Get the boundaries of the main window
         let rect = ui.max_rect();
-        let pos = egui::pos2(rect.right() - 20.0, rect.top() + 20.0);
+        
+        // 2. Define a rectangle for the overlay in the Top-Right corner.
+        //    We give it half the screen width to work with.
+        let overlay_w = rect.width() * 0.5;
+        let overlay_h = 100.0; // Enough height for the art
 
-        egui::Area::new(egui::Id::new("media_overlay"))
-            .fixed_pos(pos)
-            .pivot(egui::Align2::RIGHT_TOP)
-            .interactable(false)
-            .show(ui.ctx(), |ui| {
-                // Use Right-to-Left layout. 
-                // This ensures the first item we add (Art) is pinned to the right anchor.
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        // Position it: Right aligned (-20px padding), Top aligned (+20px padding)
+        let overlay_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.right() - overlay_w - 20.0, rect.top() + 20.0),
+            egui::vec2(overlay_w, overlay_h)
+        );
+
+        // 3. Create a sub-UI at that specific rectangle
+        //    This draws DIRECTLY into the CentralPanel, so it shares the Z-index 
+        //    with your window_controls.
+        ui.allocate_ui_at_rect(overlay_rect, |ui| {
+            
+            // Force Right-to-Left layout (pinned to the right edge)
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                
+                // 1. Album Art (Rightmost)
+                if let Some(texture) = &self.album_art_texture {
+                    let tint = egui::Color32::WHITE.linear_multiply(opacity);
+                    ui.add(
+                        egui::Image::new(texture)
+                            .max_height(50.0)
+                            .rounding(4.0)
+                            .tint(tint)
+                    );
                     
-                    // 1. Album Art (Rightmost)
-                    if let Some(texture) = &self.album_art_texture {
-                        let tint = egui::Color32::WHITE.linear_multiply(opacity);
-                        ui.add(
-                            egui::Image::new(texture)
-                                .max_height(50.0)
-                                .rounding(4.0)
-                                .tint(tint)
+                    ui.add_space(10.0); 
+                }
+
+                // 2. Text Stack (Left of Art)
+                ui.vertical(|ui| {
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                        // Song Title
+                        ui.label(egui::RichText::new(&info.title)
+                            .font(egui::FontId::proportional(16.0))
+                            .strong()
+                            .color(egui::Color32::WHITE.linear_multiply(opacity))
                         );
+
+                        // Artist - Album
+                        ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
+                            .font(egui::FontId::proportional(11.0))
+                            .color(egui::Color32::from_white_alpha(200).linear_multiply(opacity))
+                        );
+
+                        ui.add_space(2.0);
                         
-                        // Spacer between Art and Text
-                        ui.add_space(10.0); 
-                    }
-
-                    // 2. Text Stack (Left of Art)
-                    // We wrap this in a vertical layout so the text lines stack top-to-bottom
-                    ui.vertical(|ui| {
-                        // Inside the stack, align text to the Right (towards the art)
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
-                            
-                            ui.set_max_width(rect.width() * 0.5);
-
-                            // Song Title
-                            ui.label(egui::RichText::new(&info.title)
-                                .font(egui::FontId::proportional(16.0))
-                                .strong()
-                                .color(egui::Color32::WHITE.linear_multiply(opacity))
-                            );
-
-                            // Artist - Album
-                            ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                                .font(egui::FontId::proportional(11.0))
-                                .color(egui::Color32::from_white_alpha(200).linear_multiply(opacity))
-                            );
-
-                            ui.add_space(2.0);
-                            
-                            // Source App
-                            ui.label(egui::RichText::new(format!("via {}", info.source_app))
-                                .font(egui::FontId::monospace(8.0))
-                                .color(egui::Color32::from_white_alpha(120).linear_multiply(opacity))
-                            );
-                        });
+                        // Source App
+                        ui.label(egui::RichText::new(format!("via {}", info.source_app))
+                            .font(egui::FontId::monospace(8.0))
+                            .color(egui::Color32::from_white_alpha(120).linear_multiply(opacity))
+                        );
                     });
                 });
             });
+        });
     }
 
     /// Draw solid gradient bars
