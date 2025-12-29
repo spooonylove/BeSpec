@@ -55,6 +55,19 @@ BeAnal is designed for precision. See how it uncovers hidden artifacts in profes
 
 * **[Queens of the Stone Age Analysis](./docs/case_study.md):** Detecting a 15.75 kHz CRT whine hidden in the outro of *I Was a Teenage Hand Model* using the 512-bar high-resolution mode.
 
+## New in v1.3-rc1
+* **Album Art Integration:** Now fetches cover art on Windows, Linux (Spotify/Web), and macOS (Spotify).
+* **Ghost Mode 2.0:** Improved "Click-through" behavior with transparent background. The window ignores mouse clicks until focused via Alt-Tab.
+* **UI Polish:** New Right-to-Left media overlay layout and improved window interaction logic.
+
+## Compatibility & Support
+
+| Platform | Support Status | Notes |
+| :--- | :--- | :--- |
+| **Windows** | ✅ Fully Supported | Works with Spotify, System Media Transport, and standard audio devices. |
+| **Linux** | ✅ Fully Supported | Supports PulseAudio/PipeWire capturing. Media tracking via MPRIS (Spotify, VLC, etc). |
+| **macOS** | ⚠️ Beta / RC | **Spotify:** Fully supported.<br>**Apple Music:** Experimental (Needs validation). |
+
 ## 🚀 Installation & Usage
 
 ### Option A: Pre-built Binaries
@@ -68,14 +81,14 @@ BeAnal is designed for precision. See how it uncovers hidden artifacts in profes
 
 macOS Users: To visualize system audio, you must set up a loopback driver. See the [macOS Setup Guide](docs/macos_setup.md).
 
-Linux Users: To visualize system audio, you must route audio into BeAnal via `pavucontro` or equivlant. See the [Linux Setup Guide](docs/linux_setup.md).
+Linux Users: To visualize system audio, you must route audio into BeAnal via `pavucontrol` or equivalant. See the [Linux Setup Guide](docs/linux_setup.md).
 
 ### Option B: Build from Source
 If you prefer to build it yourself, you will need the [Rust toolchain](https://www.rust-lang.org/tools/install) installed.
 
 1.  Clone the repository:
     ```bash
-    git clone [https://github.com/BeSpec-Dev/beanal.git](https://github.com/BeSpec-Dev/beanal.git)
+    git clone https://github.com/BeSpec-Dev/beanal.git
     cd beanal
     ```
 
