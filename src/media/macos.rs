@@ -1,10 +1,9 @@
 use crossbeam_channel::Sender;
 use std::time::{Duration, Instant};
 use std::process::Command;
-use std::io::Read; // Needed for ureq response reading
+use std::io::Read; 
 use super::{MediaController, MediaMonitor, MediaTrackInfo};
 
-// We need base64 decoding for Apple Music, and ureq for Spotify
 use base64::{Engine as _, engine::general_purpose};
 
 pub struct MacMediaManager;
@@ -13,7 +12,6 @@ impl MacMediaManager {
     pub fn new() -> Self { Self }
 }
 
-// === READ-ONLY IMPLEMENTATION ===
 impl MediaController for MacMediaManager {
     fn try_play_pause(&self) {}
     fn try_next(&self) {}
@@ -24,25 +22,49 @@ impl MediaMonitor for MacMediaManager {
     fn start(&self, tx: Sender<MediaTrackInfo>) {
         std::thread::spawn(move || {
             let mut last_sent_info: Option<MediaTrackInfo> = None;
-            tracing::info!("[Media/MacOS] Monitor started (Smart Mode: Raw + URL)");
+            
+            // --- CACHE STATE ---
+            let mut cached_art: Option<Vec<u8>> = None;
+            let mut cached_key: (String, String) = (String::new(), String::new());
+
+            tracing::info!("[Media/MacOS] Monitor started (Smart Mode: Priority Scan)");
 
             loop {
-                if let Some(info) = get_macos_media_info() {
+                // Pass current known track info to optimized parser
+                if let Some(mut info) = get_macos_media_info(&cached_key.0, &cached_key.1) {
+                    
+                    let current_key = (info.title.clone(), info.artist.clone());
+
+                    // Cache Logic
+                    if info.album_art.is_some() {
+                        cached_art = info.album_art.clone();
+                        cached_key = current_key;
+                    } else if current_key == cached_key {
+                        info.album_art = cached_art.clone();
+                    } else {
+                         cached_art = None;
+                         cached_key = current_key;
+                    }
+
+                    // UNCOMMENT TO VERIFY CACHE HITS
+                    // if info.album_art.is_some() && current_key == cached_key {
+                    //      tracing::trace!("[Media] Cache Hit: Skipping art fetch");
+                    // }
+
                     let current_info = MediaTrackInfo {
-                        title: info.title.clone(),
-                        artist: info.artist.clone(),
-                        album: info.album.clone(),
+                        title: info.title,
+                        artist: info.artist,
+                        album: info.album,
                         is_playing: info.is_playing,
-                        source_app: info.source_app.clone(),
+                        source_app: info.source_app,
                         album_art: info.album_art, 
                     };
 
-                    // Send only on change
                     if last_sent_info.as_ref() != Some(&current_info) {
-                        tracing::info!("[Media/MacOS] Update: {} - {} (Art: {})", 
+                        tracing::info!("[Media/MacOS] Update: {} - {} (App: {})", 
                             current_info.artist, 
                             current_info.title,
-                            if current_info.album_art.is_some() { "Yes" } else { "No" }
+                            current_info.source_app
                         );
                         let _ = tx.send(current_info.clone());
                         last_sent_info = Some(current_info);
@@ -64,7 +86,9 @@ struct RawTrackInfo {
     album_art: Option<Vec<u8>>,
 }
 
-// Updated JXA: Tries Raw Data first (Apple Music), then URL (Spotify)
+// === UPDATED JXA SCRIPT ===
+// Now iterates ALL apps to find the one that is PLAYING.
+// Priority: Playing > Paused > Stopped (Ignore)
 const JXA_SCRIPT: &str = r#"
 (function() {
     function toBase64(data) {
@@ -77,28 +101,39 @@ const JXA_SCRIPT: &str = r#"
     }
 
     var appNames = ["Music", "Spotify", "YouTube Music"];
-    var activeApp = null;
-    
+    var bestApp = null;
+    var bestState = "stopped"; // 0 priority
+
+    // 1. Find the best candidate
     for (var i = 0; i < appNames.length; i++) {
         try {
-            if (Application(appNames[i]).running()) {
-                activeApp = Application(appNames[i]);
-                break;
+            var app = Application(appNames[i]);
+            if (app.running()) {
+                var state = app.playerState(); // playing, paused, stopped
+                
+                if (state === "playing") {
+                    bestApp = app;
+                    bestState = "playing";
+                    break; // We found a winner, stop looking
+                }
+                
+                // Keep looking, but remember this one if we don't find a playing one
+                if (state === "paused" && bestState === "stopped") {
+                    bestApp = app;
+                    bestState = "paused";
+                }
             }
         } catch(e) {}
     }
 
-    if (!activeApp) return "null";
+    if (!bestApp || bestState === "stopped") return "null";
 
+    // 2. Extract Data from Best App
     try {
-        var state = activeApp.playerState();
-        if (state === "stopped") return "null";
-        
-        var track = activeApp.currentTrack;
+        var track = bestApp.currentTrack;
         var artBase64 = null;
         var artUrl = null;
 
-        // 1. Try Raw Data (Standard for Apple Music)
         try {
             var artworks = track.artworks();
             if (artworks.length > 0) {
@@ -107,20 +142,16 @@ const JXA_SCRIPT: &str = r#"
             }
         } catch (e) {}
 
-        // 2. If no raw data, try Artwork URL (Standard for Spotify)
         if (!artBase64) {
-            try {
-                // Spotify often provides this property
-                artUrl = track.artworkUrl();
-            } catch (e) {}
+            try { artUrl = track.artworkUrl(); } catch (e) {}
         }
 
         return JSON.stringify({
-            app: activeApp.name(),
+            app: bestApp.name(),
             title: track.name(),
             artist: track.artist(),
             album: track.album(),
-            playing: (state === "playing"),
+            playing: (bestState === "playing"),
             art_base64: artBase64,
             art_url: artUrl
         });
@@ -130,12 +161,9 @@ const JXA_SCRIPT: &str = r#"
 })();
 "#;
 
-fn get_macos_media_info() -> Option<RawTrackInfo> {
+fn get_macos_media_info(known_title: &str, known_artist: &str) -> Option<RawTrackInfo> {
     let output = Command::new("osascript")
-        .arg("-l")
-        .arg("JavaScript")
-        .arg("-e")
-        .arg(JXA_SCRIPT)
+        .arg("-l").arg("JavaScript").arg("-e").arg(JXA_SCRIPT)
         .output()
         .ok()?;
 
@@ -146,9 +174,24 @@ fn get_macos_media_info() -> Option<RawTrackInfo> {
 
     match serde_json::from_str::<serde_json::Value>(&json_str) {
         Ok(v) => {
+            let title = v["title"].as_str().unwrap_or("").to_string();
+            let artist = v["artist"].as_str().unwrap_or("").to_string();
+            
+            // Check for cache hit
+            let is_same_track = title == known_title && artist == known_artist;
+            if is_same_track {
+                 return Some(RawTrackInfo {
+                    source_app: v["app"].as_str().unwrap_or("Unknown").to_string(),
+                    title,
+                    artist,
+                    album: v["album"].as_str().unwrap_or("").to_string(),
+                    is_playing: v["playing"].as_bool().unwrap_or(false),
+                    album_art: None, // Signal cache
+                });
+            }
+
             let mut final_art = None;
 
-            // Strategy 1: Base64 Data (Apple Music)
             if let Some(b64) = v["art_base64"].as_str() {
                 if !b64.is_empty() {
                     match general_purpose::STANDARD.decode(b64) {
@@ -158,11 +201,9 @@ fn get_macos_media_info() -> Option<RawTrackInfo> {
                 }
             }
 
-            // Strategy 2: URL Download (Spotify)
             if final_art.is_none() {
                 if let Some(url) = v["art_url"].as_str() {
                     if !url.is_empty() {
-                        // tracing::debug!("[Media/MacOS] Fetching art from URL: {}", url);
                         final_art = download_art(url);
                     }
                 }
@@ -170,8 +211,8 @@ fn get_macos_media_info() -> Option<RawTrackInfo> {
 
             Some(RawTrackInfo {
                 source_app: v["app"].as_str().unwrap_or("Unknown").to_string(),
-                title: v["title"].as_str().unwrap_or("").to_string(),
-                artist: v["artist"].as_str().unwrap_or("").to_string(),
+                title,
+                artist,
                 album: v["album"].as_str().unwrap_or("").to_string(),
                 is_playing: v["playing"].as_bool().unwrap_or(false),
                 album_art: final_art,
