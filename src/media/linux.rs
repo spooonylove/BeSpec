@@ -1,6 +1,6 @@
 use crossbeam_channel::Sender;
-use egui::Response;
-use std::time::{Duration, Instant};
+// Removed unused imports: egui::Response, Instant
+use std::time::Duration; 
 use std::fs;
 use std::path::PathBuf;
 use std::io::Read;
@@ -128,8 +128,7 @@ impl MediaMonitor for LinuxMediaManager {
                             
                             // --- LAZY ART LOADING ---
                             let current_url_opt = meta.art_url().map(|s| s.to_string());
-                            let mut final_art = None;
-
+                            
                             // If URL changed (or went from None to Some, or Some to None)
                             if current_url_opt != cached_art_url {
                                 // Load new
@@ -139,13 +138,10 @@ impl MediaMonitor for LinuxMediaManager {
                                     cached_art_bytes = None;
                                 }
                                 cached_art_url = current_url_opt;
-                            } else {
-                                // OPTIONAL: Uncomment to prove cache hits in logs
-                                //tracing::trace!("[Media] Cache Hit: Skipping art fetch");
                             }
                             
-                            // Use cached
-                            final_art = cached_art_bytes.clone();
+                            // Use cached directly (Fixes "unused assignment" warning)
+                            let final_art = cached_art_bytes.clone();
 
                             let current_info = MediaTrackInfo {
                                 title,
@@ -168,7 +164,6 @@ impl MediaMonitor for LinuxMediaManager {
                         }
                     },
                     None => {
-                        // Sleep slightly longer if no player found to save CPU
                         std::thread::sleep(Duration::from_millis(500));
                     }
                 }
