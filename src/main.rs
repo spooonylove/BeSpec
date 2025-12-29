@@ -615,7 +615,11 @@ fn main (){
     let _result = eframe::run_native(
         "BeAnal",
         options, 
-        Box::new(|_cc| Ok(Box::new(SpectrumApp::new(shared_state.clone(), media_rx)))),
+        Box::new(|_cc| Ok(Box::new(SpectrumApp::new(
+            shared_state.clone(),
+            media_rx,
+            media_manager.clone()
+        )))),
     );
 
     // The window has closed. Now we force a save to sensure settings persist

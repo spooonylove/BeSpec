@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::fft_config::FIXED_FFT_SIZE;
+use crate::media::{PlatformMedia, MediaController};
 use crate::shared_state::{Color32 as StateColor32, MediaDisplayMode, SharedState, VisualMode};
 use crate::fft_processor::FFTProcessor;
 
@@ -25,9 +26,18 @@ pub struct SpectrumApp {
     /// Receiver for media updates (local to GUI thread)
     media_rx: Receiver<crate::media::MediaTrackInfo>,
 
-    // cached album art texture
+    /// Controller access
+    media_controller: Arc<PlatformMedia>,
+
+    /// cached album art texture
     album_art_texture: Option<egui::TextureHandle>,
     
+    /// Opacity for entire media overlay
+    media_opacity: f32,
+
+    /// Last time user hovered the media overlay or window
+    last_media_interaction: Option<Instant>,
+
     /// Settings window state
     settings_open: bool,
 
@@ -52,10 +62,14 @@ impl SpectrumApp {
     pub fn new(
         shared_state: Arc<Mutex<SharedState>>,
         media_rx: Receiver<crate::media::MediaTrackInfo>,
+        media_controller: Arc<PlatformMedia>,
     ) -> Self {
         Self {
             shared_state,
             media_rx,
+            media_controller,
+            media_opacity: 0.0,
+            last_media_interaction: None,
             album_art_texture: None,
             settings_open: false,
             active_tab: SettingsTab::Visual,
@@ -278,7 +292,7 @@ impl eframe::App for SpectrumApp {
                     self.draw_sonar_ping(ui, draw_rect, flash_strength);
                 }
 
-                // C. Render Meida Overlay
+                // C. Render Media Overlay
                 self.render_media_overlay(ui);
                 
                 // D. Handle window controls (dragging and resizing)
@@ -450,98 +464,302 @@ impl SpectrumApp {
 
     // ========== DRAWING HELPERS ==========
 
-    fn render_media_overlay(&self, ui: &mut egui::Ui) {
+    fn render_media_overlay(&mut self, ui: &mut egui::Ui) {
         let state = self.shared_state.lock().unwrap();
         let config = &state.config;
 
+        // 1. Handle "Off" case early
         if config.media_display_mode == MediaDisplayMode::Off {
             return;
         }
 
-        let info = match &state.media_info {
-            Some(i) => i, 
-            None => return,
+        // 2. Info check - Use Option, DO NOT RETURN EARLY!
+        let info_opt = match &state.media_info {
+            Some(i) => Some(i.clone()),
+            None => None,
         };
-        
-        // ... (Opacity logic remains the same) ...
-        let mut opacity = 1.0;
-        if config.media_display_mode == MediaDisplayMode::FadeOnUpdate {
-            if let Some(last_update) = state.last_media_update {
-                let elapsed = last_update.elapsed().as_secs_f32();
-                let duration = config.media_fade_duration_sec;
-                let fade_time = 1.5; 
 
-                if elapsed > (duration + fade_time) {
-                    return; 
-                } else if elapsed > duration {
-                    let fade_progress = (elapsed - duration) / fade_time;
-                    opacity = 1.0 - fade_progress;
+        // 3. Layout Rect calculation
+        // Calculate based on the full screen rect since we use an Area
+        let rect = ui.ctx().screen_rect();
+        let overlay_w = rect.width() * 0.5;
+        let overlay_h = 100.0;
+        let pos = egui::pos2(rect.right() - overlay_w - 20.0, rect.top() + 20.0);
+
+        // 4. Determine Interaction / Active State & Target Opacity
+        let dt = ui.input(|i| i.stable_dt).min(0.1);
+        let mut target_opacity = 0.0;
+
+        // If info is missing but we are in AlwaysOn, we show placeholder at full opacity
+        // If info is missing and Fade, we show nothing.
+        let has_info = info_opt.is_some();
+
+        match config.media_display_mode {
+            MediaDisplayMode::AlwaysOn => target_opacity = 1.0,
+            MediaDisplayMode::FadeOnUpdate => {
+                if !has_info {
+                    target_opacity = 0.0;
+                } else {
+                    let now = Instant::now();
+                    let hold_time = 5.0; // Stay visible for 5s after event
+                    let mut active = false;
+
+                    // A. Check Track Update Activity
+                    if let Some(last_update) = state.last_media_update {
+                        if now.duration_since(last_update).as_secs_f32() < hold_time {
+                            active = true;
+                        }
+                    }
+
+                    // B. Check Mouse Hover Activity (Global Window)
+                    if ui.input(|i| i.pointer.hover_pos().is_some()) {
+                        self.last_media_interaction = Some(now);
+                        active = true;
+                    }
+
+                    // C. Check Historic Interaction
+                    if let Some(last_interact) = self.last_media_interaction {
+                        if now.duration_since(last_interact).as_secs_f32() < hold_time {
+                            active = true;
+                        }
+                    }
+
+                    target_opacity = if active { 1.0 } else { 0.0 };
                 }
-            }
+            },
+            MediaDisplayMode::Off => {},
         }
 
-        // --- NEW LAYOUT LOGIC ---
-        // 1. Get the boundaries of the main window
-        let rect = ui.max_rect();
-        
-        // 2. Define a rectangle for the overlay in the Top-Right corner.
-        //    We give it half the screen width to work with.
-        let overlay_w = rect.width() * 0.5;
-        let overlay_h = 100.0; // Enough height for the art
+        // 5. Animate Opacity
+        let speed = if target_opacity > self.media_opacity { 6.0 } else { 1.0 };
+        self.media_opacity += (target_opacity - self.media_opacity) * speed * dt;
+        self.media_opacity = self.media_opacity.clamp(0.0, 1.0);
 
-        // Position it: Right aligned (-20px padding), Top aligned (+20px padding)
-        let overlay_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.right() - overlay_w - 20.0, rect.top() + 20.0),
-            egui::vec2(overlay_w, overlay_h)
-        );
+        if self.media_opacity <= 0.01 {
+            return; // Invisible
+        }
 
-        // 3. Create a sub-UI at that specific rectangle
-        //    This draws DIRECTLY into the CentralPanel, so it shares the Z-index 
-        //    with your window_controls.
-        ui.allocate_ui_at_rect(overlay_rect, |ui| {
-            
-            // Force Right-to-Left layout (pinned to the right edge)
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                
-                // 1. Album Art (Rightmost)
-                if let Some(texture) = &self.album_art_texture {
-                    let tint = egui::Color32::WHITE.linear_multiply(opacity);
-                    ui.add(
-                        egui::Image::new(texture)
-                            .max_height(50.0)
-                            .rounding(4.0)
-                            .tint(tint)
-                    );
-                    
-                    ui.add_space(10.0); 
-                }
+        // Force repaint if animating
+        if self.media_opacity > 0.01 && self.media_opacity < 0.99 {
+            ui.ctx().request_repaint();
+        }
 
-                // 2. Text Stack (Left of Art)
-                ui.vertical(|ui| {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
-                        // Song Title
-                        ui.label(egui::RichText::new(&info.title)
-                            .font(egui::FontId::proportional(16.0))
-                            .strong()
-                            .color(egui::Color32::WHITE.linear_multiply(opacity))
-                        );
+        // 6. Draw Content in a Floating Area
+        // We use an Area so it sits *above* the visualization layer (z-order)
+        // and uses absolute positioning.
+        egui::Area::new("media_overlay_area".into()) // Fixed: Convert string to Id
+            .fixed_pos(pos)
+            .pivot(egui::Align2::LEFT_TOP)
+            .interactable(true) // Allow clicks on buttons
+            .show(ui.ctx(), |ui| {
+                // Manually restrict size
+                ui.set_max_width(overlay_w);
+                ui.set_max_height(overlay_h);
 
-                        // Artist - Album
-                        ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                            .font(egui::FontId::proportional(11.0))
-                            .color(egui::Color32::from_white_alpha(200).linear_multiply(opacity))
-                        );
-
-                        ui.add_space(2.0);
+                // Use the builder pattern for new UI
+                let builder = egui::UiBuilder::new();
+                ui.allocate_new_ui(builder, |ui| {
+                    // Force Right-to-Left layout
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         
-                        // Source App
-                        ui.label(egui::RichText::new(format!("via {}", info.source_app))
-                            .font(egui::FontId::monospace(8.0))
-                            .color(egui::Color32::from_white_alpha(120).linear_multiply(opacity))
-                        );
+                        if let Some(info) = info_opt {
+                            // === CASE A: Track Info Present ===
+                            
+                            // Album Art
+                            if let Some(texture) = &self.album_art_texture {
+                                let tint = egui::Color32::WHITE.linear_multiply(self.media_opacity);
+                                ui.add(
+                                    egui::Image::new(texture)
+                                        .max_height(50.0)
+                                        .rounding(4.0)
+                                        .tint(tint)
+                                );
+                                ui.add_space(10.0); 
+                            }
+
+                            // Text Stack
+                            ui.vertical(|ui| {
+                                ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                                    // Title
+                                    ui.label(egui::RichText::new(&info.title)
+                                        .font(egui::FontId::proportional(16.0))
+                                        .strong()
+                                        .color(egui::Color32::WHITE.linear_multiply(self.media_opacity))
+                                    );
+
+                                    // Artist
+                                    ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
+                                        .font(egui::FontId::proportional(11.0))
+                                        .color(egui::Color32::from_white_alpha(200).linear_multiply(self.media_opacity))
+                                    );
+
+                                    ui.add_space(2.0);
+
+                                    // Controls
+                                    if cfg!(not(target_os = "macos")) {
+                                        ui.add_space(4.0);
+                                        self.render_transport_controls(ui, info.is_playing, self.media_opacity);
+                                    } else {
+                                        ui.label(egui::RichText::new(format!("via {}", info.source_app))
+                                            .font(egui::FontId::monospace(8.0))
+                                            .color(egui::Color32::from_white_alpha(120).linear_multiply(self.media_opacity))
+                                        );
+                                    }
+                                });
+                            });
+
+                        } else if config.media_display_mode == MediaDisplayMode::AlwaysOn {
+                            // === CASE B: No Info, but Always On ===
+                            ui.vertical(|ui| {
+                                ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                                    ui.label(egui::RichText::new("Waiting for media...")
+                                        .font(egui::FontId::proportional(14.0))
+                                        .color(egui::Color32::from_white_alpha(150).linear_multiply(self.media_opacity))
+                                    );
+                                });
+                            });
+                        }
                     });
                 });
             });
+    }
+
+    /// Helper to draw vector buttons (ISO 60417 standard geometry)
+    fn render_transport_controls(&self, ui: &mut egui::Ui, is_playing: bool, opacity: f32) {
+        let btn_size = egui::vec2(28.0, 28.0); // slightly larger touch area
+        let color = egui::Color32::WHITE.linear_multiply(opacity);
+
+        // background highlight on hover
+        let hover_bg = egui::Color32::from_white_alpha(30).linear_multiply(opacity);
+
+        ui.horizontal(|ui| {
+            // Use tighter spacing for a cohesive "control cluster" look
+            ui.spacing_mut().item_spacing.x = 4.0;
+
+            // === 1. PREVIOUS (ISO 60417-5861) ===
+            // Symbol: vertical bar + left-pointing triangle
+            let (rect, resp) = ui.allocate_exact_size(btn_size, egui::Sense::click());
+            if resp.hovered() { ui.painter().rect_filled(rect.expand(2.0), 4.0, hover_bg);}
+            if resp.clicked() { self.media_controller.try_prev(); }
+
+            if ui.is_rect_visible(rect) {
+                let painter = ui.painter();
+                let c = rect.center();
+                let w = 12.0;
+                let h = 12.0;
+                let bar_w = 2.0;
+
+                // left bar
+                let bar_rect = egui::Rect::from_min_size(
+                    egui::pos2(c.x - (w / 2.0), c.y - (h / 2.0)),
+                    egui::vec2(bar_w, h)
+                );
+                painter.rect_filled(bar_rect, 0.5, color);
+
+                // left triangle
+                // Tip touches the bar, base is at the same height
+                let tip = egui::pos2(c.x  - (w / 2.0) + bar_w + 1.0, c.y);
+                let base_x = c.x + (w / 2.0);
+
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        tip,
+                        egui::pos2(base_x, c.y - (h / 2.0)),
+                        egui::pos2(base_x, c.y + (h / 2.0)),
+                    ],
+                    color,
+                    egui::Stroke::NONE
+                ));
+            }
+
+            // === 2. PLAY / PAUSE (ISO 60417-5857 / 5858) ===
+            //    Center, slightly larger visually
+            // Symbol: right-pointing triangle (play) or two vertical bars (pause)
+            let (rect, resp) = ui.allocate_exact_size(btn_size, egui::Sense::click());
+            if resp.hovered() { ui.painter().rect_filled(rect.expand(2.0), 4.0, hover_bg);}
+            if resp.clicked() { self.media_controller.try_play_pause(); }
+
+            if ui.is_rect_visible(rect) {
+                let painter= ui.painter();
+                let c = rect.center();
+                let h = 14.0; 
+
+                if is_playing {
+                    // PAUSE (ISO 60417-5108B)
+                    // Two parallel vertical bars
+                    let bar_w = 4.0;
+                    let gap = 3.0;
+
+                    // Left bar
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(egui::pos2(c.x - gap/2.0 - bar_w, c.y - h/2.0), egui::vec2(bar_w, h)),
+                        1.0,
+                        color
+                    );
+                    // Right bar
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(egui::pos2(c.x + gap/2.0, c.y - h/2.0), egui::vec2(bar_w, h)), 
+                        1.0, 
+                        color
+                    );
+                } else {
+                    // PLAY (ISO 60417-5107B)
+                    // Right-pointing triangle
+                    // To look visually centered, the "optical center" of a triangle is slightly left of geometry center
+                    let optical_offset = 1.5; 
+                    let tri_h = 14.0;
+                    let tri_w = 12.0;
+
+                    let tip = egui::pos2(c.x + (tri_w / 2.0) + optical_offset, c.y);
+                    let base_x = c.x - (tri_w / 2.0) + optical_offset;
+
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![
+                            tip,
+                            egui::pos2(base_x, c.y - (tri_h / 2.0)),
+                            egui::pos2(base_x, c.y + (tri_h / 2.0)),
+                        ],
+                        color,
+                        egui::Stroke::NONE
+                    ));
+                }
+            }
+
+            // === 3. NEXT (ISO 60417-5862) ===
+            // Symbol: Right-pointing triangle followed by vertical bar
+            let (rect, resp) = ui.allocate_exact_size(btn_size, egui::Sense::click());
+            if resp.hovered() { ui.painter().rect_filled(rect.expand(2.0), 4.0, hover_bg); }
+            if resp.clicked() { self.media_controller.try_next(); }
+
+            if ui.is_rect_visible(rect) {
+                let painter = ui.painter();
+                let c = rect.center();
+                let w = 12.0;
+                let h = 12.0;
+                let bar_w = 2.0;
+
+                // Right Bar
+                let bar_rect = egui::Rect::from_min_size(
+                    egui::pos2(c.x + (w / 2.0) - bar_w, c.y - (h / 2.0)), 
+                    egui::vec2(bar_w, h)
+                );
+                painter.rect_filled(bar_rect, 0.5, color);
+
+                // Right Triangle
+                // Tip touches bar
+                let tip = egui::pos2(c.x + (w / 2.0) - bar_w - 1.0, c.y);
+                let base_x = c.x - (w / 2.0);
+
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        tip,
+                        egui::pos2(base_x, c.y - (h / 2.0)),
+                        egui::pos2(base_x, c.y + (h / 2.0)),
+                    ],
+                    color,
+                    egui::Stroke::NONE
+                ));
+            }
         });
     }
 
