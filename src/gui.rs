@@ -569,13 +569,13 @@ impl SpectrumApp {
                                     ui.label(egui::RichText::new(&info.title)
                                         .font(egui::FontId::new(16.0, font_family.clone()))
                                         .strong()
-                                        .color(egui::Color32::WHITE.linear_multiply(self.media_opacity))
+                                        .color(base_text_color.linear_multiply(self.media_opacity))
                                     );
 
                                     // Artist
                                     ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                                        .font(egui::FontId::new(16.0, font_family.clone()))
-                                        .color(egui::Color32::from_white_alpha(200).linear_multiply(self.media_opacity))
+                                        .font(egui::FontId::new(11.0, font_family.clone()))
+                                        .color(base_text_color.linear_multiply(0.8).linear_multiply(self.media_opacity))
                                     );
 
                                     ui.add_space(2.0);
@@ -587,7 +587,7 @@ impl SpectrumApp {
                                     } else {
                                         ui.label(egui::RichText::new(format!("via {}", info.source_app))
                                             .font(egui::FontId::new(10.0, font_family.clone()))
-                                            .color(egui::Color32::from_white_alpha(120).linear_multiply(self.media_opacity))
+                                            .color(base_text_color.linear_multiply(0.5).linear_multiply(self.media_opacity))
                                         );
                                     }
                                 });
@@ -600,6 +600,7 @@ impl SpectrumApp {
                                     ui.label(egui::RichText::new("Waiting for media...")
                                         .font(egui::FontId::new(14.0, font_family.clone()))
                                         .color(egui::Color32::from_white_alpha(150).linear_multiply(self.media_opacity))
+                                        .color(base_text_color.linear_multiply(0.6).linear_multiply(self.media_opacity))
                                     );
                                 });
                             });
