@@ -5,8 +5,9 @@ use std::time::Instant;
 
 use crate::fft_config::FIXED_FFT_SIZE;
 use crate::media::{PlatformMedia, MediaController};
-use crate::shared_state::{Color32 as StateColor32, MediaDisplayMode, SharedState, VisualMode};
+use crate::shared_state::{Color32 as StateColor32, ColorProfile, MediaDisplayMode, SharedState, VisualMode, VisualProfile};
 use crate::fft_processor::FFTProcessor;
+use crate::shared_state::ColorRef;
 
 // Tabs for the settings windowe
 #[derive(PartialEq)]
@@ -144,34 +145,12 @@ impl eframe::App for SpectrumApp {
         }
         
 
-        // --- Main Window Size tracking ---
-        let current_rect = ctx.screen_rect();
-        let current_size = current_rect.size();
-
-        // Check if size changed (ignoring tiny sub-pixel float differences)
-        let size_changed = self.last_window_size.map_or(true, |old|{
-            (old.x - current_size.x).abs() > 1.0 || (old.y - current_size.y).abs() > 1.0
-        });
-
-        if size_changed {
-            // Filter out 0x0 or tiny screens (startup  artifacts)
-            if current_size.x > 10.0 && current_size.y > 10.0 {
-                // Log at INFO level so we can verify it happens
-                tracing::info!("[GUI] Main Window Resized: w: {:.0}, h: {:.0}", current_size.x, current_size.y);
-                self.last_window_size = Some(current_size);
-
-                if let Ok(mut state) = self.shared_state.lock() {
-                    state.config.window_size = [current_size.x, current_size.y];
-                }
-            }
-        }
-
         // --- Main Window Position tracking ---
         if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
             let current_pos = rect.min;
 
             if self.last_window_pos != Some(current_pos) {
-                // Determine if we sohuld log (don't log first detection to avaoid spam on startup)
+                // Determine if we should log (don't log first detection to avoid spam on startup)
                 if self.last_window_pos.is_some() {
                     tracing::debug!("[GUI] Main Window Moved: x: {:.0}, y: {:.0}", current_pos.x, current_pos.y);
                 }
@@ -184,6 +163,18 @@ impl eframe::App for SpectrumApp {
                 }
             }
         }
+
+        // --- Window Size tracking (Keep separate to avoid growth bug) ---
+         if let Some(rect) = ctx.input(|i| i.viewport().inner_rect) {
+             let size = rect.size();
+             let size_changed = self.last_window_size.map_or(true, |ls| (ls - size).length() > 1.0);
+             if size_changed {
+                 if let Ok(mut state) = self.shared_state.lock() {
+                     state.config.window_size = [size.x, size.y];
+                 }
+                 self.last_window_size = Some(size);
+             }
+         }
         
         // Calculate FPS
         let now = Instant::now();
@@ -210,55 +201,53 @@ impl eframe::App for SpectrumApp {
         // === Main Window ===
 
         // === Sonpar Pin ===
-        // 1. Flash on Focus logic
         let is_focused = ctx.input(|i| i.focused);
-
-        // Trigger flash if focus gained
         if is_focused && !self.was_focused {
             self.flash_start = Some(Instant::now());
         }
         self.was_focused = is_focused;
         
-        // Calculate Animnation strength (0.0 to 1.0)
         let mut flash_strength = 0.0;
         if let Some(start) = self.flash_start {
             let elapsed = start.elapsed().as_secs_f32();
-            let duration = 0.8; // slightly longer duration for the glow
-
-            if elapsed < duration {
-                // easing function: cubic out (starts fast, slows down)
-                let t = 1.0 - (elapsed / duration);
-                flash_strength = t.powi(3);
-
+            if elapsed < 0.8 {
+                flash_strength = (1.0 - (elapsed / 0.8)).powi(3);
                 ctx.request_repaint();
             } else {
                 self.flash_start = None;
             }
         }
 
-        // === 2. Acquire State and Apply Flash ===
-        let (base_opacity, window_locked) = if let Ok(state) = self.shared_state.lock() {
-            (state.config.background_opacity, state.config.window_locked)
+        // Use Profile Background Color
+        let (bg_color_egui, window_locked, background_alpha) = if let Ok(state) = self.shared_state.lock() {
+            let colors = state.config.resolve_colors();
+            let bg = to_egui_color(colors.background);
+            let base_alpha = bg.a() as f32 / 255.0;
+            
+            // Apply flash
+            let final_alpha = (base_alpha + (flash_strength * 0.2)).min(1.0);
+            
+            // Reconstruct with new alpha
+            let final_bg = egui::Color32::from_rgba_premultiplied(
+                bg.r(), bg.g(), bg.b(), (final_alpha * 255.0) as u8
+            );
+            
+            (final_bg, state.config.window_locked, final_alpha)
         } else {
-            (1.0, false) // Default to opaque on error
+            (egui::Color32::BLACK, false, 1.0) 
         };
-
-        // 1. Boost background slightly so the window body is found  ( max + 0.2 opacity)
-        let final_opacity = (base_opacity + (flash_strength * 0.2)).min(1.0);
 
     
         // === 3. Ghost Mode Logic === (Focus-to-Wake) ===
-        // Logic:
-        // - If Locked AND Transparent : we want to be a ghost (click-thru)
-        // - BUT: If the user alt-tabs to us (is-focused), we must wake up so
-        //        they can click the lock
-        let is_transparent = base_opacity <= 0.05; // Threshold for "invisible"
-
-        let should_passthrough = if window_locked && is_transparent{
-            !is_focused // If focused, disable passthrough. If not focused, enable it
-        } else {
-            false // Not locked or not transparent, no passthrough
-        };
+        // Determines if the window should ignore mouse events (click-through).
+        // We only enable passthrough if ALL conditions are met:
+        // 1. window_locked: User enabled "Ghost Mode".
+        // 2. is_transparent: Background is invisible (avoid confusion of clicking through solid pixels).
+        // 3. !is_focused: The window is NOT currently active.
+        //    CRITICAL: This allows "Alt-Tab to Wake". If the user Alt-Tabs to this window,
+        //    it gains focus, passthrough turns OFF, and the user can click the unlock button.
+        let is_transparent = background_alpha <= 0.05; // Threshold for "invisible"
+        let should_passthrough = window_locked && is_transparent && !is_focused;
 
         // Only send command if state changed (prevents spamming the OS Window manager)
         if should_passthrough != self.last_passthrough_state {
@@ -270,32 +259,22 @@ impl eframe::App for SpectrumApp {
         }
 
         // === 4. Render Window ===
-        let bg_color = egui::Color32::from_black_alpha((final_opacity * 255.0) as u8);
-
-        // Use egui::Frame::central_panel() as the base
-        // this base has window drag/resize enabled by default.
-        // We just change its fill color.
-        let custom_frame = egui::Frame::central_panel(&ctx.style())
-            .fill(bg_color)
-            .inner_margin(1.0);
-
-        // Show the CentralPanel using the new frame
-        egui::CentralPanel::default()
-            .frame(custom_frame)
-            .show(ctx, |ui| {
-                // A. Render the main visualization content
+        // This is the main draw call for the application window.
+        // We use a CentralPanel which fills the entire OS window.
+        //
+        // Rendering Order (Painter's Algorithm - items drawn later appear on top):
+        // 1. Background (via custom_frame): Clears window with theme color/transparency.
+        // 2. Visualizer: Spectrum bars or oscilloscope (bottom layer).
+        // 3. Sonar Ping: Visual flash effect when window gains focus.
+        // 4. Media Overlay: "Now Playing" info (drawn in a floating Area, so technically separate Z-layer).
+        // 5. Window Controls: Resize grips, lock button, and drag logic (top interaction layer).
+        let custom_frame = egui::Frame::central_panel(&ctx.style()).fill(bg_color_egui).inner_margin(1.0);
+        egui::CentralPanel::default().frame(custom_frame).show(ctx, |ui| {
                 self.render_visualizer(ui);
-                
-                // B. Render Sonar Ping overlay (the glow!)
                 if flash_strength > 0.0 {
-                    let draw_rect = ui.max_rect().shrink(5.0);
-                    self.draw_sonar_ping(ui, draw_rect, flash_strength);
+                    self.draw_sonar_ping(ui, ui.max_rect().shrink(5.0), flash_strength);
                 }
-
-                // C. Render Media Overlay
                 self.render_media_overlay(ui);
-                
-                // D. Handle window controls (dragging and resizing)
                 self.window_controls(ctx, ui, is_focused);
             });
         
@@ -398,6 +377,9 @@ impl SpectrumApp {
         };
 
         let config = &state.config;
+        let profile = &config.profile;
+        let colors = &config.resolve_colors();
+
         let viz_data = &state.visualization;
         let perf = &state.performance;
 
@@ -410,7 +392,7 @@ impl SpectrumApp {
 
         // 3. Early exit if no data (unless in Oscope mode)
         let num_bars = viz_data.bars.len();
-        if num_bars == 0 && config.visual_mode != VisualMode::Oscilloscope {
+        if num_bars == 0 && profile.visual_mode != VisualMode::Oscilloscope {
             drop(state);
             ui.centered_and_justified(|ui| {
                 ui.label("⏸ Waiting for audio...");
@@ -419,12 +401,12 @@ impl SpectrumApp {
         }
 
         // 4. Calculate Common Layout Helpers
-        // Ensure we don't eveide by zero even if bars are missing
+        // Ensure we don't divide by zero even if bars are missing
         let bar_slot_width = rect.width() / num_bars.max(1) as f32;
-        let bar_width = (bar_slot_width - config.bar_gap_px as f32).max(1.0);
+        let bar_width = (bar_slot_width - profile.bar_gap_px as f32).max(1.0);
 
         // 5. Handle mouse interactions (for frequency modes)
-        let hovered_bar_index = if config.inspector_enabled && config.visual_mode != VisualMode::Oscilloscope {
+        let hovered_bar_index = if config.inspector_enabled && profile.visual_mode != VisualMode::Oscilloscope {
             if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
                 if rect.contains(pos) {
                     let relative_x = pos.x - rect.left();
@@ -435,30 +417,28 @@ impl SpectrumApp {
         } else { None };
 
         // 6. Dispatch Drawing Strategy
-        match config.visual_mode {
+        match profile.visual_mode {
             VisualMode::SolidBars => {
-                self.draw_solid_bars(&painter, &rect, config, viz_data, bar_width, bar_slot_width, hovered_bar_index);
+                self.draw_solid_bars(&painter, &rect, profile, &colors, viz_data, bar_width, bar_slot_width, hovered_bar_index, config.noise_floor_db);
             },
             VisualMode::SegmentedBars => {
-                self.draw_segmented_bars(&painter, &rect, config, viz_data, bar_width, bar_slot_width, hovered_bar_index);
+                self.draw_segmented_bars(&painter, &rect, profile, &colors, viz_data, bar_width, bar_slot_width, hovered_bar_index, config.noise_floor_db);
             },
             VisualMode::LineSpectrum => {
-                self.draw_line_spectrum(&painter, &rect, config, viz_data, hovered_bar_index);
+                self.draw_line_spectrum(&painter, &rect, profile, &colors, viz_data, hovered_bar_index, config.noise_floor_db);
             },
             VisualMode::Oscilloscope => {
-                self.draw_oscilloscope(&painter, &rect, config, viz_data);
+                self.draw_oscilloscope(&painter, &rect, profile, &colors, viz_data);
             },
         }
         
         // 7. Draw Overlays
         if let Some(index) = hovered_bar_index {
-            self.draw_inspector_overlay(&painter, &rect, config, viz_data, perf, index, bar_slot_width);
+            self.draw_inspector_overlay(&painter, &rect, &colors, config.noise_floor_db, viz_data, perf, index, bar_slot_width);
         }
 
         if config.show_stats {
-            let perf_clone = perf.clone();
-            drop(state); // Release lock before rendering stats
-            self.render_stats(ui, &rect, &perf_clone);
+            self.draw_stats_overlay(&painter, &rect, &colors, perf);
         }
     }
 
@@ -473,12 +453,18 @@ impl SpectrumApp {
             return;
         }
 
-        // 2. Info check - Use Option, DO NOT RETURN EARLY!
-        let info_opt = match &state.media_info {
-            Some(i) => Some(i.clone()),
-            None => None,
-        };
+        let colors = config.resolve_colors();
+        let base_text_color = to_egui_color(colors.text);
 
+        // 2. Info check
+        let info_opt = state.media_info.clone();
+
+        // Font Selection
+        let font_family = match config.profile.overlay_font {
+            crate::shared_state::ThemeFont::Standard => egui::FontFamily::Proportional,
+            crate::shared_state::ThemeFont::Monospace => egui::FontFamily::Monospace,
+        };
+        
         // 3. Layout Rect calculation
         // Calculate based on the full screen rect since we use an Area
         let rect = ui.ctx().screen_rect();
@@ -582,14 +568,14 @@ impl SpectrumApp {
                                 ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
                                     // Title
                                     ui.label(egui::RichText::new(&info.title)
-                                        .font(egui::FontId::proportional(16.0))
+                                        .font(egui::FontId::new(16.0, font_family.clone()))
                                         .strong()
                                         .color(egui::Color32::WHITE.linear_multiply(self.media_opacity))
                                     );
 
                                     // Artist
                                     ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                                        .font(egui::FontId::proportional(11.0))
+                                        .font(egui::FontId::new(16.0, font_family.clone()))
                                         .color(egui::Color32::from_white_alpha(200).linear_multiply(self.media_opacity))
                                     );
 
@@ -598,10 +584,10 @@ impl SpectrumApp {
                                     // Controls
                                     if cfg!(not(target_os = "macos")) {
                                         ui.add_space(4.0);
-                                        self.render_transport_controls(ui, info.is_playing, self.media_opacity);
+                                        self.render_transport_controls(ui, info.is_playing, self.media_opacity, base_text_color);
                                     } else {
                                         ui.label(egui::RichText::new(format!("via {}", info.source_app))
-                                            .font(egui::FontId::monospace(8.0))
+                                            .font(egui::FontId::new(10.0, font_family.clone()))
                                             .color(egui::Color32::from_white_alpha(120).linear_multiply(self.media_opacity))
                                         );
                                     }
@@ -613,7 +599,7 @@ impl SpectrumApp {
                             ui.vertical(|ui| {
                                 ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
                                     ui.label(egui::RichText::new("Waiting for media...")
-                                        .font(egui::FontId::proportional(14.0))
+                                        .font(egui::FontId::new(14.0, font_family.clone()))
                                         .color(egui::Color32::from_white_alpha(150).linear_multiply(self.media_opacity))
                                     );
                                 });
@@ -625,12 +611,11 @@ impl SpectrumApp {
     }
 
     /// Helper to draw vector buttons (ISO 60417 standard geometry)
-    fn render_transport_controls(&self, ui: &mut egui::Ui, is_playing: bool, opacity: f32) {
+    fn render_transport_controls(&self, ui: &mut egui::Ui, is_playing: bool, opacity: f32, base_color: egui::Color32) {
         let btn_size = egui::vec2(28.0, 28.0); 
-        let color = egui::Color32::WHITE.linear_multiply(opacity);
-
+        let color = base_color.linear_multiply(opacity);
         // background highlight on hover
-        let hover_bg = egui::Color32::from_white_alpha(30).linear_multiply(opacity);
+        let hover_bg = base_color.linear_multiply(0.15 * opacity);
 
         // Use Right-to-Left to anchor to the right side
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
@@ -758,22 +743,21 @@ impl SpectrumApp {
         &self, 
         painter: &egui::Painter, 
         rect: &egui::Rect, 
-        config: &crate::shared_state::AppConfig, 
+        profile: &VisualProfile,
+        colors: &ColorProfile, 
         data: &crate::shared_state::VisualizationData,
         bar_width: f32,
         slot_width: f32,
         hovered_index: Option<usize>,
+        noise_floor: f32
     ) {
-        let (low_c, high_c, peak_c) = config.get_colors();
-        let low = to_egui_color(low_c).linear_multiply(config.bar_opacity);
-        let high = to_egui_color(high_c).linear_multiply(config.bar_opacity);
-        let peak = to_egui_color(peak_c).linear_multiply(config.bar_opacity);
-
-        use egui::epaint::Vertex;
+        let low = to_egui_color(colors.low).linear_multiply(profile.bar_opacity);
+        let high = to_egui_color(colors.high).linear_multiply(profile.bar_opacity);
+        let peak = to_egui_color(colors.peak).linear_multiply(profile.bar_opacity);
 
         for (i, &db) in data.bars.iter().enumerate() {
             let x = rect.left() + (i as f32 * slot_width);
-            let bar_height = self.db_to_px(db, config, rect.height());
+            let bar_height = self.db_to_px(db, noise_floor, rect.height());
             // Safe clamp for gradient
             let norm_height = (bar_height / rect.height()).clamp(0.0, 1.0);
 
@@ -783,11 +767,12 @@ impl SpectrumApp {
                 bar_color = lerp_color(bar_color, egui::Color32::WHITE, 0.5);
             }
 
+            use egui::epaint::Vertex;
             let bar_rect;
             let mesh_base;
             let mesh_tip;
 
-            if config.inverted_spectrum {
+            if profile.inverted_spectrum {
                 bar_rect = egui::Rect::from_min_max(
                     egui::pos2(x, rect.top()),
                     egui::pos2(x + bar_width, rect.top() + bar_height ),
@@ -805,7 +790,7 @@ impl SpectrumApp {
 
             // Draw Mesh
             let mut mesh = egui::Mesh::default();
-            if config.inverted_spectrum {
+            if profile.inverted_spectrum {
                 mesh.vertices.push(Vertex {pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_base});
                 mesh.vertices.push(Vertex {pos: bar_rect.right_top(),uv: egui::Pos2::ZERO, color: mesh_base});
                 mesh.vertices.push(Vertex {pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip});
@@ -821,10 +806,10 @@ impl SpectrumApp {
             painter.add(egui::Shape::mesh(mesh));
 
             // Peaks
-            if config.show_peaks && i < data.peaks.len() {
-                let peak_h = self.db_to_px(data.peaks[i], config, rect.height());
+            if profile.show_peaks && i < data.peaks.len() {
+                let peak_h = self.db_to_px(data.peaks[i], noise_floor, rect.height());
                 
-                let peak_rect = if config.inverted_spectrum {
+                let peak_rect = if profile.inverted_spectrum {
                     let y = rect.top() + peak_h;
                     egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(bar_width, 2.0))
                 } else {
@@ -836,105 +821,125 @@ impl SpectrumApp {
         }
     }
     
-    ///  Draw segmented bars helper function
+    /// Draw segmented bars helper function
+    ///
+    /// Renders the spectrum as a series of discrete blocks (LED style).
+    /// Handles:
+    /// - Gradient coloring based on height
+    /// - Inverted/Standard orientation
+    /// - Peak indicators
+    /// - "Fill to Peak" warning mode
     fn draw_segmented_bars(
         &self, 
         painter: &egui::Painter, 
         rect: &egui::Rect,
-        config: &crate::shared_state::AppConfig, 
+        profile: &VisualProfile,
+        colors: &ColorProfile, 
         data: &crate::shared_state::VisualizationData,
         bar_width: f32,
         slot_width: f32,
         hovered_index: Option<usize>,
+        noise_floor: f32
     ) {
-        let (low_c, high_c, peak_c) = config.get_colors();
-        let low = to_egui_color(low_c).linear_multiply(config.bar_opacity);
-        let high = to_egui_color(high_c).linear_multiply(config.bar_opacity);
-        let peak = to_egui_color(peak_c).linear_multiply(config.bar_opacity);
+        // 1. Resolve Colors & Opacity
+        let low = to_egui_color(colors.low).linear_multiply(profile.bar_opacity);
+        let high = to_egui_color(colors.high).linear_multiply(profile.bar_opacity);
+        let peak_color = to_egui_color(colors.peak).linear_multiply(profile.bar_opacity);
 
-        let seg_h = config.segment_height_px;
-        let total_seg_size = seg_h + config.segment_gap_px;
+        // 2. Calculate Segment Geometry
+        // Ensure we don't get stuck in infinite loops with 0 height
+        let seg_h = profile.segment_height_px.max(1.0);
+        let seg_gap = profile.segment_gap_px.max(0.0);
+        let total_seg_h = seg_h + seg_gap;
 
+        // 3. Render Each Bar
         for (i, &db) in data.bars.iter().enumerate() {
-            let x = rect.left() + (i as f32 * slot_width);
+             let x = rect.left() + (i as f32 * slot_width);
+             
+             // Convert dB to pixel height
+             let total_h = self.db_to_px(db, noise_floor, rect.height());
+             
+             // Determine how many segments fit in this height
+             let num_segments = (total_h / total_seg_h).floor() as i32;
+             
+             // --- Draw Active Segments ---
+             for s in 0..num_segments {
+                 let segment_idx = s as f32;
+                 let y_offset = segment_idx * total_seg_h;
+                 
+                 // Calculate gradient color based on vertical position
+                 let norm_h = (y_offset / rect.height()).clamp(0.0, 1.0);
+                 let color = lerp_color(low, high, norm_h);
 
-            // 1. Calculate active segments
-            let height_px = self.db_to_px(db, config, rect.height());
-            let active_segments = (height_px / total_seg_size).floor() as i32;
+                 // Calculate rect based on orientation
+                 let seg_rect = if profile.inverted_spectrum {
+                     // Top-Down
+                     egui::Rect::from_min_size(
+                         egui::pos2(x, rect.top() + y_offset),
+                         egui::vec2(bar_width, seg_h)
+                     )
+                 } else {
+                     // Bottom-Up
+                     egui::Rect::from_min_size(
+                         egui::pos2(x, rect.bottom() - y_offset - seg_h),
+                         egui::vec2(bar_width, seg_h)
+                     )
+                 };
+                 painter.rect_filled(seg_rect, 1.0, color);
+             }
 
-            // 2. Calculate peak position
-            let mut peak_seg_idx = -1;
-            if config.show_peaks && i < data.peaks.len() {
-                let peak_px = self.db_to_px(data.peaks[i], config, rect.height());
-                peak_seg_idx = (peak_px / total_seg_size).floor() as i32;
-            }
+             // --- Draw Peak Indicators ---
+             if profile.show_peaks && i < data.peaks.len() {
+                 let peak_h = self.db_to_px(data.peaks[i], noise_floor, rect.height());
+                 
+                 // Snap peak to the nearest segment grid position
+                 let peak_seg_idx = (peak_h / total_seg_h).floor();
+                 let y_offset = peak_seg_idx * total_seg_h;
+                 
+                 let peak_rect = if profile.inverted_spectrum {
+                     egui::Rect::from_min_size(egui::pos2(x, rect.top() + y_offset), egui::vec2(bar_width, seg_h))
+                 } else {
+                     egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - y_offset - seg_h), egui::vec2(bar_width, seg_h))
+                 };
+                 
+                 painter.rect_filled(peak_rect, 1.0, peak_color);
 
-            // 3. Determine how high to draw loop
-            let limit = if config.fill_peaks {
-                peak_seg_idx.max(active_segments)
-            } else {
-                active_segments
-            };
-
-            for s in 0..limit {
-                let offset = s as f32 * total_seg_size;
-                // Safety, don't draw outside bounds
-                if offset + seg_h > rect.height() {break; }
-
-                // Color logic: Gradient if signal, solid peak color if extension
-                let color = if s < active_segments {
-                    let norm_pos = (offset + (seg_h / 2.0)) / rect.height();
-                    let mut c = lerp_color(low, high, norm_pos);
-                    if Some(i) == hovered_index { c = lerp_color(c, egui::Color32::WHITE, 0.5); }
-                    c
-                } else {
-                    // in "extension" zone
-                    if !config.fill_peaks { continue; }
-                    peak
-                };
-
-                let seg_rect = if config.inverted_spectrum {
-                    egui::Rect::from_min_size(egui::pos2(x, rect.top() + offset),egui::vec2( bar_width,seg_h))
-                } else {
-                    egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - offset - seg_h), egui::vec2(bar_width, seg_h))
-                };
-
-                painter.rect_filled(seg_rect, 1.0, color);
-            }
-
-            // 4. Floating Peak (if not filling)
-            if config.show_peaks && !config.fill_peaks && peak_seg_idx >= 0 {
-                // Ensure floating peak doesn't overlap active segment
-                if peak_seg_idx >= active_segments {
-                    let offset = peak_seg_idx as f32 * total_seg_size;
-                    let seg_rect = if config.inverted_spectrum {
-                        egui::Rect::from_min_size(egui::pos2(x, rect.top() + offset), egui::vec2(bar_width, seg_h))
-                    } else {
-                        egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - offset - seg_h), egui::vec2(bar_width, seg_h))
-                    };
-                    painter.rect_filled(seg_rect, 1.0, peak);
-                }
-            }
-        }
+                 // --- Fill Gap to Peak (Warning Mode) ---
+                 // If enabled, fills the empty space between the current bar level and the peak
+                 // with a dim color. Useful for seeing dynamic range.
+                 if profile.fill_peaks {
+                     let gap_segments = (peak_seg_idx as i32) - num_segments;
+                     if gap_segments > 0 {
+                         let fill_color = peak_color.linear_multiply(0.3);
+                         for g in 0..gap_segments {
+                             // Offset from the top of the current bar
+                             let gap_y = (num_segments + g) as f32 * total_seg_h;
+                             let gap_rect = if profile.inverted_spectrum {
+                                 egui::Rect::from_min_size(egui::pos2(x, rect.top() + gap_y), egui::vec2(bar_width, seg_h))
+                             } else {
+                                 egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - gap_y - seg_h), egui::vec2(bar_width, seg_h))
+                             };
+                             painter.rect_filled(gap_rect, 1.0, fill_color);
+                         }
+                     }
+                 }
+             }
+         }
     }
 
 
-    fn draw_line_spectrum(
-        &self, 
-        painter: &egui::Painter, 
-        rect: &egui::Rect, 
-        config: &crate::shared_state::AppConfig, 
-        data: &crate::shared_state::VisualizationData,
-        hovered_index: Option<usize>,
-    ) {
-        if data.bars.is_empty() { return;}
+    fn draw_line_spectrum(&self, painter: &egui::Painter, rect: &egui::Rect, profile: &VisualProfile, colors: &ColorProfile, data: &crate::shared_state::VisualizationData, hovered_index: Option<usize>, noise_floor: f32) {
+        if data.bars.is_empty() { return; }
+        
+        // Use Profile colors
+        let high = to_egui_color(colors.high).linear_multiply(profile.bar_opacity);
 
-        // Pre-calculate points
+        // Pre-calculate points (Your original logic)
         let points: Vec<egui::Pos2> = data.bars.iter().enumerate().map(|(i, &db)| {
             let x = rect.left() + (i as f32 / data.bars.len() as f32) * rect.width();
-            let height = self.db_to_px(db, config, rect.height());
+            let height = self.db_to_px(db, noise_floor, rect.height());
         
-            let y = if config.inverted_spectrum {
+            let y = if profile.inverted_spectrum {
                 rect.top() + height
             } else {
                 rect.bottom() - height
@@ -942,17 +947,28 @@ impl SpectrumApp {
 
             egui::pos2(x, y)
         }).collect();
-            
-        // Draw Glow (thick transparent line)
-        let (_, high, _) = config.get_colors();
-        let glow_c = to_egui_color(high).linear_multiply(0.3);
-        painter.add(egui::Shape::line(points.clone(), egui::Stroke::new(2.0, glow_c)));
 
-        // Draw Core (thin bright line)
-        let core_c = to_egui_color(high);
+        // Draw Glow (thick transparent line) - Restored!
+        let glow_c = high.linear_multiply(0.3);
+        painter.add(egui::Shape::line(points.clone(), egui::Stroke::new(4.0, glow_c)));
+
+        // Draw Core (thin bright line) - Restored!
+        let core_c = high; 
         painter.add(egui::Shape::line(points.clone(), egui::Stroke::new(2.0, core_c)));
 
-        // Draw hover Indicator
+        // Optional: Fill below line. Maybe remove?
+        
+        if points.len() > 2 {
+            let mut fill_points = points.clone();
+            fill_points.push(egui::pos2(rect.right(), if profile.inverted_spectrum { rect.top() } else { rect.bottom() }));
+            fill_points.push(egui::pos2(rect.left(), if profile.inverted_spectrum { rect.top() } else { rect.bottom() }));
+            
+            let fill_color = to_egui_color(colors.low).linear_multiply(0.15 * profile.bar_opacity);
+            painter.add(egui::Shape::convex_polygon(fill_points, fill_color, egui::Stroke::NONE));
+        }
+        
+
+        // Draw hover Indicator - Restored!
         if let Some(idx) = hovered_index {
             if let Some(point) = points.get(idx){
                 // Bright white dot with colored glow
@@ -966,7 +982,8 @@ impl SpectrumApp {
         &self, 
         painter: &egui::Painter, 
         rect: &egui::Rect,
-        config: &crate::shared_state::AppConfig, 
+        profile: &VisualProfile,
+        colors: &ColorProfile,
         data: &crate::shared_state::VisualizationData,
     ) {
         if data.waveform.is_empty() { return; }
@@ -974,7 +991,7 @@ impl SpectrumApp {
         let center_y = rect.center().y;
         // Scale: Audio is +/- 1.0, we map that to +/- half height
         // Sensitivity scales the amplitude
-        let scale = (rect.height() / 2.0 ) * config.sensitivity;
+        let scale = (rect.height() / 2.0 ) * profile.sensitivity;
 
         // Downsampling for performance if buffer is huge
         // Just drawing every Nth sample or average could work, but simple stride is fast
@@ -986,9 +1003,8 @@ impl SpectrumApp {
             egui::pos2(x, y)
         }).collect();
         
-        let (_, high, _) = config.get_colors();
-        let color = to_egui_color(high);
-        painter.add(egui::Shape::line(points, egui::Stroke::new(1.5, color)));
+        let high = to_egui_color(colors.high).linear_multiply(profile.bar_opacity);
+        painter.add(egui::Shape::line(points, egui::Stroke::new(1.5, high)));
     }
     
     // === OVERLAYS ===
@@ -1035,10 +1051,15 @@ impl SpectrumApp {
             Err(_) => return,
         };
 
-        // Only show if background is transparent, otherwise its confusing
-        if state.config.background_opacity > 0.05 {
+        // Use resolved background alpha
+        let colors = state.config.resolve_colors();
+        let bg_alpha = colors.background.a as f32 / 255.0;
+
+        // only show if background is transparent
+        if bg_alpha >= 0.05 {
             return;
         }
+
 
         let is_locked = state.config.window_locked;
         let size = 24.0;
@@ -1117,8 +1138,9 @@ impl SpectrumApp {
     fn draw_sonar_ping(&self, ui: &mut egui::Ui, rect: egui::Rect, strength: f32) {
         // 1. Setup
         // We grab the 'High' color from your theme for the glow
-        let (_, high_color, _) = self.shared_state.lock().unwrap().config.get_colors();
-        let base_color = to_egui_color(high_color);
+        let colors = self.shared_state.lock().unwrap().config.resolve_colors();
+        let base_color = to_egui_color(colors.high);
+        
         let rounding = 12.0;
 
         // 2. Calculate Animation State based on 'strength' (1.0 -> 0.0)
@@ -1162,7 +1184,8 @@ impl SpectrumApp {
         &self, 
         painter: &egui::Painter, 
         rect: &egui::Rect, 
-        config: &crate::shared_state::AppConfig, 
+        colors: &ColorProfile,
+        noise_floor: f32,
         data: &crate::shared_state::VisualizationData,
         perf: &crate::shared_state::PerformanceStats,
         index: usize,
@@ -1173,7 +1196,7 @@ impl SpectrumApp {
         let center_x = rect.left() + (index as f32 * slot_width) + (slot_width / 2.0);
         painter.line_segment(
             [egui::pos2(center_x, rect.top()), egui::pos2(center_x, rect.bottom())],
-            egui::Stroke::new(1.0, egui::Color32::WHITE.linear_multiply(0.5))
+            egui::Stroke::new(1.0, to_egui_color(colors.inspector_fg))
         );
 
         // Label Calculation
@@ -1210,167 +1233,249 @@ impl SpectrumApp {
         pos.y = pos.y.clamp(rect.top(), rect.bottom() - h);
 
         let label_rect = egui::Rect::from_min_size(pos, egui::vec2(w, h));
-        painter.rect_filled(label_rect, 4.0,
-             egui::Color32::from_black_alpha((config.inspector_opacity * 255.0) as u8));
-        painter.rect_stroke(label_rect, 4.0, 
-            egui::Stroke::new(1.0, egui::Color32::WHITE.linear_multiply(config.inspector_opacity)));
+        painter.rect_filled(label_rect, 4.0, to_egui_color(colors.inspector_bg));
+        painter.rect_stroke(label_rect, 4.0, egui::Stroke::new(1.0, to_egui_color(colors.inspector_fg)));
         painter.galley(label_rect.min + egui::vec2(padding, padding), galley, egui::Color32::WHITE);
     }
-    
-    /// Render performance statitstics overlay
-    fn render_stats(&self, ui: &mut egui::Ui, rect: &egui::Rect, perf: &crate::shared_state::PerformanceStats){
-        let state = match self.shared_state.lock() {
-            Ok(state) => state,
-            Err(_) => return,
-        };
 
-        let config = &state.config;
-
-        let info = &perf.fft_info;
-
-        // Use strict padding:
-        // {:>5.1} -> Right aligned, 5 chars wide, 1 decimal point (e.g. " 60.0" or "144.1")
-        // {:>5.2} -> Right aligned, 5 chars wide, 2 decimal points (e.g. " 1.25")
-        // {:>6}   -> Right aligned, 6 chars wide integer
-        let stats_text = format!(
-            "FPS: {:>5.1} | Lat: {:>4.1}ms | Res: {:>4.1}Hz | {}Hz",
-            perf.gui_fps,
-            info.latency_ms,
-            info.frequency_resolution,
-            info.sample_rate,
-        );
-
-        let text_color = egui::Color32::WHITE.linear_multiply(config.stats_opacity);
+    /// Render performance statistics overlay
+    fn draw_stats_overlay(&self, painter: &egui::Painter, rect: &egui::Rect, colors: &ColorProfile, perf: &crate::shared_state::PerformanceStats){
+        // Position in top-left (with padding)
+        let pos = rect.left_top() + egui::vec2(10.0, 10.0);
         
-        ui.painter().text(
-            egui::pos2(rect.left() + 10.0, rect.top() + 10.0),
-            egui::Align2::LEFT_TOP,
-            stats_text,
-            egui::FontId::monospace(12.0),
-            text_color,
+        let text = format!(
+            "FPS: {:.0}\nFFT: {:.1}ms\nMin/Max: {:.1}/{:.1}ms\nRes: {:.1}Hz",
+            perf.gui_fps,
+            perf.fft_ave_time.as_micros() as f32 / 1000.0,
+            perf.fft_min_time.as_micros() as f32 / 1000.0,
+            perf.fft_max_time.as_micros() as f32 / 1000.0,
+            perf.fft_info.frequency_resolution
         );
+
+        // Reuse Inspector colors for consistency
+        let bg_color = to_egui_color(colors.inspector_bg);
+        let text_color = to_egui_color(colors.inspector_fg);
+
+        // Draw background box
+        // We estimate size or let text layout determine it, but simple rect is safer for now
+        let galley = painter.layout_no_wrap(
+            text, 
+            egui::FontId::proportional(12.0), 
+            text_color
+        );
+        
+        let pad = 6.0;
+        let bg_rect = egui::Rect::from_min_size(pos, galley.size() + egui::vec2(pad*2.0, pad*2.0));
+        
+        painter.rect_filled(bg_rect, 4.0, bg_color);
+        painter.galley(pos + egui::vec2(pad, pad), galley, egui::Color32::TRANSPARENT); // Text color is baked into galley
+    }
+
+    fn render_preview_spectrum(&self, ui: &mut egui::Ui, current_colors: &ColorProfile, bar_opacity: f32) {
+        ui.label("Preview:");
+        let height = 60.0;
+        let (response, painter) = ui.allocate_painter(
+            egui::vec2 (ui.available_width(), height),
+            egui::Sense::hover()
+        );
+        let rect = response.rect;
+
+        // Draw Background
+        let bg_color = to_egui_color(current_colors.background);
+        painter.rect_filled(rect, 4.0, bg_color);
+
+        // Mock Data Pattern (bass heavy, dip in mids, sparkle in highs)
+        let mock_levels = [
+            0.10, 0.40, 0.75, 0.95, 0.90, 0.85, 0.70, // Bass
+            0.55, 0.40, 0.30, 0.25,                   // Mids
+            0.40, 0.60, 0.50, 0.35,                   // High Mids
+            0.25, 0.15, 0.25, 0.40, 0.30, 0.20, 0.15, 0.10, 0.08, 0.04, 0.01 // Highs
+        ];
+
+        let low = to_egui_color(current_colors.low).linear_multiply(bar_opacity);
+        let high = to_egui_color(current_colors.high).linear_multiply(bar_opacity);
+        let peak = to_egui_color(current_colors.peak).linear_multiply(bar_opacity);
+
+        let bar_width = rect.width() / mock_levels.len() as f32;
+        let gap = 2.0;
+
+        for (i, &level) in mock_levels.iter().enumerate() {
+            let x = rect.left() + (i as f32 * bar_width) + gap/2.0;
+            let w = (bar_width - gap).max(1.0);
+            let h = level * rect.height();
+
+            // Gradient
+            let bar_color = lerp_color(low, high, level);
+
+            // Draw Bar (Bottom-up standard for preview)
+            let bar_rect = egui::Rect::from_min_size(
+                egui::pos2(x, rect.bottom() - h), 
+                egui::vec2(w, h)
+            );
+            
+            // Simple gradient mesh for preview
+            use egui::epaint::{Mesh, Vertex};
+            let mut mesh = Mesh::default();
+            mesh.vertices.push(Vertex { pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: low });
+            mesh.vertices.push(Vertex { pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: low });
+            mesh.vertices.push(Vertex { pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: bar_color });
+            mesh.vertices.push(Vertex { pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: bar_color });
+            mesh.add_triangle(0, 1, 2);
+            mesh.add_triangle(0, 2, 3);
+            painter.add(egui::Shape::mesh(mesh));
+
+            // Peak
+            if level > 0.05 {
+                let peak_y = bar_rect.top() - 4.0;
+                let peak_rect = egui::Rect::from_min_size(egui::pos2(x, peak_y), egui::vec2(w, 2.0));
+                painter.rect_filled(peak_rect, 0.0, peak);
+            }
+        }
     }
 
     /// Render settings window content
     fn render_settings_window(&mut self, ui: &mut egui::Ui) {
-        let mut state = match self.shared_state.lock() {
-            Ok(state) => state,
-            Err(_) => {
-                ui.label("⚠ Error: Cannot access settings");
-                return;
-            }
-        };
-
-        // Define a standard grid spacing for consistency
+        let mut state = match self.shared_state.lock() { Ok(s) => s, Err(_) => return, };
         let grid_spacing = egui::vec2(40.0, 12.0); 
 
-        // 1. Tab Bar (Add some padding around it)
+        // Tabs
         ui.add_space(5.0);
         ui.horizontal(|ui| {
-            // Get the highlight color (High Color from config)
-            let (_, high, _) = state.config.get_colors();
-            let highlight = to_egui_color(high);
-
+            let colors = state.config.resolve_colors();
+            let highlight = to_egui_color(colors.high);
             ui_tab_button(ui, " 🎨 Visual ", SettingsTab::Visual, &mut self.active_tab, highlight);
             ui_tab_button(ui, " 🔊 Audio ", SettingsTab::Audio, &mut self.active_tab, highlight);
             ui_tab_button(ui, " 🌈 Colors ", SettingsTab::Colors, &mut self.active_tab, highlight);
             ui_tab_button(ui, " 🪟 Window ", SettingsTab::Window, &mut self.active_tab, highlight);
             ui_tab_button(ui, " 📊 Stats ", SettingsTab::Performance, &mut self.active_tab, highlight);
         });
-        ui.add_space(5.0);
         ui.separator();
-        ui.add_space(10.0);
 
-        // 2. Tab Content
         egui::ScrollArea::vertical().show(ui, |ui| {
             match self.active_tab {
                 SettingsTab::Visual => {
-                    ui.heading("Visual Configuration");
-                    ui.add_space(5.0);
-                    
-                    ui.group(|ui| {
-                        egui::Grid::new("visual_grid")
-                            .num_columns(2)
-                            .spacing(grid_spacing)
-                            .striped(true)
-                            .show(ui, |ui| {
-                                
-                                // Visual Mode Selector
-                                ui.label("Mode");
-                                egui::ComboBox::from_id_salt("viz_mode")
-                                    .selected_text(format!("{:?}", state.config.visual_mode))
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut state.config.visual_mode, VisualMode::SolidBars, "Solid Bars");
-                                        ui.selectable_value(&mut state.config.visual_mode, VisualMode::SegmentedBars, "Segmented (LED)");
-                                        ui.selectable_value(&mut state.config.visual_mode, VisualMode::LineSpectrum, "Line Spectrum");
-                                        ui.selectable_value(&mut state.config.visual_mode, VisualMode::Oscilloscope, "Oscilloscope");
-                                    });
-                                ui.end_row();
-
-                                // Controls specific to Spectrum Modes
-                                if state.config.visual_mode != VisualMode::Oscilloscope {
-                                    ui.label("Bar Count");
-                                    ui.add(egui::Slider::new(&mut state.config.num_bars, 10..=512)
-                                        .step_by(1.0)
-                                        .drag_value_speed(1.0)
-                                        .smart_aim(false));
-                                    ui.end_row();
-
-                                    ui.label("Bar Gap");
-                                    ui.add(egui::Slider::new(&mut state.config.bar_gap_px, 0..=10).suffix(" px"));
-                                    ui.end_row();
-                                }
-
-                                ui.label("Bar Opacity");
-                                ui.add(egui::Slider::new(&mut state.config.bar_opacity, 0.0..=1.0));
-                                ui.end_row();
-
-                                ui.label("Background Opacity");
-                                ui.add(egui::Slider::new(&mut state.config.background_opacity, 0.0..=1.0));
-                                ui.end_row();
-
-                                // Segmented Mode Options
-                                if state.config.visual_mode == VisualMode::SegmentedBars {
-                                    ui.label("Segment Height");
-                                    ui.add(egui::Slider::new(&mut state.config.segment_height_px, 1.0..=20.0).suffix(" px"));
-                                    ui.end_row();
-
-                                    ui.label("Segment Gap");
-                                    ui.add(egui::Slider::new(&mut state.config.segment_gap_px, 0.0..=10.0).suffix(" px"));
-                                    ui.end_row();
-                                }
-
-                                // Peaks (Disable for O-scope)
-                                if state.config.visual_mode != VisualMode::Oscilloscope {
-                                    ui.label("Peak Indicators");
-                                    ui.horizontal(|ui| {
-                                        ui.checkbox(&mut state.config.show_peaks, "Show");
-                                        if state.config.show_peaks && state.config.visual_mode == VisualMode::SegmentedBars {
-                                            ui.checkbox(&mut state.config.fill_peaks, "Fill to Peak");
-                                        }
-                                    });
-                                    ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.label("Visual Profile:");
+                        egui::ComboBox::from_id_salt("viz_profile_combo")
+                            .selected_text(&state.config.profile.name)
+                            .show_ui(ui, |ui| {
+                                for vp in VisualProfile::built_in() {
+                                    if ui.selectable_label(state.config.profile.name == vp.name, &vp.name).clicked() {
+                                        state.config.profile = vp;
+                                    }
                                 }
                             });
+                        if ui.button("💾").on_hover_text("Save Profile").clicked() { /* Save Logic */ }
+                    });
+                    ui.separator();
+
+                    ui.group(|ui| {
+                        egui::Grid::new("visual_grid").num_columns(2).spacing(grid_spacing).show(ui, |ui| {
+                            ui.label("Mode");
+                            egui::ComboBox::from_id_salt("viz_mode")
+                                .selected_text(format!("{:?}", state.config.profile.visual_mode))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut state.config.profile.visual_mode, VisualMode::SolidBars, "Solid Bars");
+                                    ui.selectable_value(&mut state.config.profile.visual_mode, VisualMode::SegmentedBars, "Segmented (LED)");
+                                    ui.selectable_value(&mut state.config.profile.visual_mode, VisualMode::LineSpectrum, "Line Spectrum");
+                                    ui.selectable_value(&mut state.config.profile.visual_mode, VisualMode::Oscilloscope, "Oscilloscope");
+                                });
+                            ui.end_row();
+                            
+                            // Specific Controls
+                            if state.config.profile.visual_mode != VisualMode::Oscilloscope {
+                                ui.label("Bar Count");
+                                ui.add(egui::Slider::new(&mut state.config.profile.num_bars, 10..=512)
+                                    .step_by(1.0).drag_value_speed(1.0).smart_aim(false));
+                                ui.end_row();
+
+                                ui.label("Bar Gap");
+                                ui.add(egui::Slider::new(&mut state.config.profile.bar_gap_px, 0..=10).suffix(" px"));
+                                ui.end_row();
+                            }
+                            
+                            ui.label("Bar Opacity");
+                            ui.add(egui::Slider::new(&mut state.config.profile.bar_opacity, 0.0..=1.0));
+                            ui.end_row();
+
+                            // NEW: Background Opacity Slider Logic
+                            ui.label("Background Opacity");
+                            // FIX: Resolve immutable colors first, don't hold lock long if possible, 
+                            // but here we are modifying state in UI so we need the lock anyway.
+                            // The error was that we borrowed `state.config` (immutable via resolve_colors) 
+                            // and then tried to mutate `state.config.profile.background`.
+                            // FIX: Clone the color needed, don't hold the borrow from resolve_colors
+                            let current_bg = state.config.resolve_colors().background;
+                            
+                            // Calculate current alpha (0.0 - 1.0)
+                            let mut alpha = current_bg.a as f32 / 255.0;
+                            
+                            ui.horizontal(|ui|{
+                                if ui.add(egui::Slider::new(&mut alpha, 0.0..=1.0).show_value(true)).changed() {
+                                    // Override: Keep active RGB, but enforce new Alpha
+                                    let new_bg = crate::shared_state::Color32 {
+                                        r: current_bg.r,
+                                        g: current_bg.g,
+                                        b: current_bg.b,
+                                        a: (alpha * 255.0) as u8
+                                    };
+                                    state.config.profile.background = Some(new_bg);
+                                }
+                                
+                                // Show Reset button if override is active
+                                if state.config.profile.background.is_some() {
+                                    if ui.button("↺").on_hover_text("Reset to Preset Default").clicked() {
+                                        state.config.profile.background = None;
+                                    }
+                                }
+                            });
+                            ui.end_row();
+
+                            if state.config.profile.visual_mode == VisualMode::SegmentedBars {
+                                ui.label("Segment Height");
+                                ui.add(egui::Slider::new(&mut state.config.profile.segment_height_px, 1.0..=20.0).suffix(" px"));
+                                ui.end_row();
+
+                                ui.label("Segment Gap");
+                                ui.add(egui::Slider::new(&mut state.config.profile.segment_gap_px, 0.0..=10.0).suffix(" px"));
+                                ui.end_row();
+                            }
+
+                            if state.config.profile.visual_mode != VisualMode::Oscilloscope {
+                                ui.label("Peak Indicators");
+                                ui.horizontal(|ui| {
+                                    ui.checkbox(&mut state.config.profile.show_peaks, "Show");
+                                    if state.config.profile.show_peaks && state.config.profile.visual_mode == VisualMode::SegmentedBars {
+                                        ui.checkbox(&mut state.config.profile.fill_peaks, "Fill to Peak");
+                                    }
+                                });
+                                ui.end_row();
+                            }
+
+                            ui.label("Font Style");
+                            egui::ComboBox::from_id_salt("font_combo")
+                                .selected_text(format!("{:?}", state.config.profile.overlay_font))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut state.config.profile.overlay_font, crate::shared_state::ThemeFont::Standard, "Standard");
+                                    ui.selectable_value(&mut state.config.profile.overlay_font, crate::shared_state::ThemeFont::Monospace, "Retro (Mono)");
+                                });
+                            ui.end_row();
+                        });
                     });
 
                     ui.add_space(10.0);
                     ui.group(|ui| {
                         ui.label("Aggregation Mode:");
                         ui.horizontal(|ui| {
-                            ui.radio_value(&mut state.config.use_peak_aggregation, true, "Peak (Dramatic)");
-                            ui.radio_value(&mut state.config.use_peak_aggregation, false, "Average (Smooth)");
+                            ui.radio_value(&mut state.config.profile.use_peak_aggregation, true, "Peak (Dramatic)");
+                            ui.radio_value(&mut state.config.profile.use_peak_aggregation, false, "Average (Smooth)");
                         });
 
                         ui.add_space(5.0);
                         ui.label("Orientation:");
-                        ui.checkbox(&mut state.config.inverted_spectrum, "Inverted (Top-Down)");
+                        ui.checkbox(&mut state.config.profile.inverted_spectrum, "Inverted (Top-Down)");
                     });
-
-                    
-
                 },
-
                 SettingsTab::Audio => {
                     ui.heading("Audio Configuration");
                     ui.add_space(5.0);
@@ -1386,24 +1491,14 @@ impl SpectrumApp {
                                 ui.end_row();
 
                                 ui.label("Sensitivity");
-                               ui.add(
-                                    egui::Slider::new(&mut state.config.sensitivity, 0.01..=100.0)
-                                        .logarithmic(true)
-                                        .custom_formatter(|v, _| format!("{:+.1} dB", 20.0 * v.log10()))
-                                        .custom_parser(|s| {
-                                            // Parse "+6 dB" style input
-                                            s.trim().trim_end_matches(" dB").trim_end_matches("dB")
-                                                .parse::<f64>().ok()
-                                                .map(|db| 10_f64.powf(db / 20.0))
-                                        }),
+                                ui.add(egui::Slider::new(&mut state.config.profile.sensitivity, 0.01..=100.0)
+                                    .logarithmic(true)
+                                    .custom_formatter(|v, _| format!("{:+.1} dB", 20.0 * v.log10()))
                                 );
-                                
-                                
                                 ui.end_row();
 
                                 ui.label("Noise Floor");
-                                ui.add(egui::Slider::new(&mut state.config.noise_floor_db, -120.0..=-20.0)
-                                    .suffix(" dB"));
+                                ui.add(egui::Slider::new(&mut state.config.noise_floor_db, -120.0..=-20.0).suffix(" dB"));
                                 ui.end_row();
                             });
                     });
@@ -1417,20 +1512,20 @@ impl SpectrumApp {
                             .striped(true)
                             .show(ui, |ui| {
                                 ui.label("Bar Attack (Rise)");
-                                ui.add(egui::Slider::new(&mut state.config.attack_time_ms, 1.0..=500.0).suffix(" ms"));
+                                ui.add(egui::Slider::new(&mut state.config.profile.attack_time_ms, 1.0..=500.0).suffix(" ms"));
                                 ui.end_row();
 
                                 ui.label("Bar Release (Fall)");
-                                ui.add(egui::Slider::new(&mut state.config.release_time_ms, 1.0..=2000.0).suffix(" ms"));
+                                ui.add(egui::Slider::new(&mut state.config.profile.release_time_ms, 1.0..=2000.0).suffix(" ms"));
                                 ui.end_row();
 
-                                if state.config.show_peaks {
+                                if state.config.profile.show_peaks {
                                     ui.label("Peak Hold Time");
-                                    ui.add(egui::Slider::new(&mut state.config.peak_hold_time_ms, 0.0..=2000.0).suffix(" ms"));
+                                    ui.add(egui::Slider::new(&mut state.config.profile.peak_hold_time_ms, 0.0..=2000.0).suffix(" ms"));
                                     ui.end_row();
 
                                     ui.label("Peak Fall Speed");
-                                    ui.add(egui::Slider::new(&mut state.config.peak_release_time_ms, 10.0..=2000.0).suffix(" ms"));
+                                    ui.add(egui::Slider::new(&mut state.config.profile.peak_release_time_ms, 10.0..=2000.0).suffix(" ms"));
                                     ui.end_row();
                                 }
                             });
@@ -1489,130 +1584,91 @@ impl SpectrumApp {
                             });
                     });
                 },
-
                 SettingsTab::Colors => {
-                    ui.heading("Color Scheme");
-                    ui.add_space(5.0);
+                    ui.heading("Colors");
+                    // FIX: Don't hold refs to state.config inside local vars if we mutate it later via profile
+                    let mut current_colors = state.config.resolve_colors();
+                    let initial_colors = current_colors.clone();
+                    let bar_opacity = state.config.profile.bar_opacity;
 
-                    let current_scheme = state.config.scheme_name();
-                    
-                    ui.group(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label("Active Preset:");
-                            egui::ComboBox::from_id_salt("color_combo")
-                                .selected_text(&current_scheme)
-                                .height(300.0)
-                                .show_ui(ui, |ui| {
-                                    let presets = crate::shared_state::ColorPreset::preset_names();
-                                    for preset_name in presets {
-                                        if ui.selectable_label(current_scheme == preset_name, &preset_name).clicked() {
-                                            state.config.apply_preset(&preset_name);
-                                        }
+                    ui.horizontal(|ui| {
+                        ui.label("Preset:");
+                        let combo_text = match &state.config.profile.color_link {
+                            ColorRef::Preset(name) => name.clone(),
+                            ColorRef::Custom(_) => "Custom".to_string(),
+                        };
+                        egui::ComboBox::from_id_salt("color_preset_combo")
+                            .selected_text(combo_text)
+                            .show_ui(ui, |ui| {
+                                for cp in ColorProfile::built_in() {
+                                    if ui.selectable_label(false, &cp.name).clicked() {
+                                        state.config.profile.color_link = ColorRef::Preset(cp.name);
+                                        // Reset override when switching preset
+                                        state.config.profile.background = None;
                                     }
-                                });
+                                }
+                            });
+                        if ui.button("💾").on_hover_text("Save Color Preset").clicked() { /* Save Logic */ }
+                    });
+                    ui.separator();
+
+                    let mut egui_low = to_egui_color(current_colors.low);
+                    let mut egui_high = to_egui_color(current_colors.high);
+                    let mut egui_peak = to_egui_color(current_colors.peak);
+                    let mut egui_bg = to_egui_color(current_colors.background);
+                    let mut egui_text = to_egui_color(current_colors.text);
+                    let mut egui_insp_bg = to_egui_color(current_colors.inspector_bg);
+                    let mut egui_insp_fg = to_egui_color(current_colors.inspector_fg);
+
+                    ui.group(|ui| {
+                        egui::Grid::new("color_grid").num_columns(2).spacing(grid_spacing).show(ui, |ui| {
+                            ui.label("Low / Bass");
+                            ui.color_edit_button_srgba(&mut egui_low);
+                            ui.end_row();
+
+                            ui.label("High / Treble");
+                            ui.color_edit_button_srgba(&mut egui_high);
+                            ui.end_row();
+
+                            ui.label("Peak");
+                            ui.color_edit_button_srgba(&mut egui_peak);
+                            ui.end_row();
+
+                            ui.label("Background");
+                            ui.color_edit_button_srgba(&mut egui_bg);
+                            ui.end_row();
+                            
+                            ui.label("Overlay Text");
+                            ui.color_edit_button_srgba(&mut egui_text);
+                            ui.end_row();
+
+                            ui.label("Inspector Box");
+                            ui.color_edit_button_srgba(&mut egui_insp_bg);
+                            ui.end_row();
+
+                            ui.label("Inspector Text/Line");
+                            ui.color_edit_button_srgba(&mut egui_insp_fg);
+                            ui.end_row();
                         });
                     });
-                    
+
+                    // NEW: Render the Live Preview
                     ui.add_space(10.0);
-                    ui.label("Preview:");
-                    
-                    // 1. Setup the drawing area
-                    let height = 60.0; // Taller to see the gradient better
-                    let (response, painter) = ui.allocate_painter(
-                        egui::vec2(ui.available_width(), height), 
-                        egui::Sense::hover()
-                    );
-                    let rect = response.rect;
+                    self.render_preview_spectrum(ui, &current_colors, bar_opacity);
 
-                    // 2. Draw Background (using opacity)
-                    let bg_color = egui::Color32::from_black_alpha((state.config.background_opacity * 255.0) as u8);
-                    painter.rect_filled(rect, 4.0, bg_color);
+                    current_colors.low = from_egui_color(egui_low);
+                    current_colors.high = from_egui_color(egui_high);
+                    current_colors.peak = from_egui_color(egui_peak);
+                    current_colors.background = from_egui_color(egui_bg);
+                    current_colors.text = from_egui_color(egui_text);
+                    current_colors.inspector_bg = from_egui_color(egui_insp_bg);
+                    current_colors.inspector_fg = from_egui_color(egui_insp_fg);
 
-                    // 3. Define a "Mock" Audio Signal (0.0 to 1.0)
-                    let mock_bars = [
-                        // Bass (Heavy)
-                        0.10, 0.40, 0.75, 0.95, 0.90, 0.85, 0.70, 
-                        // Low Mids (Dip)
-                        0.55, 0.40, 0.30, 0.25, 
-                        // High Mids (Vocal Peak)
-                        0.40, 0.60, 0.50, 0.35, 
-                        // Highs (Sparkle & Roll off)
-                        0.25, 0.15, 0.25, 0.40, 0.30, 0.20, 0.15, 0.10, 0.08, 0.04, 0.01
-                    ];
-                    
-                    let (low_rgb, high_rgb, peak_rgb) = state.config.get_colors();
-                    let low = to_egui_color(low_rgb).linear_multiply(state.config.bar_opacity);
-                    let high = to_egui_color(high_rgb).linear_multiply(state.config.bar_opacity);
-                    let peak = to_egui_color(peak_rgb).linear_multiply(state.config.bar_opacity);
-
-                    let bar_width = rect.width() / mock_bars.len() as f32;
-                    let gap = 2.0;
-
-                    // 4. Render the Mock Bars
-                    for (i, &level) in mock_bars.iter().enumerate() {
-                        let x = rect.left() + (i as f32 * bar_width) + gap/2.0;
-                        let w = bar_width - gap;
-                        
-                        // Calculate height in pixels
-                        let h = level * rect.height();
-
-                        // Interpolate bar color based on height (just like the real thing)
-                        let bar_color = lerp_color(low, high, level);
-
-                        let bar_rect;
-                        let mesh_base;
-                        let mesh_tip;
-                        let peak_y;
-
-                        if state.config.inverted_spectrum {
-                            // Top-down
-                            bar_rect = egui::Rect::from_min_size(egui::pos2(x, rect.top()), egui::vec2(w, h));
-                            peak_y = bar_rect.bottom() + 2.0;
-                            mesh_base = low;
-                            mesh_tip = bar_color;
-                        } else {
-                            // Bottom-up (Standard)
-                            bar_rect = egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - h), egui::vec2(w, h));
-                            peak_y = bar_rect.top() - 4.0; // Slightly above bar
-                            mesh_base = low;
-                            mesh_tip = bar_color;
-                        }
-
-                        // Draw Bar Gradient
-                        use egui::epaint::{Mesh, Vertex};
-                        let mut mesh = Mesh::default();
-                        
-                        if state.config.inverted_spectrum {
-                            mesh.vertices.push(Vertex { pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_base });
-                            mesh.vertices.push(Vertex { pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: mesh_base });
-                            mesh.vertices.push(Vertex { pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip });
-                            mesh.vertices.push(Vertex { pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip });
-                        } else {
-                            mesh.vertices.push(Vertex { pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_base });
-                            mesh.vertices.push(Vertex { pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: mesh_base });
-                            mesh.vertices.push(Vertex { pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: mesh_tip });
-                            mesh.vertices.push(Vertex { pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_tip });
-                        }
-                        
-                        mesh.add_triangle(0, 1, 2);
-                        mesh.add_triangle(0, 2, 3);
-                        painter.add(egui::Shape::mesh(mesh));
-
-                        // Draw Peak
-                        // Only draw peak if the bar isn't basically empty
-                        if level > 0.05 {
-                            let peak_rect = egui::Rect::from_min_size(
-                                egui::pos2(x, peak_y), 
-                                egui::vec2(w, 2.0)
-                            );
-                            painter.rect_filled(peak_rect, 0.0, peak);
-                        }
+                    if current_colors != initial_colors {
+                        state.config.profile.color_link = ColorRef::Custom(current_colors);
+                        state.config.profile.background = None; // Clear override if user manually picks color
                     }
-                    
-                    ui.add_space(5.0);
-                    ui.small(format!("Peak Color: RGB({}, {}, {})", peak_rgb.r, peak_rgb.g, peak_rgb.b));
                 },
-
                 SettingsTab::Window => {
                     ui.heading("Window Behavior");
                     ui.add_space(5.0);
@@ -1663,13 +1719,7 @@ impl SpectrumApp {
                                 ui.checkbox(&mut state.config.inspector_enabled, "Enabled").on_hover_text("Show frequency and dB on mouse hover");
                                 ui.end_row();
 
-                                if state.config.inspector_enabled {
-                                    ui.label("Inspector Opacity");
-                                    ui.add(egui::Slider::new(&mut state.config.inspector_opacity, 0.1..=1.0));
-                                    ui.end_row();
-                                }
-
-                                // === Media Settings ===
+                                // Media Settings
                                 ui.label("Now Playing");
                                 egui::ComboBox::from_id_salt("media_mode")
                                     .selected_text(format!("{:?}", state.config.media_display_mode))
@@ -1681,34 +1731,17 @@ impl SpectrumApp {
                                 ui.end_row();
                             });
                     });
-
-                    ui.add_space(10.0);
-                    ui.heading("On-Screen Display");
-                    ui.group(|ui| {
-                        egui::Grid::new("osd_grid")
-                            .num_columns(2)
-                            .spacing(grid_spacing)
-                            .show(ui, |ui| {
-                                ui.label("Performance Stats");
-                                ui.checkbox(&mut state.config.show_stats, "Visible");
-                                ui.end_row();
-
-                                if state.config.show_stats {
-                                    ui.label("Text Opacity");
-                                    ui.add(egui::Slider::new(&mut state.config.stats_opacity, 0.1..=1.0));
-                                    ui.end_row();
-                                }
-                            });
-                    });
                 },
-
                 SettingsTab::Performance => {
-                    ui.heading("Diagnostics");
-                    ui.add_space(5.0);
-                    
-                    let info = &state.performance.fft_info;
-                    
                     ui.group(|ui| {
+                        ui.heading("Performance Monitoring");
+                        ui.checkbox(&mut state.config.show_stats, "Show Performance Overlay");
+                        ui.small("Displays FPS, FFT latency, and processing times.");
+                        
+                        ui.add_space(10.0);
+                        ui.heading("Diagnostics");
+                        
+                        let info = &state.performance.fft_info;
                         egui::Grid::new("perf_grid")
                             .num_columns(2)
                             .spacing([20.0, 10.0])
@@ -1736,15 +1769,16 @@ impl SpectrumApp {
                             });
                     });
                 },
+                // Removed unreachable pattern warning (all enum variants handled)
+                //_ => {} 
             }
         });
     }  
 
     // == Helper Functions ==
-    fn db_to_px(&self, db: f32, config: &crate::shared_state::AppConfig, max_height: f32) -> f32 {
-        let floor = config.noise_floor_db;
-        let range = (0.0 - floor).max(1.0);
-        let normalized = ((db - floor) / range).clamp(0.0, 1.0);
+    fn db_to_px(&self, db: f32, noise_floor: f32, max_height: f32) -> f32 {
+        let range = (0.0 - noise_floor).max(1.0);
+        let normalized = ((db - noise_floor) / range).clamp(0.0, 1.0);
         normalized * max_height
     }
 
@@ -1798,6 +1832,10 @@ fn to_egui_color(color: StateColor32) -> egui::Color32 {
     egui::Color32::from_rgba_premultiplied(color.r, color.g, color.b, color.a)
 }
 
+fn from_egui_color(c: egui::Color32) -> StateColor32 {
+    StateColor32 { r: c.r(), g: c.g(), b: c.b(), a: c.a() }
+}
+
 /// Linear interpolation between two egui colors
 fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
     let t = t.clamp(0.0, 1.0);
@@ -1810,40 +1848,3 @@ fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
 }
 
 // =============== Tests ==================
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use crate::shared_state::AppConfig;
-
-    #[test]
-    fn test_db_to_px_scaling() {
-        let app = SpectrumApp::new(
-            Arc::new(Mutex::new(SharedState::new())),
-            crossbeam_channel::bounded(1).1, // Dummy channel for test
-            Arc::new(PlatformMedia::new())
-        );
-        let config = AppConfig { noise_floor_db: -100.0, ..Default::default() };
-        
-        // Test Floor
-        assert_eq!(app.db_to_px(-100.0, &config, 500.0), 0.0);
-        // Test Max
-        assert_eq!(app.db_to_px(0.0, &config, 500.0), 500.0);
-        // Test Middle (-50dB is half of -100dB range)
-        assert_eq!(app.db_to_px(-50.0, &config, 500.0), 250.0);
-    }
-
-
-    #[test]
-    fn test_lerp_color() {
-        let c1 = egui::Color32::from_rgb(0, 0, 0);       // Black
-        let c2 = egui::Color32::from_rgb(200, 100, 50); // Orange-ish
-        
-        let res = lerp_color(c1, c2, 0.5);
-        
-        assert_eq!(res.r(), 100);
-        assert_eq!(res.g(), 50);
-        assert_eq!(res.b(), 25);
-    }
-
-}

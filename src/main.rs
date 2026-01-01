@@ -7,6 +7,7 @@ mod fft_processor;
 mod gui;
 mod shared_state;
 mod media;
+mod presets;
 
 use core::panic;
 use std::thread;
@@ -216,13 +217,13 @@ fn start_fft_processing(
                             FFTConfig {
                                 fft_size: FIXED_FFT_SIZE,
                                 sample_rate: packet.sample_rate,
-                                num_bars: state.config.num_bars,
-                                sensitivity: state.config.sensitivity,
-                                attack_time_ms: state.config.attack_time_ms,
-                                release_time_ms: state.config.release_time_ms,
-                                peak_hold_time_ms: state.config.peak_hold_time_ms,
-                                peak_release_time_ms: state.config.peak_release_time_ms,
-                                use_peak_aggregation: state.config.use_peak_aggregation,
+                                num_bars: state.config.profile.num_bars,
+                                sensitivity: state.config.profile.sensitivity,
+                                attack_time_ms: state.config.profile.attack_time_ms,
+                                release_time_ms: state.config.profile.release_time_ms,
+                                peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
+                                peak_release_time_ms: state.config.profile.peak_release_time_ms,
+                                use_peak_aggregation: state.config.profile.use_peak_aggregation,
                             }
                         };
 
@@ -276,13 +277,13 @@ fn start_fft_processing(
                             FFTConfig {
                                 fft_size: FIXED_FFT_SIZE, 
                                 sample_rate: info.sample_rate,
-                                num_bars: state.config.num_bars,
-                                sensitivity: state.config.sensitivity,
-                                attack_time_ms: state.config.attack_time_ms,
-                                release_time_ms: state.config.release_time_ms,
-                                peak_hold_time_ms: state.config.peak_hold_time_ms,
-                                peak_release_time_ms: state.config.peak_release_time_ms,
-                                use_peak_aggregation: state.config.use_peak_aggregation,
+                                num_bars: state.config.profile.num_bars,
+                                sensitivity: state.config.profile.sensitivity,
+                                attack_time_ms: state.config.profile.attack_time_ms,
+                                release_time_ms: state.config.profile.release_time_ms,
+                                peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
+                                peak_release_time_ms: state.config.profile.peak_release_time_ms,
+                                use_peak_aggregation: state.config.profile.use_peak_aggregation,
                             }
                         };
 
@@ -293,7 +294,7 @@ fn start_fft_processing(
                     // Convert to mono (FFT expects single channel)
                     let mono = packet.to_mono();
                     
-                    let mode  = { shared_state.lock().unwrap().config.visual_mode };
+                    let mode  = { shared_state.lock().unwrap().config.profile.visual_mode };
 
                     match mode {
                         VisualMode::Oscilloscope => {
@@ -337,15 +338,15 @@ fn start_fft_processing(
 
                                 // Check if any config parameters changed
                                 // 1. Check for changes that require a rebuild
-                                let needs_update = state.config.num_bars != state.visualization.bars.len();
+                                let needs_update = state.config.profile.num_bars != state.visualization.bars.len();
 
                                 let config_differs = |current: &FFTConfig| -> bool {
-                                    state.config.sensitivity != current.sensitivity ||
-                                    state.config.attack_time_ms != current.attack_time_ms ||
-                                    state.config.release_time_ms != current.release_time_ms ||
-                                    state.config.peak_hold_time_ms != current.peak_hold_time_ms ||
-                                    state.config.peak_release_time_ms != current.peak_release_time_ms ||
-                                    state.config.use_peak_aggregation != current.use_peak_aggregation
+                                    state.config.profile.sensitivity != current.sensitivity ||
+                                    state.config.profile.attack_time_ms != current.attack_time_ms ||
+                                    state.config.profile.release_time_ms != current.release_time_ms ||
+                                    state.config.profile.peak_hold_time_ms != current.peak_hold_time_ms ||
+                                    state.config.profile.peak_release_time_ms != current.peak_release_time_ms ||
+                                    state.config.profile.use_peak_aggregation != current.use_peak_aggregation
                                 };
                                                     
                                 
@@ -354,19 +355,19 @@ fn start_fft_processing(
                                     tracing::debug!(
                                         "[FFT] Config change requires rebuild (bar count: {} → {})",
                                         state.visualization.bars.len(),
-                                        state.config.num_bars
+                                        state.config.profile.num_bars
                                     );
                                 
                                     Some(FFTConfig {
                                         fft_size: FIXED_FFT_SIZE,
                                         sample_rate: fft_config.get_sample_rate(),
-                                        num_bars: state.config.num_bars,
-                                        sensitivity: state.config.sensitivity,
-                                        attack_time_ms: state.config.attack_time_ms,
-                                        release_time_ms: state.config.release_time_ms,
-                                        peak_hold_time_ms: state.config.peak_hold_time_ms,
-                                        peak_release_time_ms: state.config.peak_release_time_ms,
-                                        use_peak_aggregation: state.config.use_peak_aggregation,
+                                        num_bars: state.config.profile.num_bars,
+                                        sensitivity: state.config.profile.sensitivity,
+                                        attack_time_ms: state.config.profile.attack_time_ms,
+                                        release_time_ms: state.config.profile.release_time_ms,
+                                        peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
+                                        peak_release_time_ms: state.config.profile.peak_release_time_ms,
+                                        use_peak_aggregation: state.config.profile.use_peak_aggregation,
                                     })
                                 } else {
                                     // Check for minor config changes that don't require a rebuild
@@ -375,11 +376,11 @@ fn start_fft_processing(
 
                                     if config_differs(&current) {
                                         // Log specific changes for debugging
-                                        if state.config.use_peak_aggregation != current.use_peak_aggregation {
+                                        if state.config.profile.use_peak_aggregation != current.use_peak_aggregation {
                                             tracing::info!{
                                                 "[FFT] Aggregation mode changed: {} → {}",
                                                 if current.use_peak_aggregation { "Peak" } else { "Average" },
-                                                if state.config.use_peak_aggregation { "Peak" } else { "Average" }
+                                                if state.config.profile.use_peak_aggregation { "Peak" } else { "Average" }
                                             };
                                         }
                                     
@@ -387,13 +388,13 @@ fn start_fft_processing(
                                         Some(FFTConfig {
                                             fft_size: FIXED_FFT_SIZE,
                                             sample_rate: fft_config.get_sample_rate(),
-                                            num_bars: state.config.num_bars,
-                                            sensitivity: state.config.sensitivity,
-                                            attack_time_ms: state.config.attack_time_ms,
-                                            release_time_ms: state.config.release_time_ms,
-                                            peak_hold_time_ms: state.config.peak_hold_time_ms,
-                                            peak_release_time_ms: state.config.peak_release_time_ms,
-                                            use_peak_aggregation: state.config.use_peak_aggregation,
+                                            num_bars: state.config.profile.num_bars,
+                                            sensitivity: state.config.profile.sensitivity,
+                                            attack_time_ms: state.config.profile.attack_time_ms,
+                                            release_time_ms: state.config.profile.release_time_ms,
+                                            peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
+                                            peak_release_time_ms: state.config.profile.peak_release_time_ms,
+                                            use_peak_aggregation: state.config.profile.use_peak_aggregation,
                                         })
                                     } else {
                                         None
