@@ -9,7 +9,6 @@ use crate::shared_state::{Color32 as StateColor32, ColorProfile, MediaDisplayMod
 use crate::fft_processor::FFTProcessor;
 use crate::shared_state::ColorRef;
 
-// Tabs for the settings windowe
 #[derive(PartialEq)]
 enum SettingsTab {
     Visual, 
@@ -200,7 +199,7 @@ impl eframe::App for SpectrumApp {
 
         // === Main Window ===
 
-        // === Sonpar Pin ===
+        // === Sonar Ping ===
         let is_focused = ctx.input(|i| i.focused);
         if is_focused && !self.was_focused {
             self.flash_start = Some(Instant::now());
@@ -934,7 +933,7 @@ impl SpectrumApp {
         // Use Profile colors
         let high = to_egui_color(colors.high).linear_multiply(profile.bar_opacity);
 
-        // Pre-calculate points (Your original logic)
+        // Pre-calculate points 
         let points: Vec<egui::Pos2> = data.bars.iter().enumerate().map(|(i, &db)| {
             let x = rect.left() + (i as f32 / data.bars.len() as f32) * rect.width();
             let height = self.db_to_px(db, noise_floor, rect.height());
@@ -957,7 +956,7 @@ impl SpectrumApp {
         painter.add(egui::Shape::line(points.clone(), egui::Stroke::new(2.0, core_c)));
 
         // Optional: Fill below line. Maybe remove?
-        
+        /*/
         if points.len() > 2 {
             let mut fill_points = points.clone();
             fill_points.push(egui::pos2(rect.right(), if profile.inverted_spectrum { rect.top() } else { rect.bottom() }));
@@ -966,7 +965,7 @@ impl SpectrumApp {
             let fill_color = to_egui_color(colors.low).linear_multiply(0.15 * profile.bar_opacity);
             painter.add(egui::Shape::convex_polygon(fill_points, fill_color, egui::Stroke::NONE));
         }
-        
+        */
 
         // Draw hover Indicator - Restored!
         if let Some(idx) = hovered_index {
@@ -986,7 +985,7 @@ impl SpectrumApp {
         colors: &ColorProfile,
         data: &crate::shared_state::VisualizationData,
     ) {
-        if data.waveform.is_empty() { return; }
+        if data.waveform.len() < 2 { return; }
     
         let center_y = rect.center().y;
         // Scale: Audio is +/- 1.0, we map that to +/- half height
@@ -1543,7 +1542,7 @@ impl SpectrumApp {
                                 ui.label("Device");
                                 
                                 ui.horizontal(|ui| {
-                                    // Clone data to avoid holding lock while drawing complex UI
+                                    // Clone data to satisfy borrow checker (state is already locked)
                                     let (current_sel, devices) = {
                                         (state.config.selected_device.clone(), state.audio_devices.clone())
                                     };

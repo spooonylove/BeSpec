@@ -59,6 +59,309 @@ pub fn built_in_colors() -> Vec<ColorProfile> {
             inspector_bg: Color32::from_rgb(0, 0, 0).with_opacity(0.9),
             inspector_fg: Color32::from_rgb(0, 255, 255),
         },
+
+        // === Restored Legacy Presets ===
+        
+        ColorProfile {
+            name: "Ocean Blue".to_string(),
+            low: Color32::from_rgb(30, 144, 255),
+            high: Color32::from_rgb(0, 255, 255),
+            peak: Color32::from_rgb(255, 255, 255),
+            background: Color32::from_rgb(5, 10, 40), // Deep Sea
+            text: Color32::from_rgb(200, 240, 255),
+            inspector_bg: Color32::from_rgb(0, 0, 30).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(0, 255, 255),
+        },
+        ColorProfile {
+            name: "Sunset".to_string(),
+            low: Color32::from_rgb(255, 69, 0),
+            high: Color32::from_rgb(255, 255, 0),
+            peak: Color32::from_rgb(255, 255, 255),
+            background: Color32::from_rgb(30, 10, 20), // Twilight
+            text: Color32::from_rgb(255, 200, 150),
+            inspector_bg: Color32::from_rgb(20, 5, 10).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 215, 0),
+        },
+        ColorProfile {
+            name: "Synthwave".to_string(),
+            low: Color32::from_rgb(255, 0, 255),
+            high: Color32::from_rgb(0, 255, 255),
+            peak: Color32::from_rgb(255, 255, 0),
+            background: Color32::from_rgb(15, 0, 25), // Dark Grid Purple
+            text: Color32::from_rgb(255, 100, 200),
+            inspector_bg: Color32::from_rgb(20, 0, 30).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(0, 255, 255),
+        },
+        ColorProfile {
+            name: "Spy Black".to_string(),
+            low: Color32::from_rgb(0, 0, 0),
+            high: Color32::from_rgb(47, 79, 79),
+            peak: Color32::from_rgb(220, 20, 60),
+            background: Color32::from_rgb(5, 5, 5), // Almost Pitch Black
+            text: Color32::from_rgb(200, 200, 200), // Silver
+            inspector_bg: Color32::from_rgb(0, 0, 0).with_opacity(0.95),
+            inspector_fg: Color32::from_rgb(220, 20, 60),
+        },
+        ColorProfile {
+            name: "Forest Canopy".to_string(),
+            low: Color32::from_rgb(0, 100, 0),
+            high: Color32::from_rgb(0, 255, 0),
+            peak: Color32::from_rgb(255, 255, 0),
+            background: Color32::from_rgb(5, 20, 5), // Deep Forest
+            text: Color32::from_rgb(150, 255, 150),
+            inspector_bg: Color32::from_rgb(0, 15, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(0, 255, 0),
+        },
+        ColorProfile {
+            name: "Molten Core".to_string(),
+            low: Color32::from_rgb(139, 0, 0),
+            high: Color32::from_rgb(255, 165, 0),
+            peak: Color32::from_rgb(255, 255, 255),
+            background: Color32::from_rgb(25, 5, 0), // Magma Rock
+            text: Color32::from_rgb(255, 200, 150),
+            inspector_bg: Color32::from_rgb(20, 0, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 165, 0),
+        },
+        ColorProfile {
+            name: "Arctic Night".to_string(),
+            low: Color32::from_rgb(75, 0, 130),
+            high: Color32::from_rgb(173, 216, 230),
+            peak: Color32::from_rgb(255, 255, 255),
+            background: Color32::from_rgb(5, 5, 25), // Midnight
+            text: Color32::from_rgb(220, 240, 255),
+            inspector_bg: Color32::from_rgb(10, 10, 40).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(0, 255, 255),
+        },
+        ColorProfile {
+            name: "Matrix".to_string(),
+            low: Color32::from_rgb(0, 0, 0),
+            high: Color32::from_rgb(0, 255, 0),
+            peak: Color32::from_rgb(245, 245, 245),
+            background: Color32::from_rgb(0, 10, 0), // Dark Code
+            text: Color32::from_rgb(0, 255, 0),
+            inspector_bg: Color32::from_rgb(0, 0, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(0, 255, 0),
+        },
+        ColorProfile {
+            name: "Bubblegum".to_string(),
+            low: Color32::from_rgb(255, 20, 147),
+            high: Color32::from_rgb(0, 255, 255),
+            peak: Color32::from_rgb(255, 255, 0),
+            background: Color32::from_rgb(40, 20, 40), // Dark Plum
+            text: Color32::from_rgb(255, 200, 255),
+            inspector_bg: Color32::from_rgb(50, 10, 30).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(0, 255, 255),
+        },
+        ColorProfile {
+            name: "Monochrome".to_string(),
+            low: Color32::from_rgb(105, 105, 105),
+            high: Color32::from_rgb(211, 211, 211),
+            peak: Color32::from_rgb(255, 255, 255),
+            background: Color32::from_rgb(20, 20, 20), // Dark Gray
+            text: Color32::from_rgb(220, 220, 220),
+            inspector_bg: Color32::from_rgb(0, 0, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 255, 255),
+        },
+        ColorProfile {
+            name: "Vintage VU".to_string(),
+            low: Color32::from_rgb(184, 134, 11),
+            high: Color32::from_rgb(255, 215, 0),
+            peak: Color32::from_rgb(205, 92, 92),
+            background: Color32::from_rgb(35, 25, 15), // Wood/Bakelite
+            text: Color32::from_rgb(240, 230, 200), // Aged Paper
+            inspector_bg: Color32::from_rgb(20, 10, 5).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 215, 0),
+        },
+        ColorProfile {
+            name: "Deep Space".to_string(),
+            low: Color32::from_rgb(0, 0, 0),
+            high: Color32::from_rgb(148, 0, 211),
+            peak: Color32::from_rgb(0, 255, 255),
+            background: Color32::from_rgb(0, 0, 0), // Void
+            text: Color32::from_rgb(255, 255, 255), // Stars
+            inspector_bg: Color32::from_rgb(10, 0, 20).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(148, 0, 211),
+        },
+        ColorProfile {
+            name: "8-Bit Blueberry".to_string(),
+            low: Color32::from_rgb(0, 0, 128),
+            high: Color32::from_rgb(65, 105, 225),
+            peak: Color32::from_rgb(255, 255, 255),
+            background: Color32::from_rgb(0, 0, 40), // Dark Blue
+            text: Color32::from_rgb(255, 255, 255),
+            inspector_bg: Color32::from_rgb(0, 0, 60).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(65, 105, 225),
+        },
+        ColorProfile {
+            name: "Desert Heat".to_string(),
+            low: Color32::from_rgb(128, 0, 0),
+            high: Color32::from_rgb(255, 69, 0),
+            peak: Color32::from_rgb(240, 230, 140),
+            background: Color32::from_rgb(40, 15, 5), // Scorched Earth
+            text: Color32::from_rgb(255, 255, 200),
+            inspector_bg: Color32::from_rgb(30, 10, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 69, 0),
+        },
+        ColorProfile {
+            name: "Super Mario Bros.".to_string(),
+            low: Color32::from_rgb(0, 0, 205),
+            high: Color32::from_rgb(220, 20, 60),
+            peak: Color32::from_rgb(255, 215, 0),
+            background: Color32::from_rgb(0, 0, 50), // Underground Blue
+            text: Color32::from_rgb(255, 215, 0), // Coin Gold
+            inspector_bg: Color32::from_rgb(50, 0, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 255, 255),
+        },
+        ColorProfile {
+            name: "Halo".to_string(),
+            low: Color32::from_rgb(85, 107, 47),
+            high: Color32::from_rgb(218, 165, 32),
+            peak: Color32::from_rgb(0, 191, 255),
+            background: Color32::from_rgb(20, 30, 20), // Armor Green
+            text: Color32::from_rgb(0, 200, 255), // Cortana Blue
+            inspector_bg: Color32::from_rgb(15, 20, 10).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(218, 165, 32),
+        },
+        ColorProfile {
+            name: "Fallout".to_string(),
+            low: Color32::from_rgb(75, 0, 130),
+            high: Color32::from_rgb(0, 255, 255),
+            peak: Color32::from_rgb(240, 248, 255),
+            background: Color32::from_rgb(0, 20, 0), // Pip-Boy Dark
+            text: Color32::from_rgb(0, 255, 0), // Phosphor Green
+            inspector_bg: Color32::from_rgb(0, 30, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(0, 255, 255),
+        },
+        ColorProfile {
+            name: "Sith Lord".to_string(),
+            low: Color32::from_rgb(20, 20, 20),
+            high: Color32::from_rgb(220, 20, 60),
+            peak: Color32::from_rgb(255, 255, 255),
+            background: Color32::from_rgb(10, 5, 5), // Dark Side
+            text: Color32::from_rgb(255, 50, 50),
+            inspector_bg: Color32::from_rgb(0, 0, 0).with_opacity(0.95),
+            inspector_fg: Color32::from_rgb(255, 0, 0),
+        },
+        ColorProfile {
+            name: "Neon Genesis Evangelion".to_string(),
+            low: Color32::from_rgb(106, 13, 173),
+            high: Color32::from_rgb(57, 255, 20),
+            peak: Color32::from_rgb(255, 140, 0),
+            background: Color32::from_rgb(20, 10, 30), // Eva-01 Dark
+            text: Color32::from_rgb(255, 140, 0), // HUD Orange
+            inspector_bg: Color32::from_rgb(30, 10, 40).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(57, 255, 20),
+        },
+        ColorProfile {
+            name: "Lava Lamp".to_string(),
+            low: Color32::from_rgb(128, 0, 128),
+            high: Color32::from_rgb(255, 140, 0),
+            peak: Color32::from_rgb(255, 255, 100),
+            background: Color32::from_rgb(20, 0, 10), // Dark Magma
+            text: Color32::from_rgb(255, 255, 200),
+            inspector_bg: Color32::from_rgb(20, 0, 20).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 140, 0),
+        },
+        ColorProfile {
+            name: "Northern Lights".to_string(),
+            low: Color32::from_rgb(0, 100, 0),
+            high: Color32::from_rgb(0, 255, 127),
+            peak: Color32::from_rgb(138, 43, 226),
+            background: Color32::from_rgb(5, 10, 25), // Night Sky
+            text: Color32::from_rgb(100, 255, 200),
+            inspector_bg: Color32::from_rgb(0, 10, 20).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(138, 43, 226),
+        },
+        ColorProfile {
+            name: "Radioactive".to_string(),
+            low: Color32::from_rgb(50, 50, 0),
+            high: Color32::from_rgb(173, 255, 47),
+            peak: Color32::from_rgb(255, 0, 0),
+            background: Color32::from_rgb(20, 20, 0), // Hazard Dark
+            text: Color32::from_rgb(255, 255, 0),
+            inspector_bg: Color32::from_rgb(30, 30, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 0, 0),
+        },
+        ColorProfile {
+            name: "Ice Fire".to_string(),
+            low: Color32::from_rgb(0, 191, 255),
+            high: Color32::from_rgb(255, 165, 0),
+            peak: Color32::from_rgb(255, 0, 0),
+            background: Color32::from_rgb(20, 0, 40), // Dark Violet
+            text: Color32::from_rgb(255, 255, 255),
+            inspector_bg: Color32::from_rgb(0, 0, 30).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 165, 0),
+        },
+        ColorProfile {
+            name: "Retrowave".to_string(),
+            low: Color32::from_rgb(255, 0, 128),
+            high: Color32::from_rgb(128, 0, 255),
+            peak: Color32::from_rgb(0, 255, 255),
+            background: Color32::from_rgb(15, 0, 25), // Grid Black
+            text: Color32::from_rgb(0, 255, 255),
+            inspector_bg: Color32::from_rgb(20, 0, 40).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 0, 128),
+        },
+        ColorProfile {
+            name: "Blood Moon".to_string(),
+            low: Color32::from_rgb(25, 0, 0),
+            high: Color32::from_rgb(139, 0, 0),
+            peak: Color32::from_rgb(255, 69, 0),
+            background: Color32::from_rgb(10, 0, 0), // Night Black
+            text: Color32::from_rgb(255, 100, 100),
+            inspector_bg: Color32::from_rgb(20, 0, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 69, 0),
+        },
+        ColorProfile {
+            name: "Mint Condition".to_string(),
+            low: Color32::from_rgb(0, 100, 100),
+            high: Color32::from_rgb(127, 255, 212),
+            peak: Color32::from_rgb(255, 255, 255),
+            background: Color32::from_rgb(0, 30, 30), // Dark Teal
+            text: Color32::from_rgb(240, 255, 250),
+            inspector_bg: Color32::from_rgb(0, 40, 40).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 255, 255),
+        },
+        ColorProfile {
+            name: "Golden Hour".to_string(),
+            low: Color32::from_rgb(255, 140, 0),
+            high: Color32::from_rgb(255, 215, 0),
+            peak: Color32::from_rgb(255, 250, 205),
+            background: Color32::from_rgb(40, 20, 0), // Sunset Brown
+            text: Color32::from_rgb(255, 215, 0),
+            inspector_bg: Color32::from_rgb(30, 15, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 250, 205),
+        },
+        ColorProfile {
+            name: "Tequila Sunrise".to_string(),
+            low: Color32::from_rgb(178, 34, 34),
+            high: Color32::from_rgb(255, 165, 0),
+            peak: Color32::from_rgb(255, 255, 0),
+            background: Color32::from_rgb(30, 10, 10), // Deep Red
+            text: Color32::from_rgb(255, 255, 200),
+            inspector_bg: Color32::from_rgb(40, 10, 10).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 165, 0),
+        },
+        ColorProfile {
+            name: "Espresso Martini".to_string(),
+            low: Color32::from_rgb(28, 20, 13),
+            high: Color32::from_rgb(160, 82, 45),
+            peak: Color32::from_rgb(255, 248, 220),
+            background: Color32::from_rgb(15, 10, 10), // Coffee Black
+            text: Color32::from_rgb(210, 180, 140), // Crema
+            inspector_bg: Color32::from_rgb(20, 15, 10).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 255, 255),
+        },
+        ColorProfile {
+            name: "Cotton Candy".to_string(),
+            low: Color32::from_rgb(255, 105, 180),
+            high: Color32::from_rgb(135, 206, 250),
+            peak: Color32::from_rgb(255, 255, 255),
+            background: Color32::from_rgb(20, 30, 50), // Dark Pastel Blue
+            text: Color32::from_rgb(255, 192, 203), // Pink
+            inspector_bg: Color32::from_rgb(40, 20, 30).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(0, 255, 255),
+        },
     ]
 }
 
