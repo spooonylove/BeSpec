@@ -1622,11 +1622,11 @@ impl SpectrumApp {
 
                     ui.group(|ui| {
                         egui::Grid::new("color_grid").num_columns(2).spacing(grid_spacing).show(ui, |ui| {
-                            ui.label("Low / Bass");
+                            ui.label("Low");
                             ui.color_edit_button_srgba(&mut egui_low);
                             ui.end_row();
 
-                            ui.label("High / Treble");
+                            ui.label("High");
                             ui.color_edit_button_srgba(&mut egui_high);
                             ui.end_row();
 
