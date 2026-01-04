@@ -198,11 +198,19 @@ pub struct SharedState{
     /// When the track info was last updated
     pub last_media_update: Option<Instant>,
 
+    // === User Presets ===
+    /// Loaded from JSON file at startup
+    pub user_color_presets: Vec<ColorProfile>,
+
 }
 
 impl SharedState {
     pub fn new() -> Self {
         let config = AppConfig::load();
+
+        let user_presets = AppConfig::load_user_color_presets();
+        tracing::info!("[State] Loaded {} user color presets", user_presets.len());
+        
         Self {
             visualization: VisualizationData::new(config.profile.num_bars),
             performance: PerformanceStats::default(),
@@ -212,6 +220,7 @@ impl SharedState {
             refresh_devices_requested: false,
             media_info: None,
             last_media_update: None,
+            user_color_presets: user_presets,
         }
     }
 }
@@ -365,20 +374,82 @@ impl AppConfig {
             Err(e) => tracing::error!("[Config] Failed to serialize config: {}", e),
         }
     }
-    
-    pub fn resolve_colors(&self) -> ColorProfile {
-        let mut base = match &self.profile.color_link {
-            ColorRef::Custom(colors) => colors.clone(),
+
+       
+    pub fn resolve_colors(&self, user_presets: &[ColorProfile]) -> ColorProfile {
+        match &self.profile.color_link {
+            ColorRef::Custom(colors) => {
+                let mut c = colors.clone();
+                //Apply optional background override
+                if let Some(bg) = self.profile.background {c.background = bg; }
+                c
+            },
             ColorRef::Preset(name) => {
-                ColorProfile::find_by_name(name).unwrap_or_default()
-            }
-        };
+                // 1. Try finding User presets first
+                if let Some(p)  = user_presets.iter().find(|p| &p.name == name) {
+                    let mut c = p.clone();
+                    if let Some (bg) = self.profile.background {c.background = bg; }
+                    return c;
+                }
 
-        if let Some(bg_override) = self.profile.background {
-            base.background = bg_override;
+                // 2. Fallback into built-in presets
+                let mut c = ColorProfile::find_by_name(name).unwrap_or_default();
+                if let Some (bg) = self.profile.background {c.background = bg; }
+                c
+            }   
         }
+    }
 
-        base
+    pub fn load_user_color_presets() -> Vec<ColorProfile> {
+        let mut profiles = Vec::new();
+
+        // Path: ../BeAnal/presets/colors/
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+            let preset_dir = proj_dirs.data_dir().join("presets").join("colors");
+
+            if preset_dir.exists() {
+                if let Ok(entries) = fs::read_dir(&preset_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map_or(false, |ext| ext == "json") {
+                            if let Ok(content) = fs::read_to_string(&path) {
+                                match serde_json::from_str::<ColorProfile>(&content) {
+                                    Ok(profile) => {
+                                        tracing::info!("[Config] Loaded user color preset: {}", profile.name);
+                                        profiles.push(profile);
+                                    },
+                                    Err(e) => {
+                                        tracing::error!("[Config] Failed to parse color preset {:?}: {}", path, e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        profiles
+    }
+
+    pub fn save_user_preset(profile: &ColorProfile) -> std::io::Result<()> {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+            let preset_dir = proj_dirs.data_dir().join("presets").join("colors");
+            fs::create_dir_all(&preset_dir)?;
+
+            // Sanatize filename: "My Cool Preset" -> "My_Cool_Preset.json"
+            let safe_name = profile.name
+                .replace(" ", "_")
+                .replace(|c: char| !c.is_alphanumeric() && c != '_', "")
+                .to_lowercase();
+
+            let filename = format!("{}.json", safe_name);
+            let path  = preset_dir.join(filename);
+
+            let json = serde_json::to_string_pretty(profile)?;
+            fs::write(&path, json)?;
+            tracing::info!("[Config] Saved user color preset to {:?}", path);
+        }
+        Ok(())
     }
 }
 
@@ -424,5 +495,3 @@ impl Color32 {
 }
 
 // === Tests ====
-
-

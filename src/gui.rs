@@ -56,6 +56,10 @@ pub struct SpectrumApp {
     // Sonar Ping State
     was_focused: bool,
     flash_start: Option<Instant>,
+
+    // User Preset UI State
+    show_save_popup: bool,
+    new_preset_name: String,
 }
 
 impl SpectrumApp {
@@ -80,6 +84,8 @@ impl SpectrumApp {
             last_passthrough_state: false,
             was_focused: true,
             flash_start: Some(Instant::now()),
+            show_save_popup: false,
+            new_preset_name: String::new(),
         }
     }
 
@@ -219,7 +225,7 @@ impl eframe::App for SpectrumApp {
 
         // Use Profile Background Color
         let (bg_color_egui, window_locked, background_alpha) = if let Ok(state) = self.shared_state.lock() {
-            let colors = state.config.resolve_colors();
+            let colors = state.config.resolve_colors(&state.user_color_presets);
             let bg = to_egui_color(colors.background);
             let base_alpha = bg.a() as f32 / 255.0;
             
@@ -377,7 +383,7 @@ impl SpectrumApp {
 
         let config = &state.config;
         let profile = &config.profile;
-        let colors = &config.resolve_colors();
+        let colors = &config.resolve_colors(&state.user_color_presets);
 
         let viz_data = &state.visualization;
         let perf = &state.performance;
@@ -452,7 +458,7 @@ impl SpectrumApp {
             return;
         }
 
-        let colors = config.resolve_colors();
+        let colors = config.resolve_colors(&state.user_color_presets);
         let base_text_color = to_egui_color(colors.text);
 
         // 2. Info check
@@ -1052,7 +1058,7 @@ impl SpectrumApp {
         };
 
         // Use resolved background alpha
-        let colors = state.config.resolve_colors();
+        let colors = state.config.resolve_colors(&state.user_color_presets);
         let bg_alpha = colors.background.a as f32 / 255.0;
 
         // only show if background is transparent
@@ -1138,7 +1144,8 @@ impl SpectrumApp {
     fn draw_sonar_ping(&self, ui: &mut egui::Ui, rect: egui::Rect, strength: f32) {
         // 1. Setup
         // We grab the 'High' color from your theme for the glow
-        let colors = self.shared_state.lock().unwrap().config.resolve_colors();
+        let state = self.shared_state.lock().unwrap();
+        let colors = state.config.resolve_colors(&state.user_color_presets);
         let base_color = to_egui_color(colors.high);
         
         let rounding = 12.0;
@@ -1335,13 +1342,14 @@ impl SpectrumApp {
 
     /// Render settings window content
     fn render_settings_window(&mut self, ui: &mut egui::Ui) {
-        let mut state = match self.shared_state.lock() { Ok(s) => s, Err(_) => return, };
+        let shared_state_ref = self.shared_state.clone();
+        let mut state = match shared_state_ref.lock() { Ok(s) => s, Err(_) => return, };
         let grid_spacing = egui::vec2(40.0, 12.0); 
 
         // Tabs
         ui.add_space(5.0);
         ui.horizontal(|ui| {
-            let colors = state.config.resolve_colors();
+            let colors = state.config.resolve_colors(&state.user_color_presets);
             let highlight = to_egui_color(colors.high);
             ui_tab_button(ui, " 🎨 Visual ", SettingsTab::Visual, &mut self.active_tab, highlight);
             ui_tab_button(ui, " 🔊 Audio ", SettingsTab::Audio, &mut self.active_tab, highlight);
@@ -1405,7 +1413,7 @@ impl SpectrumApp {
                             // The error was that we borrowed `state.config` (immutable via resolve_colors) 
                             // and then tried to mutate `state.config.profile.background`.
                             // FIX: Clone the color needed, don't hold the borrow from resolve_colors
-                            let current_bg = state.config.resolve_colors().background;
+                            let current_bg = state.config.resolve_colors(&state.user_color_presets).background;
                             
                             // Calculate current alpha (0.0 - 1.0)
                             let mut alpha = current_bg.a as f32 / 255.0;
@@ -1587,7 +1595,7 @@ impl SpectrumApp {
                 SettingsTab::Colors => {
                     ui.heading("Colors");
                     // FIX: Don't hold refs to state.config inside local vars if we mutate it later via profile
-                    let mut current_colors = state.config.resolve_colors();
+                    let mut current_colors = state.config.resolve_colors(&state.user_color_presets);
                     let initial_colors = current_colors.clone();
                     let bar_opacity = state.config.profile.bar_opacity;
 
@@ -1600,6 +1608,20 @@ impl SpectrumApp {
                         egui::ComboBox::from_id_salt("color_preset_combo")
                             .selected_text(combo_text)
                             .show_ui(ui, |ui| {
+                                let user_presets = state.user_color_presets.clone();
+                                // <--- NEW: Show User Presets First
+                                if !user_presets.is_empty() {
+                                    ui.selectable_label(false, egui::RichText::new("--- User Presets ---").strong());
+                                    for p in &user_presets {
+                                        if ui.selectable_label(false, &p.name).clicked() {
+                                            state.config.profile.color_link = ColorRef::Preset(p.name.clone());
+                                            state.config.profile.background = None;
+                                        }
+                                    }
+                                    ui.separator();
+                                }
+
+                                ui.selectable_label(false, egui::RichText::new("--- Built-in ---").strong());
                                 for cp in ColorProfile::built_in() {
                                     if ui.selectable_label(false, &cp.name).clicked() {
                                         state.config.profile.color_link = ColorRef::Preset(cp.name);
@@ -1608,8 +1630,40 @@ impl SpectrumApp {
                                     }
                                 }
                             });
-                        if ui.button("💾").on_hover_text("Save Color Preset").clicked() { /* Save Logic */ }
+                        if ui.button("💾").on_hover_text("Save as User Preset").clicked() { 
+                            self.show_save_popup = !self.show_save_popup;
+                            self.new_preset_name.clear();
+                        }
                     });
+
+                    if self.show_save_popup {
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Name:");
+                                ui.text_edit_singleline(&mut self.new_preset_name);
+                                if ui.button("Confirm Save").clicked() && !self.new_preset_name.is_empty() {
+                                    // 1. Prepare new profile
+                                    let mut new_profile = current_colors.clone();
+                                    new_profile.name = self.new_preset_name.clone();
+
+                                    // 2. Save to Disk
+                                    if let Err(e) = crate::shared_state::AppConfig::save_user_preset(&new_profile) {
+                                        tracing::error!("Failed to save preset: {}", e);
+                                    } else {
+                                        // 3. Update Memory and Switch
+                                        state.user_color_presets.push(new_profile.clone());
+                                        state.config.profile.color_link = ColorRef::Preset(new_profile.name);
+                                        state.config.profile.background = None;
+                                        self.show_save_popup = false;
+                                    }
+                                }
+                                if ui.button("Cancel").clicked() {
+                                    self.show_save_popup = false;
+                                }
+                            });
+                        });
+                    }   
+
                     ui.separator();
 
                     let mut egui_low = to_egui_color(current_colors.low);
