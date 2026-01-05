@@ -62,7 +62,7 @@ pub struct ColorProfile {
 impl Default for ColorProfile {
     fn default() -> Self {
         Self {
-            name: "Default".to_string(),
+            name: "Winamp".to_string(),
             low: Color32::from_rgb(50, 205, 50),    // LimeGreen
             high: Color32::from_rgb(255, 255, 0),   // Yellow
             peak: Color32::from_rgb(255, 0, 0),     // Red
@@ -201,6 +201,7 @@ pub struct SharedState{
     // === User Presets ===
     /// Loaded from JSON file at startup
     pub user_color_presets: Vec<ColorProfile>,
+    pub user_visual_presets: Vec<VisualProfile>,
 
 }
 
@@ -208,9 +209,11 @@ impl SharedState {
     pub fn new() -> Self {
         let config = AppConfig::load();
 
-        let user_presets = AppConfig::load_user_color_presets();
-        tracing::info!("[State] Loaded {} user color presets", user_presets.len());
-        
+        let user_color_presets = AppConfig::load_user_color_presets();
+        let user_visual_presets = AppConfig::load_user_visual_presets();
+        tracing::info!("[State] Loaded {} user color presets", user_color_presets.len());
+        tracing::info!("[State] Loaded {} user visual presets", user_visual_presets.len());
+
         Self {
             visualization: VisualizationData::new(config.profile.num_bars),
             performance: PerformanceStats::default(),
@@ -220,7 +223,8 @@ impl SharedState {
             refresh_devices_requested: false,
             media_info: None,
             last_media_update: None,
-            user_color_presets: user_presets,
+            user_color_presets,
+            user_visual_presets,
         }
     }
 }
@@ -415,8 +419,12 @@ impl AppConfig {
                             if let Ok(content) = fs::read_to_string(&path) {
                                 match serde_json::from_str::<ColorProfile>(&content) {
                                     Ok(profile) => {
-                                        tracing::info!("[Config] Loaded user color preset: {}", profile.name);
-                                        profiles.push(profile);
+                                        if profiles.iter().any(|p: &ColorProfile| p.name == profile.name) {
+                                            tracing::warn!("[Presets] Duplicate color profile name '{}' in file {:?}. Skipping.", profile.name, path);
+                                        } else {
+                                            tracing::info!("[Config] Loaded user color preset: {}", profile.name);
+                                            profiles.push(profile);
+                                        }
                                     },
                                     Err(e) => {
                                         tracing::error!("[Config] Failed to parse color preset {:?}: {}", path, e);
@@ -431,26 +439,95 @@ impl AppConfig {
         profiles
     }
 
-    pub fn save_user_preset(profile: &ColorProfile) -> std::io::Result<()> {
+    pub fn save_user_color_preset(profile: &ColorProfile) -> std::io::Result<()> {
         if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
             let preset_dir = proj_dirs.data_dir().join("presets").join("colors");
             fs::create_dir_all(&preset_dir)?;
 
-            // Sanatize filename: "My Cool Preset" -> "My_Cool_Preset.json"
-            let safe_name = profile.name
-                .replace(" ", "_")
-                .replace(|c: char| !c.is_alphanumeric() && c != '_', "")
-                .to_lowercase();
-
-            let filename = format!("{}.json", safe_name);
-            let path  = preset_dir.join(filename);
-
+            let filename = format!("{}.json",Self::sanitize_filename(&profile.name));
+            
             let json = serde_json::to_string_pretty(profile)?;
-            fs::write(&path, json)?;
-            tracing::info!("[Config] Saved user color preset to {:?}", path);
+            fs::write(preset_dir.join(filename), json)?;
         }
         Ok(())
     }
+
+    pub fn delete_user_color_preset(name: &str) -> std::io::Result<()> {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+            let preset_dir = proj_dirs.data_dir().join("presets").join("colors");
+            let filename = format!("{}.json", Self::sanitize_filename(name));
+            let path = preset_dir.join(filename);
+            if path.exists() {
+                fs::remove_file(path)?;
+                tracing::info!("[Presets] Deleted color preset: {}", name);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn load_user_visual_presets() -> Vec<VisualProfile> {
+        let mut profiles = Vec::new();
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+            let preset_dir = proj_dirs.data_dir().join("presets").join("visuals");
+            if preset_dir.exists() {
+                if let Ok(entries) = fs::read_dir(preset_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map_or(false, |ext| ext == "json") {
+                            if let Ok(content) = fs::read_to_string(&path) {
+                                match serde_json::from_str::<VisualProfile>(&content) {
+                                    Ok(profile) => {
+                                        // FIX: Check for duplicates before adding
+                                        if profiles.iter().any(|p: &VisualProfile| p.name == profile.name) {
+                                            tracing::warn!("[Presets] Duplicate visual profile name '{}' in file {:?}. Skipping.", profile.name, path);
+                                        } else {
+                                            profiles.push(profile);
+                                        }
+                                    },
+                                    Err(e) => tracing::warn!("[Presets] Failed to parse {:?}: {}", path, e),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        profiles
+    }
+
+    pub fn save_user_visual_preset(profile: &VisualProfile) -> std::io::Result<()> {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+            let preset_dir = proj_dirs.data_dir().join("presets").join("visuals");
+            fs::create_dir_all(&preset_dir)?;
+
+            let filename = format!("{}.json",Self::sanitize_filename(&profile.name));
+            
+            let json = serde_json::to_string_pretty(profile)?;
+            fs::write(preset_dir.join(filename), json)?;
+        }
+        Ok(())
+    }
+
+    pub fn delete_user_visual_preset(name: &str) -> std::io::Result<()> {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+            let preset_dir = proj_dirs.data_dir().join("presets").join("visuals");
+            let filename = format!("{}.json", Self::sanitize_filename(name));
+            let path = preset_dir.join(filename);
+            if path.exists() {
+                fs::remove_file(path)?;
+                tracing::info!("[Presets] Deleted visual preset: {}", name);
+            }
+        }
+        Ok(())
+    }
+
+    // Helper: Sanitize Filename to avoid duplicates / illegal chars
+    fn sanitize_filename(name: &str) -> String {
+        name.trim()
+            .replace(" ", "_")
+            .replace(|c: char| !c.is_alphanumeric() && c != '_', "")
+            .to_lowercase()
+    } 
 }
 
 
