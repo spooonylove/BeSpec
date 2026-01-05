@@ -540,6 +540,63 @@ mod tests {
         // Precise check
         assert!((smoothed_bars[0] - -70.0).abs() < 0.1, "Decay math is incorrect, expected ~ -70.0");
     }   
+
+    
+    #[test]
+    fn test_fft_frequency_accuracy() {
+        // 1. Setup
+        let sample_rate = 48000;
+        let config = FFTConfig {
+            fft_size: 2048,
+            sample_rate,
+            num_bars: 256, // High resolution for the test
+            sensitivity: 1.0,
+            attack_time_ms: 0.0,
+            release_time_ms: 0.0,
+            ..Default::default()
+        };
+        let mut processor = FFTProcessor::new(config);
+
+        // 2. Generate a 1 kHz Sine Wave
+        let target_freq = 1000.0;
+        let mut buffer: Vec<f32> = Vec::with_capacity(2048);
+        for i in 0..2048 {
+            let t = i as f32 / sample_rate as f32;
+            let sample = (t * target_freq * 2.0 * std::f32::consts::PI).sin();
+            buffer.push(sample);
+        }
+
+        // 3. Process
+        let (bars, _) = processor.process(&buffer);
+
+        // 4. Find the peak bar
+        // We need to know which bar *should* be the peak.
+        // This validates your `calculate_bar_frequency` logic too.
+        let mut max_db = -200.0;
+        let mut max_idx = 0;
+        
+        for (i, &db) in bars.iter().enumerate() {
+            if db > max_db {
+                max_db = db;
+                max_idx = i;
+            }
+        }
+
+        let peak_freq = FFTProcessor::calculate_bar_frequency(
+            max_idx, 
+            bars.len(), 
+            sample_rate, 
+            2048
+        );
+
+        // 5. Assert (allow some variance due to bin resolution)
+        // Bin resolution @ 48k/2048 is ~23Hz.
+        let diff = (peak_freq - target_freq).abs();
+        assert!(diff < 25.0, "Peak frequency {} Hz is too far from target {} Hz", peak_freq, target_freq);
+        
+        // 6. Assert Amplitude (Sine wave of amplitude 1.0 should be close to 0 dBfs)
+        assert!(max_db > -3.0, "Signal was attenuated too much. Measured: {:.1} dB", max_db);
+    }
 }
 
 

@@ -572,3 +572,85 @@ impl Color32 {
 }
 
 // === Tests ====
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- 1. Serialization Tests ---
+    // Critical: Ensures your structs don't crash serde when saving/loading
+    #[test]
+    fn test_visual_profile_serialization() {
+        let original = VisualProfile {
+            name: "Test Profile".to_string(),
+            visual_mode: VisualMode::LineSpectrum,
+            num_bars: 128,
+            // ... explicit non-default values to ensure they persist
+            sensitivity: 2.5,
+            ..Default::default()
+        };
+
+        let serialized = serde_json::to_string(&original).expect("Failed to serialize");
+        let deserialized: VisualProfile = serde_json::from_str(&serialized).expect("Failed to deserialize");
+
+        assert_eq!(original, deserialized);
+        assert_eq!(deserialized.sensitivity, 2.5);
+    }
+
+    // --- 2. Logic Tests (Color Resolution) ---
+    // Critical: Ensures the "cascading" logic of presets works
+    #[test]
+    fn test_resolve_colors_priority() {
+        
+        // A. Setup a user preset that CLASHES with a built-in name
+        let mut user_presets = Vec::new();
+        let user_neon = ColorProfile {
+            name: "Neon Tokyo".to_string(), // Same name as built-in
+            low: Color32::RED, // User version is RED
+            ..ColorProfile::default()
+        };
+        user_presets.push(user_neon);
+
+        // B. Request that name
+        let mut profile = VisualProfile::default();
+        profile.color_link = ColorRef::Preset("Neon Tokyo".to_string());
+        
+        // C. Mock the resolve call (we construct a config just for this test)
+        let mut test_config = AppConfig::default();
+        test_config.profile = profile;
+
+        // D. Verify USER preset overrides BUILT-IN
+        let resolved = test_config.resolve_colors(&user_presets);
+        assert_eq!(resolved.low, Color32::RED, "User preset should override built-in preset with same name");
+    }
+
+    #[test]
+    fn test_background_override_logic() {
+        let mut config = AppConfig::default();
+        
+        // 1. Set a base preset (Neon Tokyo has a dark background by default)
+        config.profile.color_link = ColorRef::Preset("Neon Tokyo".to_string());
+        
+        // 2. Set an explicit override
+        let override_color = Color32::from_rgb(100, 100, 100);
+        config.profile.background = Some(override_color);
+
+        // 3. Resolve
+        let resolved = config.resolve_colors(&[]);
+
+        // 4. Assert the background changed, but other colors (like 'low') remained Neon Tokyo's
+        assert_eq!(resolved.background, override_color, "Background override failed");
+        assert_ne!(resolved.low, Color32::BLACK, "Preset colors should still be present");
+    }
+
+    // --- 3. Filename Sanitization ---
+    // Critical: Prevents file system errors or overwrites
+    #[test]
+    fn test_filename_sanitization() {
+        // We need to access the private helper. 
+        // Rust unit tests in the same file CAN access private methods.
+        assert_eq!(AppConfig::sanitize_filename("Cool Preset"), "cool_preset");
+        assert_eq!(AppConfig::sanitize_filename("My/Preset!"), "mypreset");
+        assert_eq!(AppConfig::sanitize_filename("  Trim Me  "), "trim_me");
+        assert_eq!(AppConfig::sanitize_filename("O'Reilly"), "oreilly");
+    }
+}

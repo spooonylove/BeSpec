@@ -558,4 +558,27 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_stereo_to_mono_conversion() {
+        // 1. Setup a "Hard Panned" packet (Left = 1.0, Right = 0.0)
+        let data = vec![1.0, 0.0, 1.0, 0.0]; 
+        let packet = AudioPacket {
+            samples: data,
+            sample_rate: 44100,
+            channels: 2,
+            timestamp: Instant::now(),
+        };
+
+        // 2. Convert
+        let mono = packet.to_mono();
+
+        // 3. Assert
+        assert_eq!(mono.len(), 2, "Should have half the samples");
+        
+        // Expectation: (1.0 + 0.0) / 2 = 0.5
+        // If your logic is summing, this will fail (it would be 1.0).
+        // If your logic is averaging, this will pass.
+        assert!((mono[0] - 0.5).abs() < f32::EPSILON);
+    }
 }

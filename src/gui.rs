@@ -9,7 +9,7 @@ use crate::shared_state::{Color32 as StateColor32, ColorProfile, MediaDisplayMod
 use crate::fft_processor::FFTProcessor;
 use crate::shared_state::ColorRef;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum SettingsTab {
     Visual, 
     Audio,
@@ -849,7 +849,7 @@ impl SpectrumApp {
         data: &crate::shared_state::VisualizationData,
         bar_width: f32,
         slot_width: f32,
-        hovered_index: Option<usize>,
+        _hovered_index: Option<usize>,
         noise_floor: f32
     ) {
         // 1. Resolve Colors & Opacity
@@ -1197,7 +1197,7 @@ impl SpectrumApp {
         painter: &egui::Painter, 
         rect: &egui::Rect, 
         colors: &ColorProfile,
-        noise_floor: f32,
+        _noise_floor: f32,
         data: &crate::shared_state::VisualizationData,
         perf: &crate::shared_state::PerformanceStats,
         index: usize,
@@ -1667,7 +1667,7 @@ impl SpectrumApp {
             egui::ComboBox::from_id_salt("color_preset_combo").selected_text(combo_text).show_ui(ui, |ui| {
                     let user_presets = state.user_color_presets.clone();
                     if !user_presets.is_empty() {
-                        ui.selectable_label(false, egui::RichText::new("--- User Presets ---").strong());
+                        let _ = ui.selectable_label(false, egui::RichText::new("--- User Presets ---").strong());
                         for p in &user_presets {
                             ui.horizontal(|ui| {
                                 if ui.selectable_label(false, &p.name).clicked() {
@@ -1682,7 +1682,7 @@ impl SpectrumApp {
                         }
                         ui.separator();
                     }
-                    ui.selectable_label(false, egui::RichText::new("--- Built-in ---").strong());
+                    let _ = ui.selectable_label(false, egui::RichText::new("--- Built-in ---").strong());
                     for cp in ColorProfile::built_in() {
                         if ui.selectable_label(false, &cp.name).clicked() {
                             state.config.profile.color_link = ColorRef::Preset(cp.name);
@@ -1953,3 +1953,73 @@ fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
 }
 
 // =============== Tests ==================
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- 1. Math Helper Tests ---
+    
+    // Test the decibel to pixel mapping
+    #[test]
+    fn test_db_to_px_scaling() {
+        let app = SpectrumApp::new(
+            Arc::new(Mutex::new(SharedState::new())), 
+            crossbeam_channel::unbounded().1, 
+            Arc::new(PlatformMedia::new()) // Dummy media
+        );
+
+        let max_h = 100.0;
+        let floor = -60.0; // The noise floor
+
+        // Case A: Signal is at noise floor (should be 0 height)
+        let h_silence = app.db_to_px(-60.0, floor, max_h);
+        assert_eq!(h_silence, 0.0);
+
+        // Case B: Signal is below noise floor (should be clamped to 0)
+        let h_deep_silence = app.db_to_px(-100.0, floor, max_h);
+        assert_eq!(h_deep_silence, 0.0);
+
+        // Case C: Signal is at 0dB (should be max height)
+        let h_max = app.db_to_px(0.0, floor, max_h);
+        assert_eq!(h_max, 100.0);
+
+        // Case D: Signal is clipped > 0dB (should be clamped to max)
+        let h_clip = app.db_to_px(10.0, floor, max_h);
+        assert_eq!(h_clip, 100.0);
+    }
+
+    // Test the Color Interpolation (Lerp)
+    #[test]
+    fn test_lerp_color_logic() {
+        let c1 = egui::Color32::from_rgb(0, 0, 0);       // Black
+        let c2 = egui::Color32::from_rgb(100, 200, 255); // Blue-ish
+
+        // 0.0 -> Start Color
+        assert_eq!(lerp_color(c1, c2, 0.0), c1);
+
+        // 1.0 -> End Color
+        assert_eq!(lerp_color(c1, c2, 1.0), c2);
+
+        // 0.5 -> Midpoint
+        let mid = lerp_color(c1, c2, 0.5);
+        assert_eq!(mid.r(), 50);
+        assert_eq!(mid.g(), 100);
+        assert_eq!(mid.b(), 127); // 255/2 = 127.5 -> 127
+    }
+
+    // --- 2. Helper Logic Tests ---
+    
+    #[test]
+    fn test_ui_tab_button_logic() {
+        // Just verifying the enum logic works as expected
+        let mut active = SettingsTab::Visual;
+        
+        // Simulating a click logic (abstractly)
+        let clicked_tab = SettingsTab::Audio;
+        if clicked_tab != active {
+            active = clicked_tab;
+        }
+        
+        assert_eq!(active, SettingsTab::Audio);
+    }
+}
