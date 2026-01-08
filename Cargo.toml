@@ -1,6 +1,11 @@
 [package]
+<<<<<<< HEAD
 name = "bespec"
-version = "1.3.0-rc4"
+version = "1.4.0-rc1"
+=======
+name = "beanal"
+version = "1.3.0-rc3"
+>>>>>>> 9a914ae315a67e8f19462fc84aaac21478219d4b
 edition = "2021"
 authors = ["BeSpec-Dev"]
 description = "A lightweight, highly configurable, real-time audio spectrum visualizer"
