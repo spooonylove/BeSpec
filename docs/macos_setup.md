@@ -2,7 +2,7 @@
 
 Unlike Windows or Linux, macOS does not inherently allow applications to "hear" the system audio output (loopback) due to security restrictions.
 
-To use **BeAnal** with your system audio (e.g., music from Spotify, YouTube, or Apple Music), you need to set up a virtual loopback driver. We recommend **BlackHole**, which is free, open-source, and low-latency.
+To use **BeSpec** with your system audio (e.g., music from Spotify, YouTube, or Apple Music), you need to set up a virtual loopback driver. We recommend **BlackHole**, which is free, open-source, and low-latency.
 
 ## Step 1: Install BlackHole
 
@@ -20,7 +20,7 @@ Download the installer from [existential.audio](https://existential.audio/blackh
 
 ## Step 2: Create a Multi-Output Device
 
-This step creates a virtual "splitter" that sends audio to your speakers AND to BeAnal simultaneously.
+This step creates a virtual "splitter" that sends audio to your speakers AND to BeSpec simultaneously.
 
 1. Open **Audio MIDI Setup** (Cmd+Space, type "Audio MIDI Setup").
 
@@ -50,18 +50,18 @@ This step creates a virtual "splitter" that sends audio to your speakers AND to 
 
 ## Troubleshooting: "App is damaged and can't be opened"
 
-If you receive an error stating that **"BeAnal.app is damaged and can't be opened"** when trying to run the application, this is a standard macOS security message for apps that are not signed with an Apple Developer ID.
+If you receive an error stating that **"BeSpec.app is damaged and can't be opened"** when trying to run the application, this is a standard macOS security message for apps that are not signed with an Apple Developer ID.
 
 To fix this, you need to remove the "quarantine" attribute from the downloaded file:
 
-1. Move the **BeAnal** app to your `/Applications` folder (or wherever you prefer).
+1. Move the **BeSpec** app to your `/Applications` folder (or wherever you prefer).
 
 2. Open your **Terminal**.
 
 3. Run the following command:
 
    ```bash
-   xattr -cr /Applications/BeAnal.app
+   xattr -cr /Applications/BeSpec.app
    ```
 
    *(Note: If you placed the app somewhere else, replace the path accordingly. You can also type `xattr -cr ` and drag the app icon into the terminal window to auto-fill the path.)*

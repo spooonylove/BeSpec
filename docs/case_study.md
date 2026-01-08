@@ -10,7 +10,7 @@
 ---
 
 ## The Setup
-During a listening session of the 1998 track *I Was a Teenage Hand Model*, I used BeAnal to inspect the spectral content of the song's chaotic outro.
+During a listening session of the 1998 track *I Was a Teenage Hand Model*, I used BeSpec to inspect the spectral content of the song's chaotic outro.
 
 The track begins quietly with hand percussion and piano, but ends with a deconstructed fade-out featuring aggressive synthesizer manipulation. This dynamic range provided a perfect stress test for the visualizer's ability to distinguish transient signals from constant noise floor artifacts.
 
@@ -36,12 +36,12 @@ Using the **Interactive Inspector**, I isolated the bin to identify the signal:
 ### Analysis
 The specific frequency of **15.75 kHz** strongly suggests "CRT Whine" (the NTSC horizontal scan rate is ~15.734 kHz). It is highly likely that a computer monitor or television screen in the recording studio was bleeding high-frequency noise into the microphones or pickups during the recording session.
 
-This artifact is effectively inaudible to the human ear in the context of the full mix, but BeAnal's high-resolution FFT exposes it clearly once the masking instruments are removed.
+This artifact is effectively inaudible to the human ear in the context of the full mix, but BeSpec's high-resolution FFT exposes it clearly once the masking instruments are removed.
 
 ![Screenshot of Ringing Note](./images/qotsa_ringing_15khz.gif)
 *Figure 2: The persistent 15.75 kHz spike visible during the quiet fade-out.*
 
 ## Conclusion
-This case study demonstrates BeAnal's utility beyond aesthetic visualization. It serves as a competent diagnostic tool for audio mastering, capable of revealing:
+This case study demonstrates BeSpec's utility beyond aesthetic visualization. It serves as a competent diagnostic tool for audio mastering, capable of revealing:
 1.  **Transient Dynamics:** Fast-moving synth sweeps.
 2.  **Static Artifacts:** Low-level noise pollution (CRT whine) that survives the mastering process.

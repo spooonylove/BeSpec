@@ -327,11 +327,11 @@ impl Default for AppConfig {
 
 impl AppConfig {
     /// Returns the standard OS config path, e.g.:
-    /// Windows: C:\Users\Username\AppData\Roaming\BeAnal
-    /// MacOS: /Users/Username/Library/Application Support/BeAnal
-    /// Linux: /home/username/.config/BeAnal
+    /// Windows: C:\Users\Username\AppData\Roaming\BeSpec
+    /// MacOS: /Users/Username/Library/Application Support/BeSpec
+    /// Linux: /home/username/.config/BeSpec
     fn get_config_path() -> PathBuf {
-        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeSpec") {
             let config_dir = proj_dirs.config_dir();
 
             // Ensure directory exists
@@ -343,7 +343,7 @@ impl AppConfig {
         }
         
         // Fallback
-        PathBuf::from("beanal_config.json")
+        PathBuf::from("BeSpec_config.json")
     }
 
     pub fn load() -> Self {
@@ -407,8 +407,8 @@ impl AppConfig {
     pub fn load_user_color_presets() -> Vec<ColorProfile> {
         let mut profiles = Vec::new();
 
-        // Path: ../BeAnal/presets/colors/
-        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+        // Path: ../BeSpec/presets/colors/
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeSpec") {
             let preset_dir = proj_dirs.data_dir().join("presets").join("colors");
 
             if preset_dir.exists() {
@@ -440,7 +440,7 @@ impl AppConfig {
     }
 
     pub fn save_user_color_preset(profile: &ColorProfile) -> std::io::Result<()> {
-        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeSpec") {
             let preset_dir = proj_dirs.data_dir().join("presets").join("colors");
             fs::create_dir_all(&preset_dir)?;
 
@@ -453,7 +453,7 @@ impl AppConfig {
     }
 
     pub fn delete_user_color_preset(name: &str) -> std::io::Result<()> {
-        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeSpec") {
             let preset_dir = proj_dirs.data_dir().join("presets").join("colors");
             let filename = format!("{}.json", Self::sanitize_filename(name));
             let path = preset_dir.join(filename);
@@ -467,7 +467,7 @@ impl AppConfig {
 
     pub fn load_user_visual_presets() -> Vec<VisualProfile> {
         let mut profiles = Vec::new();
-        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeSpec") {
             let preset_dir = proj_dirs.data_dir().join("presets").join("visuals");
             if preset_dir.exists() {
                 if let Ok(entries) = fs::read_dir(preset_dir) {
@@ -496,7 +496,7 @@ impl AppConfig {
     }
 
     pub fn save_user_visual_preset(profile: &VisualProfile) -> std::io::Result<()> {
-        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeSpec") {
             let preset_dir = proj_dirs.data_dir().join("presets").join("visuals");
             fs::create_dir_all(&preset_dir)?;
 
@@ -509,7 +509,7 @@ impl AppConfig {
     }
 
     pub fn delete_user_visual_preset(name: &str) -> std::io::Result<()> {
-        if let Some(proj_dirs) = ProjectDirs::from("","","BeAnal") {
+        if let Some(proj_dirs) = ProjectDirs::from("","","BeSpec") {
             let preset_dir = proj_dirs.data_dir().join("presets").join("visuals");
             let filename = format!("{}.json", Self::sanitize_filename(name));
             let path = preset_dir.join(filename);

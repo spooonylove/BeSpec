@@ -27,7 +27,7 @@ fn print_track_info(info: &MediaTrackInfo) {
 
 fn main() {
     println!("========================================");
-    println!("   BeAnal Media Integration Test CLI    ");
+    println!("   BeSpec Media Integration Test CLI    ");
     println!("========================================");
     println!("Commands:");
     println!("  [i] info         Show current track info");

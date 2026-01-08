@@ -67,7 +67,7 @@ jobs:
       # Uses the tag name (e.g., v1.0.0) or branch name (e.g., main)
       - name: Generate Asset Name
         shell: bash
-        run: echo "ASSET_NAME=beanal-${{ github.ref_name }}-${{ matrix.suffix }}" >> $GITHUB_ENV
+        run: echo "ASSET_NAME=bespec-${{ github.ref_name }}-${{ matrix.suffix }}" >> $GITHUB_ENV
 
       # --- Windows Packaging ---
       # Just copy the exe (Icon is already embedded by build.rs)
@@ -75,45 +75,45 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          cp "target/${{ matrix.target }}/release/beanal.exe" "${{ env.ASSET_NAME }}"
+          cp "target/${{ matrix.target }}/release/bespec.exe" "${{ env.ASSET_NAME }}"
 
       # --- Linux Packaging ---
       # Bundle binary, icon, and install script
       - name: Package Linux
         if: runner.os == 'Linux'
         run: |
-          mkdir beanal-dist
-          cp "target/${{ matrix.target }}/release/beanal" beanal-dist/
-          cp assets/icon.png beanal-dist/
+          mkdir bespec-dist
+          cp "target/${{ matrix.target }}/release/bespec" bespec-dist/
+          cp assets/icon.png bespec-dist/
           # Ensure install.sh exists in your repo root before running this!
-          cp install.sh beanal-dist/
+          cp install.sh bespec-dist/
           
           # Create a desktop shortcut for the bundle
           echo "[Desktop Entry]
           Type=Application
-          Name=BeAnal
-          Exec=./beanal
+          Name=BeSpec
+          Exec=./bespec
           Icon=./icon.png
-          Terminal=false" > beanal-dist/beanal.desktop
+          Terminal=false" > bespec-dist/bespec.desktop
           
           # Permissions
-          chmod +x beanal-dist/beanal
-          chmod +x beanal-dist/install.sh
-          chmod +x beanal-dist/beanal.desktop
+          chmod +x bespec-dist/bespec
+          chmod +x bespec-dist/install.sh
+          chmod +x bespec-dist/bespec.desktop
           
           # Compress
-          tar -czvf "${{ env.ASSET_NAME }}" beanal-dist
+          tar -czvf "${{ env.ASSET_NAME }}" bespec-dist
 
       # --- macOS Packaging ---
       # Create .app Bundle structure
       - name: Package macOS
         if: runner.os == 'macOS'
         run: |
-          APP_NAME="BeAnal"
+          APP_NAME="BeSpec"
           mkdir -p "$APP_NAME.app/Contents/MacOS"
           mkdir -p "$APP_NAME.app/Contents/Resources"
           
-          cp "target/${{ matrix.target }}/release/beanal" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+          cp "target/${{ matrix.target }}/release/bespec" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
           cp "assets/icon.icns" "$APP_NAME.app/Contents/Resources/"
           
           cat <<EOF > "$APP_NAME.app/Contents/Info.plist"
@@ -126,7 +126,7 @@ jobs:
               <key>CFBundleIconFile</key>
               <string>icon.icns</string>
               <key>CFBundleIdentifier</key>
-              <string>com.BeSpec-Dev.beanal</string>
+              <string>com.BeSpec-Dev.bespec</string>
               <key>CFBundleName</key>
               <string>$APP_NAME</string>
               <key>CFBundlePackageType</key>
