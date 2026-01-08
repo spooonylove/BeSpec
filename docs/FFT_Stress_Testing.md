@@ -101,7 +101,7 @@ Latency (ms) = (FFT_Size / Sample_Rate) × 1000
 
 ---
 
-## Why This Matters for BeAnal
+## Why This Matters for BeSpec
 
 ### Human Perception Thresholds
 ```

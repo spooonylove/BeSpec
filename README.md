@@ -1,16 +1,16 @@
-# BeAnal (Rust Edition)
+# BeSpec
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Release Build](https://github.com/BeSpec-Dev/beanal/actions/workflows/release.yml/badge.svg)](https://github.com/BeSpec-Dev/beanal/actions/workflows/release.yml)
-[![CI](https://github.com/BeSpec-Dev/beanal/actions/workflows/ci.yaml/badge.svg)](https://github.com/BeSpec-Dev/beanal/actions/workflows/ci.yaml)
+[![Release Build](https://github.com/BeSpec-Dev/bespec/actions/workflows/release.yml/badge.svg)](https://github.com/BeSpec-Dev/bespec/actions/workflows/release.yml)
+[![CI](https://github.com/BeSpec-Dev/bespec/actions/workflows/ci.yaml/badge.svg)](https://github.com/BeSpec-Dev/bespec/actions/workflows/ci.yaml)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)]()
 
 A high-performance, cross-platform, real-time audio spectrum visualizer written in **Rust**.
 
-**BeAnal** listens to your system audio loopback (what you hear from your speakers) and renders a customizable frequency spectrum overlay on your desktop. It is designed to be minimal, beautiful, and efficient.
+**BeSpec** listens to your system audio loopback (what you hear from your speakers) and renders a customizable frequency spectrum overlay on your desktop. It is designed to be minimal, beautiful, and efficient.
 
 
-![BeAnal Demo](docs/images/main_window_animation03.gif)
+![BeSpec Demo](docs/images/main_window_animation03.gif)
 ---
 
 ## ✨ Features
@@ -52,7 +52,7 @@ A high-performance, cross-platform, real-time audio spectrum visualizer written 
 
 ## 📚 Case Studies
 
-BeAnal is designed for precision. See how it uncovers hidden artifacts in professional audio production:
+BeSpec is designed for precision. See how it uncovers hidden artifacts in professional audio production:
 
 * **[Queens of the Stone Age Analysis](./docs/case_study.md):** Detecting a 15.75 kHz CRT whine hidden in the outro of *I Was a Teenage Hand Model* using the 512-bar high-resolution mode.
 
@@ -75,23 +75,23 @@ BeAnal is designed for precision. See how it uncovers hidden artifacts in profes
 ### Option A: Pre-built Binaries
 1.  Go to the [Releases Page](../../releases/latest).
 2.  Download the executable for your OS:
-    * **Windows:** `beanal-windows.exe`
-    * **macOS:** `beanal-macos-silicon` (M1/M2) or `beanal-macos-intel`
-    * **Linux:** `beanal-linux`
+    * **Windows:** `bespec-windows.exe`
+    * **macOS:** `bespec-macos-silicon` (M1/M2) or `bespec-macos-intel`
+    * **Linux:** `bespec-linux`
 3.  Run the application!
-    * *(Linux/macOS users may need to allow execution: `chmod +x beanal`)*
+    * *(Linux/macOS users may need to allow execution: `chmod +x bespec`)*
 
 macOS Users: To visualize system audio, you must set up a loopback driver. See the [macOS Setup Guide](docs/macos_setup.md).
 
-Linux Users: To visualize system audio, you must route audio into BeAnal via `pavucontrol` or equivalant. See the [Linux Setup Guide](docs/linux_setup.md).
+Linux Users: To visualize system audio, you must route audio into BeSpec via `pavucontrol` or equivalant. See the [Linux Setup Guide](docs/linux_setup.md).
 
 ### Option B: Build from Source
 If you prefer to build it yourself, you will need the [Rust toolchain](https://www.rust-lang.org/tools/install) installed.
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/BeSpec-Dev/beanal.git
-    cd beanal
+    git clone https://github.com/BeSpec-Dev/bespec.git
+    cd bespec
     ```
 
     **Linux Dependencies:**
@@ -128,7 +128,7 @@ The settings window is organized into tabs for easy navigation:
 
 ## 🛠️ Architecture
 
-BeAnal uses a concurrent architecture to ensure the UI never stutters, even under heavy audio load:
+BeSpec uses a concurrent architecture to ensure the UI never stutters, even under heavy audio load:
 
 * **Audio Thread:** Captures raw samples via `cpal` and normalizes formats (I16/U16/F32).
 * **FFT Thread:** Processes signals using `realfft`, applying Hann windowing and smoothing logic.
@@ -137,25 +137,25 @@ BeAnal uses a concurrent architecture to ensure the UI never stutters, even unde
 
 ## 🔒 Why does my OS say the "Microphone" is on?
 
-You might notice a "Microphone Active" indicator (often an orange icon) in your system tray or taskbar while BeAnal is running.
+You might notice a "Microphone Active" indicator (often an orange icon) in your system tray or taskbar while BeSpec is running.
 
 **This is normal and expected behavior.**
 
-* **How it works:** To visualize your music, BeAnal must "listen" to your system's audio output (a technique called *loopback*).
+* **How it works:** To visualize your music, BeSpec must "listen" to your system's audio output (a technique called *loopback*).
 * **Why the icon appears:** Modern operating systems (Ubuntu/GNOME, macOS, etc.) classify *any* audio input stream as "Microphone Usage," even if the app is only listening to what the computer is playing.
-* **Privacy Promise:** BeAnal processes audio data **locally in real-time** solely to generate the graphics. No audio is ever recorded to disk, and no audio data is ever transmitted over the network.
+* **Privacy Promise:** BeSpec processes audio data **locally in real-time** solely to generate the graphics. No audio is ever recorded to disk, and no audio data is ever transmitted over the network.
 
 ## 🔧 Troubleshooting & Logging
 
-BeAnal runs silently by default. If you encounter issues, logs are automatically rotated daily and stored in your OS standard data directory:
+BeSpec runs silently by default. If you encounter issues, logs are automatically rotated daily and stored in your OS standard data directory:
 
-* **Windows:** `%APPDATA%\BeAnal\logs\`
-* **macOS:** `~/Library/Application Support/BeAnal/logs/`
-* **Linux:** `~/.local/share/beanal/logs/`
+* **Windows:** `%APPDATA%\BeSpec\logs\`
+* **macOS:** `~/Library/Application Support/BeSpec/logs/`
+* **Linux:** `~/.local/share/bespec/logs/`
 
 ### Debug Mode
 To view granular details (like window resize events or specific FFT rebuild triggers), you can enable verbose logging via environment variables without recompiling:
 
 **Windows (PowerShell):**
 ```powershell
-$env:RUST_LOG="debug"; .\beanal.exe
+$env:RUST_LOG="debug"; .\bespec.exe

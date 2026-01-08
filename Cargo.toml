@@ -1,6 +1,6 @@
 [package]
-name = "beanal"
-version = "1.3.0-rc2"
+name = "bespec"
+version = "1.3.0-rc4"
 edition = "2021"
 authors = ["BeSpec-Dev"]
 description = "A lightweight, highly configurable, real-time audio spectrum visualizer"
@@ -73,7 +73,7 @@ panic = "abort"
 name = "media_test"
 path = "src/bin/media_test.rs"
 
-# Explicitly declare the main binary (BeAnal)
+# Explicitly declare the main binary (BeSpec)
 [[bin]]
-name = "beanal"
+name = "bespec"
 path = "src/main.rs"

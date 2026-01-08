@@ -1,12 +1,12 @@
-# **🐧 Linux Setup Guide for BeAnal**
+# **🐧 Linux Setup Guide for BeSpec**
 
 Running a system audio visualizer on Linux requires a bit more configuration than Windows or macOS due to the way Linux handles audio security and routing.
 
-This guide covers installation, dependencies, and how to route your desktop audio into BeAnal.
+This guide covers installation, dependencies, and how to route your desktop audio into BeSpec.
 
 ## **1\. Install Dependencies**
 
-Before running BeAnal, you need to ensure your system has the necessary audio and GUI libraries installed.
+Before running BeSpec, you need to ensure your system has the necessary audio and GUI libraries installed.
 
 ### **Ubuntu / Debian / Pop\!\_OS**
 
@@ -31,13 +31,13 @@ sudo pacman \-S pkgconf alsa-lib dbus systemd pavucontrol
 
 ### **Option A: Using the Release Binary**
 
-1. Download beanal-linux from the \[suspicious link removed\].  
+1. Download bespec-linux from the \[suspicious link removed\].  
 2. Open your terminal in the downloads folder.  
 3. **Make it executable:** Linux blocks downloaded binaries by default.  
-   chmod \+x beanal-linux
+   chmod \+x bespec-linux
 
 4. Run it:  
-   ./beanal-linux
+   ./bespec-linux
 
 ### **Option B: Building from Source**
 
@@ -51,10 +51,10 @@ By default, Linux applications "Capture" audio from your **Microphone**. To visu
 
 **If you see a flat line or only noise when playing music, follow these steps:**
 
-1. **Start BeAnal** and play some music (Spotify, YouTube, etc.).  
+1. **Start BeSpec** and play some music (Spotify, YouTube, etc.).  
 2. Open **PulseAudio Volume Control** (Run pavucontrol in your terminal or app menu).  
 3. Navigate to the **Recording** tab.  
-4. Find **BeAnal** in the list of recording apps.  
+4. Find **BeSpec** in the list of recording apps.  
 5. Click the drop-down menu next to it (it usually says "Built-in Audio Analog Stereo").  
 6. Select **"Monitor of Built-in Audio Analog Stereo"** (or "Monitor of \[Your Headphones\]").
 
@@ -64,7 +64,7 @@ By default, Linux applications "Capture" audio from your **Microphone**. To visu
 
 ### **The App Freezes on Startup**
 
-* **Cause:** BeAnal might be trying to probe a "sleeping" HDMI port or a raw hardware device.  
+* **Cause:** BeSpec might be trying to probe a "sleeping" HDMI port or a raw hardware device.  
 * **Fix:** We have patched this in recent versions, but if it persists, try disabling unused HDMI audio profiles in your system settings.
 
 ### **"ALSA lib pcm\_dmix.c... unable to open slave"**

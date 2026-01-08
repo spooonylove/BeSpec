@@ -293,7 +293,7 @@ impl eframe::App for SpectrumApp {
             ctx.show_viewport_immediate(
                 egui::ViewportId::from_hash_of("settings_viewport"),
                 egui::ViewportBuilder::default()
-                    .with_title("BeAnal Settings")
+                    .with_title("BeSpec Settings")
                     .with_inner_size([450.0, 500.0])
                     .with_resizable(false)
                     .with_maximize_button(false),

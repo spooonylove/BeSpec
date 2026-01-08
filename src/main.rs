@@ -496,10 +496,10 @@ fn main (){
     // =====================================================================
 
     // Determine the correct data directory for the current OS
-    // Windows: %APPDATA%\BeAnal
-    // Linux: ~/.local/share/beanal
-    // macOs: ~/Library/Application Support/BeAnal
-    let log_dir = if let Some(proj_dirs) = ProjectDirs::from("", "", "BeAnal") {
+    // Windows: %APPDATA%\BeSpec
+    // Linux: ~/.local/share/BeSpec
+    // macOs: ~/Library/Application Support/BeSpec
+    let log_dir = if let Some(proj_dirs) = ProjectDirs::from("", "", "BeSpec") {
         proj_dirs.data_dir().join("logs")
     } else {
         // Fallback to local directory wif we can't find the home folder
@@ -512,7 +512,7 @@ fn main (){
     }
 
     // Set up the file appender
-    let file_appender = tracing_appender::rolling::daily(&log_dir, "beanal.log");
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "BeSpec.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
     // Get local offset. Fall back to UTC if it fails
@@ -540,7 +540,7 @@ fn main (){
         .init();
 
     // Log startup info
-    tracing::info!("=== BeAnal Startup ===");
+    tracing::info!("=== BeSpec Startup ===");
     tracing::info!("Platform: {}", std::env::consts::OS);
     tracing::info!("Log Directory: {:?}", log_dir);
     
@@ -586,7 +586,7 @@ fn main (){
     // Create a mutable viewport_builder
     let mut viewport_builder = egui::ViewportBuilder::default()
         .with_inner_size(initial_size)
-        .with_title("BeAnal - Audio Spectrum Analyzer")
+        .with_title("BeSpec - Audio Spectrum Analyzer")
         .with_resizable(true)
         .with_transparent(true)
         .with_decorations(initial_decorations);
@@ -614,7 +614,7 @@ fn main (){
 
     // Run the app  (this blocks until window closes)
     let _result = eframe::run_native(
-        "BeAnal",
+        "BeSpec",
         options, 
         Box::new(|_cc| Ok(Box::new(SpectrumApp::new(
             shared_state.clone(),
