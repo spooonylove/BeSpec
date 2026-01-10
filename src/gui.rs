@@ -220,8 +220,8 @@ impl eframe::App for SpectrumApp {
         let mut flash_strength = 0.0;
         if let Some(start) = self.flash_start {
             let elapsed = start.elapsed().as_secs_f32();
-            if elapsed < 0.8 {
-                flash_strength = (1.0 - (elapsed / 0.8)).powi(3);
+            if elapsed < 2.0 {
+                flash_strength = (1.0 - (elapsed / 2.0)).powi(3);
                 ctx.request_repaint();
             } else {
                 self.flash_start = None;
