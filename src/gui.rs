@@ -280,12 +280,24 @@ impl eframe::App for SpectrumApp {
         // 5. Window Controls: Resize grips, lock button, and drag logic (top interaction layer).
         let custom_frame = egui::Frame::central_panel(&ctx.style()).fill(bg_color_egui).inner_margin(1.0);
         egui::CentralPanel::default().frame(custom_frame).show(ctx, |ui| {
+
+                // First, set up the window for dragging
+                let window_rect  = ui.available_rect_before_wrap();
+                self.handle_window_drag(ctx, ui, window_rect);
+
+                // Then render the visualizer
                 self.render_visualizer(ui);
+
+                // Sonar Ping Effect
                 if flash_strength > 0.0 {
                     self.draw_sonar_ping(ui, ui.max_rect().shrink(5.0), flash_strength);
                 }
+                
+                // Media Overlay
                 self.render_media_overlay(ui);
-                self.window_controls(ctx, ui, is_focused);
+
+                // Lastly, render the windows controls (resize grips, lock button, context menu)
+                self.draw_window_controls(ctx, ui, is_focused, window_rect);
             });
         
         //  === SETTINGS WINDOW (Separate Viewport) ===
@@ -314,11 +326,8 @@ impl eframe::App for SpectrumApp {
 
 impl SpectrumApp {
 
-    /// Draw invisible resize handles, handle window moverment, and context menu
-    fn window_controls(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, is_focused: bool) {
-        // use max_rect to get the area of everyhting drawn so far (the whole window!)
-        let rect = ui.max_rect();
-
+    /// Handle window movement and context menu (The "floor" logic)
+    fn handle_window_drag(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, rect: egui::Rect) {
         // 1. Handle Window Movement (Dragging the background)
         // CHANGE: Switch from click_and_drag() to click().
         //
@@ -366,10 +375,16 @@ impl SpectrumApp {
             }
         });
 
-        // 2. Resize Grip (Bottom Right Corner)
+    }
+
+
+    /// Draw invisible resize handles, handle window moverment, and context menu
+    fn draw_window_controls(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, is_focused: bool, rect: egui::Rect) {
+
+        // Resize Grip (Bottom Right Corner)
         self.draw_resize_grip(ctx, ui, &rect);
 
-        // 3. Lock Button (Bottom Left Corner)
+        // Lock Button (Bottom Left Corner)
         self.draw_lock_button(ui, rect, is_focused);
     }
 
@@ -540,85 +555,79 @@ impl SpectrumApp {
             ui.ctx().request_repaint();
         }
 
-        // 6. Draw Content in a Floating Area
-        // We use an Area so it sits *above* the visualization layer (z-order)
-        // and uses absolute positioning.
-        egui::Area::new("media_overlay_area".into()) // Fixed: Convert string to Id
-            .fixed_pos(pos)
-            .pivot(egui::Align2::LEFT_TOP)
-            .interactable(true) // Allow clicks on buttons
-            .show(ui.ctx(), |ui| {
+        // 6. Draw Content in an Allocatd Rect 
+        // We use an allocted rect to draw  directly into the current area
+        let overlay_rect = egui::Rect::from_min_size(pos, egui::vec2(overlay_w, overlay_h));
+        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
+            // Force right-to-left layout
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                 // Manually restrict size
                 ui.set_max_width(overlay_w);
-                ui.set_max_height(overlay_h);
 
-                // Use the builder pattern for new UI
-                let builder = egui::UiBuilder::new();
-                ui.allocate_new_ui(builder, |ui| {
-                    // Force Right-to-Left layout
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                        
-                        if let Some(info) = info_opt {
-                            // === CASE A: Track Info Present ===
-                            
-                            // Album Art
-                            if let Some(texture) = &self.album_art_texture {
-                                let tint = egui::Color32::WHITE.linear_multiply(self.media_opacity);
-                                ui.add(
-                                    egui::Image::new(texture)
-                                        .max_height(50.0)
-                                        .rounding(4.0)
-                                        .tint(tint)
-                                );
-                                ui.add_space(10.0); 
+                if let Some(info) = info_opt {
+                    // === CASE A: Track Info Present ===
+                    
+                    // Album Art
+                    if let Some(texture) = &self.album_art_texture {
+                        let tint = egui::Color32::WHITE.linear_multiply(self.media_opacity);
+                        ui.add(
+                            egui::Image::new(texture)
+                                .max_height(50.0)
+                                .rounding(4.0)
+                                .tint(tint)
+                        );
+                        ui.add_space(10.0); 
+                    }
+
+                    // Text Stack
+                    ui.vertical(|ui| {
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                            // Title
+                            ui.add(egui::Label::new(
+                                egui::RichText::new(&info.title)
+                                    .font(egui::FontId::new(16.0, font_family.clone()))
+                                    .strong()
+                                    .color(base_text_color.linear_multiply(self.media_opacity))
+                            ));
+
+                            // Artist
+                            ui.add(egui::Label::new(
+                                egui::RichText::new(format!("{} - {}", info.artist, info.album))
+                                    .font(egui::FontId::new(11.0, font_family.clone()))
+                                    .color(base_text_color.linear_multiply(0.8).linear_multiply(self.media_opacity))
+                            ));
+
+                            ui.add_space(2.0);
+
+                            // Controls
+                            if cfg!(not(target_os = "macos")) {
+                                ui.add_space(4.0);
+                                self.render_transport_controls(ui, info.is_playing, self.media_opacity, base_text_color);
+                            } else {
+                                ui.add(egui::Label::new(
+                                    egui::RichText::new(format!("via {}", info.source_app))
+                                        .font(egui::FontId::new(10.0, font_family.clone()))
+                                        .color(base_text_color.linear_multiply(0.5).linear_multiply(self.media_opacity))
+                                ));
                             }
-
-                            // Text Stack
-                            ui.vertical(|ui| {
-                                ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
-                                    // Title
-                                    ui.label(egui::RichText::new(&info.title)
-                                        .font(egui::FontId::new(16.0, font_family.clone()))
-                                        .strong()
-                                        .color(base_text_color.linear_multiply(self.media_opacity))
-                                    );
-
-                                    // Artist
-                                    ui.label(egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                                        .font(egui::FontId::new(11.0, font_family.clone()))
-                                        .color(base_text_color.linear_multiply(0.8).linear_multiply(self.media_opacity))
-                                    );
-
-                                    ui.add_space(2.0);
-
-                                    // Controls
-                                    if cfg!(not(target_os = "macos")) {
-                                        ui.add_space(4.0);
-                                        self.render_transport_controls(ui, info.is_playing, self.media_opacity, base_text_color);
-                                    } else {
-                                        ui.label(egui::RichText::new(format!("via {}", info.source_app))
-                                            .font(egui::FontId::new(10.0, font_family.clone()))
-                                            .color(base_text_color.linear_multiply(0.5).linear_multiply(self.media_opacity))
-                                        );
-                                    }
-                                });
-                            });
-
-                        } else if config.media_display_mode == MediaDisplayMode::AlwaysOn {
-                            // === CASE B: No Info, but Always On ===
-                            ui.vertical(|ui| {
-                                ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
-                                    ui.label(egui::RichText::new("Waiting for media...")
-                                        .font(egui::FontId::new(14.0, font_family.clone()))
-                                        .color(egui::Color32::from_white_alpha(150).linear_multiply(self.media_opacity))
-                                        .color(base_text_color.linear_multiply(0.6).linear_multiply(self.media_opacity))
-                                    );
-                                });
-                            });
-                        }
+                        });
                     });
-                });
+
+                } else if config.media_display_mode == MediaDisplayMode::AlwaysOn {
+                    // === CASE B: No Info, but Always On ===
+                    ui.vertical(|ui| {
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
+                            ui.add(egui::Label::new(
+                                egui::RichText::new("Waiting for media...")
+                                    .font(egui::FontId::new(14.0, font_family.clone()))
+                                    .color(egui::Color32::from_white_alpha(150).linear_multiply(self.media_opacity))
+                                    .color(base_text_color.linear_multiply(0.6).linear_multiply(self.media_opacity))
+                            ));
+                        });
+                    });
+                }   
             });
+        });
     }
 
     /// Helper to draw vector buttons (ISO 60417 standard geometry)
