@@ -37,8 +37,9 @@ crossbeam-channel = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# == Media Integration ==
+# Network & Browser Integration
 ureq = "2.9"
+open = "5.0"
 
 # Windows: Uses the official Microsoft crate
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -52,7 +53,7 @@ tokio = { version = "1.0", default-features = false, features = ["rt", "time", "
 # Linux: Uses the MPRIS standard via D-Bus
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris = "2.0"
-ureq = "2.9"
+
 
 # macOS: Uses private MediaRemote framework bindings
 [target.'cfg(target_os = "macos")'.dependencies]

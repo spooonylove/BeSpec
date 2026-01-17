@@ -570,13 +570,40 @@ impl SpectrumApp {
                     // Album Art
                     if let Some(texture) = &self.album_art_texture {
                         let tint = egui::Color32::WHITE.linear_multiply(self.media_opacity);
-                        ui.add(
+
+                        let img_response = ui.add(
                             egui::Image::new(texture)
                                 .max_height(50.0)
                                 .rounding(4.0)
                                 .tint(tint)
-                        );
+                                .sense(egui::Sense::click())
+                            );   
+                        if img_response.clicked() {
+                            // Clone string data to move into the thread
+                            let artist = info.artist.clone();
+                            let title = info.title.clone();
+                            let album = info.album.clone();
+
+                            // Spawn a thread to prevent blocking the GUI during the network request
+                            std::thread::spawn(move || {
+                                // Generate the URL (Blocking call to ureq inside fetch_wikipedia_url)
+                                let url = crate::media::fetch_wikipedia_url(&artist, &title, &album);
+                                tracing::info!("[GUI] Opening Wiki URL: {}", url);
+
+                                // Open in default system browser
+                                if let Err(e) = open::that(&url) {
+                                    tracing::error!("[GUI] Failed to open URL: {}", e);
+                                }
+                            });
+                        }
+
+                        if img_response.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                            img_response.on_hover_text(format!("Search Wikipedia for '{}'", info.artist));
+                        }
+                        
                         ui.add_space(10.0); 
+
                     }
 
                     // Text Stack
