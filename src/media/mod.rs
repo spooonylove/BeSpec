@@ -76,6 +76,9 @@ pub fn url_encode(input: &str) -> String {
 pub fn fetch_wikipedia_url(artist: &str, title: &str, album: &str) -> String {
     let clean_title = sanitize_title(title);
     
+    // DEBUG: Log the inputs
+    tracing::info!("[MEDIA] Lookup Start: Artist='{}', Title='{}' (Clean='{}'), Album='{}'", artist, title, clean_title, album);
+
     // 1. Construct the Search Query
     // We prioritize "Artist Album" for better context, falling back to "Artist Title".
     let raw_query = if !album.is_empty() && album != "Unknown Album" {
@@ -84,10 +87,9 @@ pub fn fetch_wikipedia_url(artist: &str, title: &str, album: &str) -> String {
         format!("{} {}", artist, clean_title)
     };
 
-    // 2. Prepare for Fallback URL (Manual Encoding)
-    // We manually encode the query here to prevent injection attacks in the fallback URL.
-    // This ensures characters like '&' or '?' in song titles don't break the search link.
-    let encoded_query = url_encode(&raw_query);
+    // DEBUG: Log the raw query we are about to send
+    tracing::info!("[MEDIA] Wiki Query: '{}'", raw_query);
+
 
     let api_url = "https://en.wikipedia.org/w/api.php";
     
@@ -104,32 +106,81 @@ pub fn fetch_wikipedia_url(artist: &str, title: &str, album: &str) -> String {
 
     match resp {
         Ok(response) => {
-            if let Ok(json) = serde_json::from_reader::<_, Value>(response.into_reader()) {
-                // 4. Parse the Result
-                // Path: query -> search -> [0] -> title
-                if let Some(title) = json.get("query")
+            if let Ok(json) = serde_json::from_reader::<_, serde_json::Value>(response.into_reader()) {
+                if let Some(first_result) = json.get("query")
                     .and_then(|q| q.get("search"))
                     .and_then(|s| s.get(0)) 
-                    .and_then(|r| r.get("title"))
-                    .and_then(|t| t.as_str()) 
                 {
-                    // 5. Construct Article URL
-                    // Wikipedia slugs use underscores for spaces. We encode other chars
-                    // to ensure the URL is valid and safe.
-                    let url_slug = url_encode(title).replace("+", "_");
-                    return format!("https://en.wikipedia.org/wiki/{}", url_slug);
+                    // 3. Extract Title AND Snippet
+                    let wiki_title_opt = first_result.get("title").and_then(|t| t.as_str());
+                    let wiki_snippet_opt = first_result.get("snippet").and_then(|t| t.as_str());
+
+                    if let Some(wiki_title) = wiki_title_opt {
+                        tracing::info!("[MEDIA] Wiki Candidate Found: '{}'", wiki_title);
+                        
+                        // 4. --- HEURISTIC CHECK ---
+                        // Wikipedia search is fuzzy. Searching for "One" (Metallica) might return "One (U2 song)"
+                        // or just the number "1". We need to verify the result is actually related to our artist.
+                        let title_lower = wiki_title.to_lowercase();
+                        let artist_lower = artist.to_lowercase();
+                        let album_lower = album.to_lowercase();
+                        
+                        // Clean snippet (it often contains HTML like <span class="searchmatch">)
+                        // We just lowercase it; 'contains' will ignore the tags around the words.
+                        let snippet_lower = wiki_snippet_opt.unwrap_or("").to_lowercase();
+
+                        tracing::info!("[MEDIA] Checking Heuristic: does Title OR Snippet contain '{}'?", artist_lower);
+
+                        // Condition A: Title contains Artist
+                        // Example: Search "Metallica One" -> Result "One (Metallica song)" -> Match!
+                        let title_has_artist = title_lower.contains(&artist_lower);
+                        
+                        // Condition B: Title contains Album (if album is valid)
+                        // Example: Search "Pink Floyd Dark Side" -> Result "The Dark Side of the Moon" -> Match!
+                        // (Even if artist name isn't in the title, the album name confirms it)
+                        let title_has_album = !album.is_empty() && title_lower.contains(&album_lower);
+
+                        // Condition C: Snippet contains Artist (New!)
+                        // This fixes cases like "I Ain't Worried" where the title is generic ("I Ain't Worried")
+                        // and doesn't contain the artist name in the title, but the text snippet says:
+                        // "...is a song by American pop rock band OneRepublic..."
+                        let snippet_has_artist = snippet_lower.contains(&artist_lower);
+
+                        if title_has_artist || title_has_album || snippet_has_artist {
+                            tracing::info!("[MEDIA] Match CONFIRMED (Source: {}). Using Wiki.", 
+                                if title_has_artist { "Title+Artist" } 
+                                else if title_has_album { "Title+Album" } 
+                                else { "Snippet+Artist" }
+                            );
+
+                            let url_slug = url_encode(wiki_title).replace("+", "_");
+                            return format!("https://en.wikipedia.org/wiki/{}", url_slug);
+                        } else {
+                            tracing::warn!(
+                                "[MEDIA] Heuristic FAIL: Candidate '{}' rejected. Artist '{}' not found in title or snippet.", 
+                                wiki_title, artist
+                            );
+                        }
+                    }
+                } else {
+                    tracing::warn!("[MEDIA] Wiki returned 0 search results.");
                 }
+            } else {
+                tracing::error!("[MEDIA] Failed to parse Wiki JSON.");
             }
         },
         Err(e) => {
-            tracing::warn!("Wikipedia API request failed: {}", e);
+            tracing::error!("[MEDIA] Wiki API request failed: {}", e);
         }
     }
 
     // 6. Fallback: Generic Search
     // If the API fails or finds nothing, return a search page URL.
     // We use the pre-encoded query string here to ensure safety.
-    format!("https://en.wikipedia.org/w/index.php?search={}", encoded_query)
+    let search_query = format!("{} {} music", artist, clean_title);
+    let encoded_query = url_encode(&search_query);
+    // Using DuckDuckGo as it doesn't usually throw up cookie/consent walls like Google
+    format!("https://duckduckgo.com/?q={}", encoded_query)
 }
 
 
