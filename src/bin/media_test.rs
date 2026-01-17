@@ -1,5 +1,6 @@
 // Manually declar the module path so we don't have to restructure the whole project
 // ...common trick for testing modules in isolation
+#[allow(dead_code)]
 #[path = "../media/mod.rs"]
 mod media;
 

@@ -15,7 +15,7 @@ pub struct MediaTrackInfo {
 /// Cleans up track titles by removing common "garbage" suffixes often found in
 /// metadata from sources like YouTube or streaming services (e.g., "(Official Video)").
 /// This improves the accuracy of search queries (like Wikipedia lookups).
-fn sanitize_title(title: &str) -> String {
+pub fn sanitize_title(title: &str) -> String {
     // List of terms that usually indicate the end of the actual song title
     let garbage_terms = [
         "(Official Video)",
@@ -46,7 +46,7 @@ fn sanitize_title(title: &str) -> String {
 /// reserved characters (like '&', '=', '?'), we ensure that user input—such as
 /// a song title containing these symbols—cannot break out of its data context
 /// and alter the structure of the query string.
-fn url_encode(input: &str) -> String {
+pub fn url_encode(input: &str) -> String {
     // We use a strict allow-list approach (RFC 3986) to guarantee safety without external dependencies.
     // Any character not explicitly whitelisted as "unreserved" is percent-encoded.
     // This neutralizes control characters that could otherwise be interpreted by the server.
