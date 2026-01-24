@@ -1057,42 +1057,74 @@ impl SpectrumApp {
     // === OVERLAYS ===
 
     fn draw_resize_grip(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, rect: &egui::Rect) {
+        // 1. Check Inverted State
+        let is_inverted = if let Ok(state) = self.shared_state.lock() {
+            state.config.profile.inverted_spectrum
+        } else {
+            false
+        };
+
         let corner_size = 20.0;
+        
+        // 2. Calculate Origin (Top-Right if inverted, Bottom-Right if normal)
+        let grip_origin = if is_inverted {
+            egui::pos2(rect.right() - corner_size, rect.top())
+        } else {
+            egui::pos2(rect.right() - corner_size, rect.bottom() - corner_size)
+        };
+
         let grip_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.right() - corner_size, rect.bottom() - corner_size),
+            grip_origin,
             egui::Vec2::splat(corner_size)
         );
 
         let response = ui.interact(grip_rect, ui.id().with("resize_grip"), egui::Sense::drag());
 
+        // 3. Set Cursor & Direction based on mode
+        let (cursor, direction) = if is_inverted {
+            (egui::CursorIcon::ResizeNorthEast, egui::ResizeDirection::NorthEast)
+        } else {
+            (egui::CursorIcon::ResizeSouthEast, egui::ResizeDirection::SouthEast)
+        };
+
         if response.hovered() {
-            ctx.set_cursor_icon(egui::CursorIcon::ResizeSouthEast);
+            ctx.set_cursor_icon(cursor);
         }
 
         // Use button_pressed() for instant resize start
         if response.hovered() && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(egui::ResizeDirection::SouthEast));
+            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
         }
 
+        // 4. Draw the Grip Lines
         if ui.is_rect_visible(grip_rect) {
             let painter = ui.painter();
             let stroke = egui::Stroke::new(2.0, egui::Color32::from_white_alpha(50));
             
             for i in 0..4 {
                 let offset = i as f32 * 4.0;
-                painter.line_segment(
-                    [
+
+                // Calcluate line start/end points based on corner
+                let (p1, p2) = if is_inverted {
+                    // Top-Right Corner Geometry
+                    (
+                        egui::pos2(rect.right() - 4.0 - offset, rect.top() + 4.0),
+                        egui::pos2(rect.right() - 4.0, rect.top() + 4.0 + offset),
+                    )
+                } else {
+                    // Bottom-Right Corner Geometry
+                    (
                         egui::pos2(rect.right() - 4.0 - offset, rect.bottom() - 4.0),
                         egui::pos2(rect.right() - 4.0, rect.bottom() - 4.0 - offset),
-                    ],
-                    stroke,
-                );
+                    )
+                };
+                painter.line_segment([p1, p2], stroke);
             }
         }
     }
 
     fn draw_lock_button(&self, ui: &mut egui::Ui, rect: egui::Rect, is_focused: bool) {
-        // we need mutable access to the toggle the state
+        // we need mutable access to toggle the state
         let mut state = match self.shared_state.lock() {
             Ok(s) => s,
             Err(_) => return,
@@ -1107,14 +1139,22 @@ impl SpectrumApp {
             return;
         }
 
-
+        // 1. Establish inverted state
         let is_locked = state.config.window_locked;
+        let is_inverted = state.config.profile.inverted_spectrum;
         let size = 24.0;
         let padding = 8.0;
 
-        // Position: Bottom left with padding
+        // 2. Calculate Y position based on mode
+        let y_pos = if is_inverted {
+            rect.top() + padding
+        } else {
+            rect.bottom() - size - padding
+        };
+
+        // 3. Create Rect (Top-left or Bottom-left)
         let lock_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.left() + padding, rect.bottom() - size - padding),
+            egui::pos2(rect.left() + padding, y_pos),
             egui::Vec2::splat(size)
         );
 

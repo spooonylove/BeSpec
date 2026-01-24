@@ -1,5 +1,4 @@
 use crossbeam_channel::Sender;
-use serde_json::Value;
 
 // Module datastructre is self-contained for media handling
 #[derive(Clone, Debug, Default, PartialEq)]
