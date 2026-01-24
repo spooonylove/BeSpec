@@ -1,5 +1,5 @@
 use crossbeam_channel::Sender;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::process::Command;
 use std::io::Read; 
 use super::{MediaController, MediaMonitor, MediaTrackInfo};

@@ -214,6 +214,7 @@ impl eframe::App for SpectrumApp {
         let is_focused = ctx.input(|i| i.focused);
         if is_focused && !self.was_focused {
             self.flash_start = Some(Instant::now());
+            self.last_media_interaction = Some(Instant::now());
         }
         self.was_focused = is_focused;
         
@@ -1123,7 +1124,7 @@ impl SpectrumApp {
         }
     }
 
-    fn draw_lock_button(&self, ui: &mut egui::Ui, rect: egui::Rect, is_focused: bool) {
+    fn draw_lock_button(&mut self, ui: &mut egui::Ui, rect: egui::Rect, is_focused: bool) {
         // we need mutable access to toggle the state
         let mut state = match self.shared_state.lock() {
             Ok(s) => s,
@@ -1135,11 +1136,9 @@ impl SpectrumApp {
         let bg_alpha = colors.background.a as f32 / 255.0;
 
         // only show if background is transparent
-        if bg_alpha >= 0.05 {
-            return;
-        }
+        if bg_alpha >= 0.05 { return;}
 
-        // 1. Establish inverted state
+        // 1. Set up geometry and state
         let is_locked = state.config.window_locked;
         let is_inverted = state.config.profile.inverted_spectrum;
         let size = 24.0;
@@ -1163,30 +1162,66 @@ impl SpectrumApp {
             egui::Sense::click());
         if response.clicked() {
             state.config.window_locked = !state.config.window_locked;
+            self.last_media_interaction = Some(Instant::now());  // wake up on click
+
         }
 
         if response.hovered() {
             let text = if is_locked {
-                "GHOST MODE ACTIVE\n\n1. Window is click-through (ignore mouse).\n2. Alt-Tab away to engage.\n3. Alt-Tab back to unlock."
+                // OS-Agnostic Instructions
+                "GHOST MODE ACTIVE\n\n\
+                 1. Window is click-through (ignore mouse).\n\
+                 2. Switch focus to another app to engage.\n\
+                 3. Switch focus back here to unlock."
             } else {
-                "ENTER GHOST MODE\n\nClick to make window click-through.\n(Must be transparent first)"
+                "ENTER GHOST MODE\n\n\
+                 Click to make window click-through.\n\
+                 (Must be transparent first)"
             };
             response.clone().on_hover_text(text);
+            
+            // Wake up on hover
+            self.last_media_interaction = Some(Instant::now()); 
         }
 
-        // ---- Visuals ----
+        // 4. Calculate Opacity
+        let mut opacity = 1.0;
+
+        if is_locked {
+            let cooldown = 3.0; // Seconds to wait before fading
+            let fade_duration = 1.0;
+            let resting_opacity = 0.1; // Dim state
+
+            if let Some(last_interact) = self.last_media_interaction{
+                let elapsed = last_interact.elapsed().as_secs_f32();
+                let t = ((elapsed - cooldown) / fade_duration).clamp(0.0, 1.0);
+                opacity = 1.0 - (t * (1.0 - resting_opacity));
+
+                if t < 1.0{
+                    ui.ctx().request_repaint();
+                }
+            } else {
+                // If we've never interacted, default to dim ghost mode
+                opacity = resting_opacity;
+            }
+
+        }
+
+        // 5. Draw  
         let painter = ui.painter();
 
         // Color Logic:
         // -- Locked and Focused : Bright Red (wake up!)
         // -- Locked and Unfocused : Dim Red (ghost mode)
         // -- Unlocked : White/ Grey (passive)
-        let color = if is_locked {
+        let base_color = if is_locked {
             if is_focused { egui::Color32::from_rgb(255,100,100) }
             else { egui::Color32::from_rgb(200,50,50) }
         } else {
-            if response.hovered() { egui::Color32::WHITE } else { egui::Color32::from_white_alpha(100) }
+            if response.hovered() { egui::Color32::WHITE } else { egui::Color32::from_white_alpha(50) }
         };
+
+        let color = base_color.linear_multiply(opacity);
 
         // Draw Body (Main square)
         let body_h = size * 0.6;
