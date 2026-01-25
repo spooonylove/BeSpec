@@ -7,8 +7,13 @@ use super::{MediaController, MediaMonitor, MediaTrackInfo};
 use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
 use windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus;
 
+use std::sync::OnceLock;
+use tokio::runtime::Runtime;
+
 #[derive(Clone)]
 pub struct WindowsMediaManager;
+
+static CONTROLLER_RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
 impl WindowsMediaManager {
     pub fn new() -> Self { Self}
@@ -17,16 +22,27 @@ impl WindowsMediaManager {
     fn with_session<F>(callback: F)
     where F: FnOnce(&windows::Media::Control::GlobalSystemMediaTransportControlsSession)
     {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        // 1. Get or Init the runtime (lazy load)
+        let rt = CONTROLLER_RUNTIME.get_or_init(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create Windows Media runtime")
+        });
+
+        // 2. Execute the async IPC call on the shared runtime
         rt.block_on(async {
-            let manager_result = GlobalSystemMediaTransportControlsSessionManager::RequestAsync();
+            // We use RequestAsync() to get the manager.
+            let manager_result = 
+                GlobalSystemMediaTransportControlsSessionManager::RequestAsync();
             if let Ok(async_op) = manager_result {
                 if let Ok(manager) = async_op.await {
-                    if let Ok(session) = manager.GetCurrentSession() {
+                    if let Ok(session) = manager.GetCurrentSession(){
                         callback(&session);
                     }
                 }
-            }
+            }     
+
         });
     }
 }
