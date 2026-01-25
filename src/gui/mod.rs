@@ -1,3 +1,8 @@
+// src/gui/mod.rs
+pub mod theme;
+pub mod visualizers;
+pub mod decorations;
+
 use crossbeam_channel::Receiver;
 use eframe:: egui;
 use std::sync::{Arc, Mutex};
