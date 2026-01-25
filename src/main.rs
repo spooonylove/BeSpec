@@ -186,6 +186,8 @@ fn start_fft_processing(
         let mut processor: Option<FFTProcessor> = None;
         let mut fft_config: Option<FFTConfigManager> = None;
         let mut frame_count= 0u64;
+
+        let mut mono_buffer: Vec<f32> = Vec::with_capacity(4096);
         
         // === Performance Tracking ===
         let mut total_process_time = Duration::ZERO;
@@ -292,7 +294,8 @@ fn start_fft_processing(
                     }
 
                     // Convert to mono (FFT expects single channel)
-                    let mono = packet.to_mono();
+                    //let mono = packet.to_mono();
+                    packet.to_mono_with_buffer(&mut mono_buffer);
                     
                     let mode  = { shared_state.lock().unwrap().config.profile.visual_mode };
 
@@ -302,7 +305,7 @@ fn start_fft_processing(
                             // Just normalize/copy raw samples directly to visualization
                             // We might want to decimate or window here if the packet is huge.
                             let mut state = shared_state.lock().unwrap();
-                            state.visualization.waveform = mono;
+                            state.visualization.waveform = mono_buffer.clone();
                             state.visualization.bars.fill(SILENCE_DB);
                         }
                         _ => {
@@ -310,7 +313,7 @@ fn start_fft_processing(
                             let process_start = Instant::now();
 
                             // B. Heavy Math (FFT)
-                            let (bars, peaks) = processor.process(&mono);
+                            let (bars, peaks) = processor.process(&mono_buffer);
 
                             // C. Stop Timer
                             let process_time = process_start.elapsed();
