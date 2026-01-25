@@ -13,7 +13,6 @@ dependencies = [
  "eframe",
  "egui",
  "image 0.24.9",
- "lazy_static",
  "libc",
  "mediaremote-rs",
  "mpris",

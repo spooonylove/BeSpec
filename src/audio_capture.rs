@@ -23,6 +23,8 @@ pub struct AudioPacket {
 
 impl AudioPacket {
     /// Convert multi-channel audio to mono by averaging channels
+    /// This returns a buffer each call
+    #[allow(dead_code)]
     pub fn to_mono(&self) -> Vec<f32> {
         
         // If already mono, easy day, return!
