@@ -39,6 +39,30 @@ impl AudioPacket {
     
     }
 
+    /// Convert multi-channel audio to mono by averaging channels
+    /// and passes reference to the audio processing buffer
+    pub fn to_mono_with_buffer(&self, output: &mut Vec<f32>) {
+        output.clear();
+
+        // Safety: Prevent divide-by-zero or panick on chunk(0)
+        if self.channels == 0 {
+            return;
+        }
+
+        // Fast path for Mono inputs
+        if self.channels ==  1 {
+            output.extend_from_slice(&self.samples);
+            return;
+        }
+
+        // Downmix Multi-channel (Stereo, 5.1, 7.1, etc)
+        let downmixed_iter = self.samples
+            .chunks(self.channels as usize)
+            .map(|frame| frame.iter().sum::<f32>() / self.channels as f32);
+
+        output.extend(downmixed_iter);
+    }
+
     /// Get the duration of audio in this packet (in seconds)
     #[allow(dead_code)]
     pub fn duration_secs(&self) -> f32 {
@@ -580,5 +604,147 @@ mod tests {
         // If your logic is summing, this will fail (it would be 1.0).
         // If your logic is averaging, this will pass.
         assert!((mono[0] - 0.5).abs() < f32::EPSILON);
+    }
+    #[test]
+    fn test_to_mono_with_buffer_stereo_downmix() {
+        // Scenario: Standard Stereo -> Mono downmix
+        let packet = AudioPacket {
+            samples: vec![1.0, 0.0, 0.5, 0.5, -1.0, 1.0], // L, R, L, R, L, R
+            sample_rate: 44100,
+            channels: 2,
+            timestamp: Instant::now(),
+        };
+
+        let mut buffer = Vec::new();
+        packet.to_mono_with_buffer(&mut buffer);
+
+        // Expect: 3 samples (Input len / 2)
+        // Values: (1+0)/2=0.5, (0.5+0.5)/2=0.5, (-1+1)/2=0.0
+        assert_eq!(buffer.len(), 3);
+        assert_eq!(buffer, vec![0.5, 0.5, 0.0]);
+    }
+
+    #[test]
+    fn test_to_mono_with_buffer_reuse() {
+        // Scenario: Verify the buffer is actually reused and not just re-allocated
+        let mut buffer = Vec::with_capacity(1024);
+        
+        // 1. First Pass (Stereo)
+        let packet1 = AudioPacket {
+            samples: vec![0.8, 0.2], 
+            sample_rate: 48000,
+            channels: 2,
+            timestamp: Instant::now(),
+        };
+        packet1.to_mono_with_buffer(&mut buffer);
+        
+        assert_eq!(buffer[0], 0.5);
+        let ptr_addr_1 = buffer.as_ptr() as usize; // Track memory address
+
+        // 2. Second Pass (Mono - Larger)
+        // Should overwrite existing data without moving memory (if capacity allows)
+        let packet2 = AudioPacket {
+            samples: vec![0.1, 0.2, 0.3],
+            sample_rate: 48000,
+            channels: 1,
+            timestamp: Instant::now(),
+        };
+        packet2.to_mono_with_buffer(&mut buffer);
+
+        assert_eq!(buffer, vec![0.1, 0.2, 0.3]);
+        let ptr_addr_2 = buffer.as_ptr() as usize;
+
+        // Verify the underlying memory buffer location hasn't changed
+        // (This proves we didn't drop and re-allocate the Vec)
+        assert_eq!(ptr_addr_1, ptr_addr_2, "Memory address changed! Buffer was reallocated.");
+    }
+
+    #[test]
+    fn test_to_mono_with_buffer_growth() {
+        // Scenario: Buffer is too small initially, must grow
+        let mut buffer = Vec::with_capacity(1); 
+        
+        let packet = AudioPacket {
+            samples: vec![0.1, 0.2, 0.3, 0.4],
+            sample_rate: 44100,
+            channels: 1, // Mono passthrough
+            timestamp: Instant::now(),
+        };
+
+        packet.to_mono_with_buffer(&mut buffer);
+
+        assert_eq!(buffer.len(), 4);
+        assert_eq!(buffer, vec![0.1, 0.2, 0.3, 0.4]);
+        assert!(buffer.capacity() >= 4, "Capacity failed to grow");
+    }
+
+    #[test]
+    fn test_to_mono_edge_cases() {
+        let mut buffer = Vec::new();
+
+        // Case A: 0 Channels (Should handle gracefully)
+        let packet_zero = AudioPacket {
+            samples: vec![1.0, 1.0], // Data exists but metadata is wrong
+            sample_rate: 44100,
+            channels: 0,
+            timestamp: Instant::now(),
+        };
+        packet_zero.to_mono_with_buffer(&mut buffer);
+        assert!(buffer.is_empty(), "0-channel packet should produce empty output");
+
+        // Case B: 5.1 Surround (6 channels)
+        // Input: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0] -> Average should be 1.0
+        let packet_surround = AudioPacket {
+            samples: vec![1.0; 6],
+            sample_rate: 48000,
+            channels: 6,
+            timestamp: Instant::now(),
+        };
+        packet_surround.to_mono_with_buffer(&mut buffer);
+        assert_eq!(buffer.len(), 1);
+        assert!((buffer[0] - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn benchmark_memory_churn_savings() {
+        use std::time::Instant;
+
+        // 1. Setup a standard stereo packet (typical callback size)
+        // 480 samples = ~10ms at 48kHz
+        let samples = vec![0.5; 480 * 2]; 
+        let packet = AudioPacket {
+            samples,
+            sample_rate: 48000,
+            channels: 2,
+            timestamp: Instant::now(),
+        };
+
+        let iterations = 100_000;
+
+        // --- Benchmark A: The Old Way (Allocation Heavy) ---
+        let start_old = Instant::now();
+        for _ in 0..iterations {
+            // This allocates a NEW Vec every single time
+            let _temp_alloc = packet.to_mono(); 
+        }
+        let duration_old = start_old.elapsed();
+
+        // --- Benchmark B: The New Way (Buffer Reuse) ---
+        let mut reuse_buffer = Vec::with_capacity(1024);
+        let start_new = Instant::now();
+        for _ in 0..iterations {
+            // This reuses the existing capacity
+            packet.to_mono_with_buffer(&mut reuse_buffer);
+        }
+        let duration_new = start_new.elapsed();
+
+        // --- Report Results ---
+        println!("\n=== Memory Churn Benchmark ({} iterations) ===", iterations);
+        println!("Old Way (Allocating): {:?}", duration_old);
+        println!("New Way (Reusing):    {:?}", duration_new);
+        
+        let ratio = duration_old.as_secs_f64() / duration_new.as_secs_f64();
+        println!(">>> Speedup Factor:     {:.2}x FASTER", ratio);
+        println!("==============================================\n");
     }
 }
