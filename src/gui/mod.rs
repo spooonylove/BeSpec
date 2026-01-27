@@ -7,7 +7,6 @@ pub mod widgets;
 use crate::gui::theme::*;
 use crate::gui::visualizers as viz; // Alias for cleaner calls
 
-
 use crossbeam_channel::Receiver;
 use eframe:: egui;
 use std::sync::{Arc, Mutex};
