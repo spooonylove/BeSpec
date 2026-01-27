@@ -362,8 +362,19 @@ impl eframe::App for SpectrumApp {
                 }
 
 
-                // Render the windows controls (resize grips, lock button, context menu)
-                self.draw_window_controls(ctx, ui, is_focused, window_rect);
+                // === WINDOW CONTROLS ====
+                // 1. Resize Grip (Needs Context + Window Rect)
+                // We check the inverted state first (read-only lock)
+                let is_inverted = if let Ok(s) = self.shared_state.lock() {
+                    s.config.profile.inverted_spectrum
+                } else {
+                    false
+                };
+                crate::gui::widgets::draw_resize_grip(ui, ctx, window_rect, is_inverted);
+
+                // 2. Lock Button (needs mutable State Access)
+                // We pass the Arc<Mutex> so the widget can lock it internally when clicked
+                crate::gui::widgets::draw_lock_button(ui, window_rect, &self.shared_state, &mut self.last_media_interaction, is_focused);
 
             });
         
@@ -396,6 +407,7 @@ impl eframe::App for SpectrumApp {
 
 impl SpectrumApp {
 
+    /* 
     /// Handle window movement and context menu (The "floor" logic)
     fn handle_window_drag(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, rect: egui::Rect) {
         // 1. Handle Window Movement (Dragging the background)
@@ -447,16 +459,8 @@ impl SpectrumApp {
 
     }
 
-
-    /// Draw invisible resize handles, handle window moverment, and context menu
-    fn draw_window_controls(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, is_focused: bool, rect: egui::Rect) {
-
-        // Resize Grip (Bottom Right Corner)
-        self.draw_resize_grip(ctx, ui, &rect);
-
-        // Lock Button (Bottom Left Corner)
-        self.draw_lock_button(ui, rect, is_focused);
-    }
+    */
+    
     
     /// Logic to determine if the media overlay should be visible
     /// Updates 'last_media_interaction' if the user hovers the mouse
@@ -644,7 +648,7 @@ impl SpectrumApp {
     }
 
     // === OVERLAYS ===
-
+/*
     fn draw_resize_grip(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, rect: &egui::Rect) {
         // 1. Check Inverted State
         let is_inverted = if let Ok(state) = self.shared_state.lock() {
@@ -711,7 +715,9 @@ impl SpectrumApp {
             }
         }
     }
+*/
 
+/* 
     fn draw_lock_button(&mut self, ui: &mut egui::Ui, rect: egui::Rect, is_focused: bool) {
         // we need mutable access to toggle the state
         let mut state = match self.shared_state.lock() {
@@ -844,7 +850,7 @@ impl SpectrumApp {
         // Keyhole detail
         painter.circle_filled(body_rect.center(), 2.5, egui::Color32::BLACK);
     }
-
+*/
     fn draw_sonar_ping(&self, ui: &mut egui::Ui, rect: egui::Rect, strength: f32, colors: &ColorProfile) {
         // 1. Setup
         let base_color = to_egui_color(colors.high);
