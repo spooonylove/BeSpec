@@ -1,8 +1,11 @@
 use egui::{Painter, Rect, Stroke};
+use crate::media::MediaController;
 use crate::shared_state::{AppConfig, ColorProfile, PerformanceStats, VisualMode, 
     VisualProfile, VisualizationData, MediaDisplayMode};
 use crate::gui::theme::{to_egui_color, db_to_px, lerp_color};
+use crate::gui::widgets::draw_transport_controls;
 use crate::fft_processor::FFTProcessor;
+use std::sync::Arc;
 
 pub fn draw_main_visualizer(
     painter: &Painter,
@@ -13,17 +16,6 @@ pub fn draw_main_visualizer(
     perf: &PerformanceStats,
     mouse_pos: Option<egui::Pos2>,
 ){
-
-    /*// [TRACE 3] Dependency-free version
-    // This will print every frame. Run the app for 5 seconds then close it.
-    if !data.bars.is_empty() { 
-        tracing::info!("[TRACE 3] Drawing! Rect: {:?}, First Bar: {:.1} dB", 
-            rect, 
-            data.bars[0]
-        );
-    }*/
-
-
     let profile = &config.profile;
     let num_bars = data.bars.len();
 
@@ -526,6 +518,7 @@ pub fn draw_media_overlay(
     media_opacity: f32,
     colors: &crate::shared_state::ColorProfile,
     album_art_texture: Option<&egui::TextureHandle>,
+    controller: &dyn MediaController,
 ) {
 
     // 1. Early Exit (Invisible or Off)
@@ -632,17 +625,27 @@ pub fn draw_media_overlay(
 
                             */
 
-                            /*  OLD CODE
                             if cfg!(not(target_os = "macos")) {
                                 ui.add_space(4.0);
-                                self.render_transport_controls(ui, info.is_playing, media_opacity, base_text_color);
+                                draw_transport_controls(
+                                    ui,
+                                    controller,
+                                    info.is_playing,
+                                    media_opacity,
+                                    base_text_color);
                             } else {
                                 ui.add(egui::Label::new(
                                     egui::RichText::new(format!("via {}", info.source_app))
                                         .font(egui::FontId::new(10.0, font_family.clone()))
                                         .color(base_text_color.linear_multiply(0.5).linear_multiply(media_opacity))
                                 ));
-                            }*/
+                            }
+
+                            ui.add(egui::Label::new(
+                                egui::RichText::new(format!("via {}", info.source_app))
+                                        .font(egui::FontId::new(10.0, font_family.clone()))
+                                        .color(base_text_color.linear_multiply(0.5).linear_multiply(media_opacity))
+                            ));
                         });
                     });
                 },

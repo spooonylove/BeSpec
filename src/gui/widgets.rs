@@ -265,3 +265,141 @@ pub fn draw_lock_button(
         // Keyhole detail
         painter.circle_filled(body_rect.center(), 2.5, egui::Color32::BLACK);
     }
+
+// =======================================================================================
+// MEDIA CONTROLS
+// =======================================================================================
+
+/// Helper to draw vector media buttons (Prev / Play / Next)
+/// (ISO 60417 standard geometry)
+pub fn draw_transport_controls(
+    ui: &mut Ui,
+    controller: &dyn MediaController,
+    is_playing: bool,
+    opacity: f32,
+    base_color: egui::Color32
+) {
+    let btn_size = egui::vec2(28.0, 28.0); 
+    let color = base_color.linear_multiply(opacity);
+    let hover_bg = base_color.linear_multiply(0.15 * opacity);
+
+    // Use Right-to-Left to anchor to the right side
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+
+        // === 3. NEXT (ISO 60417-5862) ===
+        // Drawn FIRST so it appears on the Far Right
+        let (rect, resp) = ui.allocate_exact_size(btn_size, egui::Sense::click());
+        if resp.hovered() { ui.painter().rect_filled(rect.expand(2.0), 4.0, hover_bg); }
+        if resp.clicked() { controller.try_next(); }
+
+        if ui.is_rect_visible(rect) {
+            let painter = ui.painter();
+            let c = rect.center();
+            let w = 12.0;
+            let h = 12.0;
+            let bar_w = 2.0;
+
+            // Right Bar
+            let bar_rect = egui::Rect::from_min_size(
+                egui::pos2(c.x + (w / 2.0) - bar_w, c.y - (h / 2.0)), 
+                egui::vec2(bar_w, h)
+            );
+            painter.rect_filled(bar_rect, 0.5, color);
+
+            // Right Triangle
+            let tip = egui::pos2(c.x + (w / 2.0) - bar_w - 1.0, c.y);
+            let base_x = c.x - (w / 2.0);
+
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    tip,
+                    egui::pos2(base_x, c.y - (h / 2.0)),
+                    egui::pos2(base_x, c.y + (h / 2.0)),
+                ],
+                color,
+                egui::Stroke::NONE
+            ));
+        }
+
+        // === 2. PLAY / PAUSE (ISO 60417-5857 / 5858) ===
+        // Drawn SECOND so it appears to the LEFT of Next
+        let (rect, resp) = ui.allocate_exact_size(btn_size, egui::Sense::click());
+        if resp.hovered() { ui.painter().rect_filled(rect.expand(2.0), 4.0, hover_bg);}
+        if resp.clicked() { controller.try_play_pause(); }
+
+        if ui.is_rect_visible(rect) {
+            let painter= ui.painter();
+            let c = rect.center();
+            let h = 14.0; 
+
+            if is_playing {
+                // PAUSE 
+                let bar_w = 4.0;
+                let gap = 3.0;
+
+                painter.rect_filled(
+                    egui::Rect::from_min_size(egui::pos2(c.x - gap/2.0 - bar_w, c.y - h/2.0), egui::vec2(bar_w, h)),
+                    1.0, color
+                );
+                painter.rect_filled(
+                    egui::Rect::from_min_size(egui::pos2(c.x + gap/2.0, c.y - h/2.0), egui::vec2(bar_w, h)), 
+                    1.0, color
+                );
+            } else {
+                // PLAY
+                let optical_offset = 1.5; 
+                let tri_h = 14.0;
+                let tri_w = 12.0;
+
+                let tip = egui::pos2(c.x + (tri_w / 2.0) + optical_offset, c.y);
+                let base_x = c.x - (tri_w / 2.0) + optical_offset;
+
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        tip,
+                        egui::pos2(base_x, c.y - (tri_h / 2.0)),
+                        egui::pos2(base_x, c.y + (tri_h / 2.0)),
+                    ],
+                    color,
+                    egui::Stroke::NONE
+                ));
+            }
+        }
+
+        // === 1. PREVIOUS (ISO 60417-5861) ===
+        // Drawn LAST so it appears to the LEFT of Play
+        let (rect, resp) = ui.allocate_exact_size(btn_size, egui::Sense::click());
+        if resp.hovered() { ui.painter().rect_filled(rect.expand(2.0), 4.0, hover_bg);}
+        if resp.clicked() { controller.try_prev(); }
+
+        if ui.is_rect_visible(rect) {
+            let painter = ui.painter();
+            let c = rect.center();
+            let w = 12.0;
+            let h = 12.0;
+            let bar_w = 2.0;
+
+            // left bar
+            let bar_rect = egui::Rect::from_min_size(
+                egui::pos2(c.x - (w / 2.0), c.y - (h / 2.0)),
+                egui::vec2(bar_w, h)
+            );
+            painter.rect_filled(bar_rect, 0.5, color);
+
+            // left triangle
+            let tip = egui::pos2(c.x  - (w / 2.0) + bar_w + 1.0, c.y);
+            let base_x = c.x + (w / 2.0);
+
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    tip,
+                    egui::pos2(base_x, c.y - (h / 2.0)),
+                    egui::pos2(base_x, c.y + (h / 2.0)),
+                ],
+                color,
+                egui::Stroke::NONE
+            ));
+        }
+    });
+}
