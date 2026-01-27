@@ -1,4 +1,4 @@
-use egui::{Painter, Rect, Pos2, Stroke};
+use egui::{Painter, Rect, Stroke};
 use crate::shared_state::{AppConfig, ColorProfile, PerformanceStats, VisualMode, 
     VisualProfile, VisualizationData, MediaDisplayMode};
 use crate::gui::theme::{to_egui_color, db_to_px, lerp_color};

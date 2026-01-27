@@ -2,6 +2,7 @@
 pub mod theme;
 pub mod visualizers;
 pub mod decorations;
+pub mod widgets;
 
 use crate::gui::theme::*;
 use crate::gui::visualizers as viz; // Alias for cleaner calls
@@ -124,15 +125,6 @@ impl eframe::App for SpectrumApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         
-        /*
-        // [TRACE 1] UNCONDITIONAL: Check Window Geometry
-        if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
-            tracing::info!("[GUI] 🪟 Geometry: Pos({:.0}, {:.0}) Size({:.0}x{:.0})", 
-                rect.min.x, rect.min.y, rect.width(), rect.height());
-        } else {
-            tracing::warn!("[GUI] ⚠️ Geometry: NO VALID RECT (Minimized/Hidden?)");
-        }*/
-
         // --- Poll for Media Updates ---
         let mut new_track = None;
         while let Ok(info) = self.media_rx.try_recv() {
@@ -265,13 +257,6 @@ impl eframe::App for SpectrumApp {
             (egui::Color32::BLACK, false, 1.0) 
         };
 
-        /*// [TRACE 2] UNCONDITIONAL: Check Calculated Color
-        tracing::info!("[GUI] 🎨 Color: R:{} G:{} B:{} A:{} | AlphaFloat: {:.2} | Locked: {}", 
-            bg_color_egui.r(), bg_color_egui.g(), bg_color_egui.b(), bg_color_egui.a(), 
-            background_alpha,
-            window_locked
-        );*/
-    
         // === 3. Ghost Mode Logic === (Focus-to-Wake) ===
         // Determines if the window should ignore mouse events (click-through).
         // We only enable passthrough if ALL conditions are met:
@@ -313,7 +298,8 @@ impl eframe::App for SpectrumApp {
 
 
                 // Handle Dragging
-                self.handle_window_drag(ctx, ui, window_rect);
+                //self.handle_window_drag(ctx, ui, window_rect);
+                crate::gui::widgets::handle_window_interaction(ui, ctx, window_rect,&mut self.settings_open);
                 
                 // === Orchestration Setup: Calculate Opacity
                 // Briefly lock to get the config/timepstamps for logic
@@ -330,19 +316,11 @@ impl eframe::App for SpectrumApp {
 
                 //Scope management for State Lock!!!
                 {
-                    /* 
-                    tracing::info!("[GUI] 🟢 Acquiring Lock..."); // Breadcrumb 1
-                    */
+
                     // Visualization (requres Read-only Lock)
                     let state = self.shared_state.lock().unwrap(); //lock once!
 
-                    
-                    /*// [TRACE 3] UNCONDITIONAL: Verify State before Draw
-                    tracing::info!("[GUI] 🔒 Orchestrator: Bars: {}, Mode: {:?}, Media: {}", 
-                        state.visualization.bars.len(), 
-                        state.config.profile.visual_mode,
-                        if state.media_info.is_some() { "YES" } else { "NO" }
-                    );*/
+
                     
                     let viz_data = &state.visualization;
 
@@ -350,7 +328,6 @@ impl eframe::App for SpectrumApp {
                     let media_info = state.media_info.as_ref();
                     let colors = state.config.resolve_colors(&state.user_color_presets);
 
-                    //tracing::info!("[GUI] 🟢 Calling Visualizer..."); // Breadcrumb 2
                     // === Render Visualization ===
                     crate::gui::visualizers::draw_main_visualizer(
                         ui.painter(),
@@ -361,7 +338,6 @@ impl eframe::App for SpectrumApp {
                         perf,
                         ui.input(|i| i.pointer.hover_pos()),
                     );
-                    //tracing::info!("[GUI] 🟢 Visualizer Returned."); // Breadcrumb 3
 
                     // Sonar Ping Effect
                     if flash_strength > 0.0 {
@@ -385,12 +361,9 @@ impl eframe::App for SpectrumApp {
                     }
                 }
 
-                //racing::info!("[GUI] 🟢 Lock Dropped."); // Breadcrumb 4
 
-                //tracing::info!("[GUI] 🟢 Calling Window Controls..."); // Breadcrumb 5
                 // Render the windows controls (resize grips, lock button, context menu)
                 self.draw_window_controls(ctx, ui, is_focused, window_rect);
-                //tracing::info!("[GUI] 🟢 Window Controls Returned."); // Breadcrumb 6
 
             });
         
@@ -540,319 +513,6 @@ impl SpectrumApp {
         }
     }
 
-/*
-    /// Render the main spectrum visualizer
-    fn render_visualizer(&mut self, ui: &mut egui::Ui) {
-        // 1. Aquire Locks and Setup
-        let state = match self.shared_state.lock() {
-            Ok(state) => state,
-            Err(_) => {
-                ui.centered_and_justified(|ui| {
-                    ui.label("⚠ Error: Cannot access audio data");
-                });
-                return;
-            }
-        };
-
-        let config = &state.config;
-        let profile = &config.profile;
-        let colors = &config.resolve_colors(&state.user_color_presets);
-
-        let viz_data = &state.visualization;
-        let perf = &state.performance;
-
-        // 2. Allocate Drawing Space
-        let available_size = ui.available_size();
-        let (_, viz_rect) = ui.allocate_space(available_size);
-
-        // We grab the painter directly to draw on top of the empty space
-        let painter = ui.painter();
-
-        // 3. Early exit if no data (unless in Oscope mode)
-        let num_bars = viz_data.bars.len();
-        if num_bars == 0 && profile.visual_mode != VisualMode::Oscilloscope {
-            drop(state);
-            ui.centered_and_justified(|ui| {
-                ui.label("⏸ Waiting for audio...");
-            });
-            return;
-        }
-
-        // 4. Calculate Common Layout Helpers
-        // Ensure we don't divide by zero even if bars are missing
-        let bar_slot_width = viz_rect.width() / num_bars.max(1) as f32;
-        let bar_width = (bar_slot_width - profile.bar_gap_px as f32).max(1.0);
-
-        // 5. Handle mouse interactions (for frequency modes)
-        let hovered_bar_index = if config.inspector_enabled && profile.visual_mode != VisualMode::Oscilloscope {
-            if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
-                if viz_rect.contains(pos) {
-                    let relative_x = pos.x - viz_rect.left();
-                    let index = (relative_x / bar_slot_width).floor() as usize;
-                    if index < num_bars {Some(index)} else { None }
-                }else { None }
-            }else { None }
-        } else { None };
-
-        // 6. Dispatch Drawing Strategy
-        match profile.visual_mode {
-            VisualMode::SolidBars => {
-                viz::draw_solid_bars(
-                    &painter,
-                    viz_rect,
-                    profile,
-                    &colors,                 
-                    viz_data,                    
-                    bar_width,
-                    bar_slot_width,
-                    hovered_bar_index,
-                    config.noise_floor_db);
-            },
-            VisualMode::SegmentedBars => {
-                viz::draw_segmented_bars(
-                    &painter,
-                    viz_rect,
-                    profile,
-                    &colors,
-                    viz_data,
-                    bar_width,
-                    bar_slot_width,
-                    hovered_bar_index,
-                    config.noise_floor_db);
-            },
-            VisualMode::LineSpectrum => {
-                viz::draw_line_spectrum(
-                    &painter,
-                    viz_rect,
-                    profile,
-                    &colors,
-                    viz_data,
-                    hovered_bar_index,
-                    config.noise_floor_db);
-            },
-            VisualMode::Oscilloscope => {
-                viz::draw_oscilloscope(
-                    &painter,
-                    viz_rect,
-                    profile,
-                    &colors,
-                    viz_data,
-                );
-            },
-        }
-        
-        // 7. Draw Overlays
-        if let Some(index) = hovered_bar_index {
-            viz::draw_inspector_overlay(
-                &painter,
-                viz_rect,
-                &colors,
-                viz_data,
-                perf,
-                index,
-                bar_slot_width,
-                config.noise_floor_db);
-        }
-
-        if config.show_stats {
-            viz::draw_stats_overlay(
-                &painter,
-                viz_rect,
-                &colors,
-                perf);
-        }
-    }
-*/
-    // ========== DRAWING HELPERS ==========
-/* 
-    fn render_media_overlay(&mut self, ui: &mut egui::Ui) {
-        let state = self.shared_state.lock().unwrap();
-        let config = &state.config;
-
-        // 1. Handle "Off" case early
-        if config.media_display_mode == MediaDisplayMode::Off {
-            return;
-        }
-
-        let colors = config.resolve_colors(&state.user_color_presets);
-        let base_text_color = to_egui_color(colors.text);
-
-        // 2. Info check
-        let info_opt = state.media_info.clone();
-
-        // Font Selection
-        let font_family = match config.profile.overlay_font {
-            crate::shared_state::ThemeFont::Standard => egui::FontFamily::Proportional,
-            crate::shared_state::ThemeFont::Monospace => egui::FontFamily::Monospace,
-        };
-        
-        // 3. Layout Rect calculation
-        // Calculate based on the full screen rect since we use an Area
-        let rect = ui.ctx().screen_rect();
-        let overlay_w = rect.width() * 0.5;
-        let overlay_h = 100.0;
-        let pos = egui::pos2(rect.right() - overlay_w - 20.0, rect.top() + 20.0);
-
-        // 4. Determine Interaction / Active State & Target Opacity
-        let dt = ui.input(|i| i.stable_dt).min(0.1);
-        let mut target_opacity = 0.0;
-
-        // If info is missing but we are in AlwaysOn, we show placeholder at full opacity
-        // If info is missing and Fade, we show nothing.
-        let has_info = info_opt.is_some();
-
-        match config.media_display_mode {
-            MediaDisplayMode::AlwaysOn => target_opacity = 1.0,
-            MediaDisplayMode::FadeOnUpdate => {
-                if !has_info {
-                    target_opacity = 0.0;
-                } else {
-                    let now = Instant::now();
-                    let hold_time = 5.0; // Stay visible for 5s after event
-                    let mut active = false;
-
-                    // A. Check Track Update Activity
-                    if let Some(last_update) = state.last_media_update {
-                        if now.duration_since(last_update).as_secs_f32() < hold_time {
-                            active = true;
-                        }
-                    }
-
-                    // B. Check Mouse Hover Activity (Global Window)
-                    if ui.input(|i| i.pointer.hover_pos().is_some()) {
-                        self.last_media_interaction = Some(now);
-                        active = true;
-                    }
-
-                    // C. Check Historic Interaction
-                    if let Some(last_interact) = self.last_media_interaction {
-                        if now.duration_since(last_interact).as_secs_f32() < hold_time {
-                            active = true;
-                        }
-                    }
-
-                    target_opacity = if active { 1.0 } else { 0.0 };
-                }
-            },
-            MediaDisplayMode::Off => {},
-        }
-
-        // 5. Animate Opacity
-        let speed = if target_opacity > self.media_opacity { 6.0 } else { 1.0 };
-        self.media_opacity += (target_opacity - self.media_opacity) * speed * dt;
-        self.media_opacity = self.media_opacity.clamp(0.0, 1.0);
-
-        if self.media_opacity <= 0.01 {
-            return; // Invisible
-        }
-
-        // Force repaint if animating
-        if self.media_opacity > 0.01 && self.media_opacity < 0.99 {
-            ui.ctx().request_repaint();
-        }
-
-        // 6. Draw Content in an Allocatd Rect 
-        // We use an allocted rect to draw  directly into the current area
-        let overlay_rect = egui::Rect::from_min_size(pos, egui::vec2(overlay_w, overlay_h));
-        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
-            // Force right-to-left layout
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                // Manually restrict size
-                ui.set_max_width(overlay_w);
-
-                if let Some(info) = info_opt {
-                    // === CASE A: Track Info Present ===
-                    
-                    // Album Art
-                    if let Some(texture) = &self.album_art_texture {
-                        let tint = egui::Color32::WHITE.linear_multiply(self.media_opacity);
-
-                        let img_response = ui.add(
-                            egui::Image::new(texture)
-                                .max_height(50.0)
-                                .rounding(4.0)
-                                .tint(tint)
-                                .sense(egui::Sense::click())
-                            );   
-                        if img_response.clicked() {
-                            // Clone string data to move into the thread
-                            let artist = info.artist.clone();
-                            let title = info.title.clone();
-                            let album = info.album.clone();
-
-                            // Spawn a thread to prevent blocking the GUI during the network request
-                            std::thread::spawn(move || {
-                                // Generate the URL (Blocking call to ureq inside fetch_wikipedia_url)
-                                let url = crate::media::fetch_wikipedia_url(&artist, &title, &album);
-                                tracing::info!("[GUI] Opening Wiki URL: {}", url);
-
-                                // Open in default system browser
-                                if let Err(e) = open::that(&url) {
-                                    tracing::error!("[GUI] Failed to open URL: {}", e);
-                                }
-                            });
-                        }
-
-                        if img_response.hovered() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                            img_response.on_hover_text(format!("Search Wikipedia for '{}'", info.artist));
-                        }
-                        
-                        ui.add_space(10.0); 
-
-                    }
-
-                    // Text Stack
-                    ui.vertical(|ui| {
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
-                            // Title
-                            ui.add(egui::Label::new(
-                                egui::RichText::new(&info.title)
-                                    .font(egui::FontId::new(16.0, font_family.clone()))
-                                    .strong()
-                                    .color(base_text_color.linear_multiply(self.media_opacity))
-                            ));
-
-                            // Artist
-                            ui.add(egui::Label::new(
-                                egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                                    .font(egui::FontId::new(11.0, font_family.clone()))
-                                    .color(base_text_color.linear_multiply(0.8).linear_multiply(self.media_opacity))
-                            ));
-
-                            ui.add_space(2.0);
-
-                            // Controls
-                            if cfg!(not(target_os = "macos")) {
-                                ui.add_space(4.0);
-                                self.render_transport_controls(ui, info.is_playing, self.media_opacity, base_text_color);
-                            } else {
-                                ui.add(egui::Label::new(
-                                    egui::RichText::new(format!("via {}", info.source_app))
-                                        .font(egui::FontId::new(10.0, font_family.clone()))
-                                        .color(base_text_color.linear_multiply(0.5).linear_multiply(self.media_opacity))
-                                ));
-                            }
-                        });
-                    });
-
-                } else if config.media_display_mode == MediaDisplayMode::AlwaysOn {
-                    // === CASE B: No Info, but Always On ===
-                    ui.vertical(|ui| {
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
-                            ui.add(egui::Label::new(
-                                egui::RichText::new("Waiting for media...")
-                                    .font(egui::FontId::new(14.0, font_family.clone()))
-                                    .color(egui::Color32::from_white_alpha(150).linear_multiply(self.media_opacity))
-                                    .color(base_text_color.linear_multiply(0.6).linear_multiply(self.media_opacity))
-                            ));
-                        });
-                    });
-                }   
-            });
-        });
-    }
-*/
 
 
     /// Helper to draw vector buttons (ISO 60417 standard geometry)
