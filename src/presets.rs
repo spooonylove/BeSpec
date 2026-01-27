@@ -387,7 +387,7 @@ pub fn built_in_visuals() -> Vec<VisualProfile> {
             name: "Chill Wave".to_string(),
             visual_mode: VisualMode::LineSpectrum,
             num_bars: 256,
-            overlay_font: ThemeFont::Standard,
+            overlay_font: ThemeFont::Medium,
             color_link: ColorRef::Preset("Blueprint (Light)".to_string()),
             attack_time_ms: 80.0,
             release_time_ms: 300.0,

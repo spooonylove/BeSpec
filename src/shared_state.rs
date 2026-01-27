@@ -31,7 +31,10 @@ pub enum MediaDisplayMode {
 
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
 pub enum ThemeFont{
-    Standard,       // Clean, sans-serif
+    Mini,
+    Small,
+    Medium,
+    Large,
     Monospace,      // Retro / Code-style 
 }
 
@@ -145,7 +148,7 @@ impl Default for VisualProfile {
             inverted_spectrum: false,
             fill_peaks: false,
             show_peaks: true,
-            overlay_font: ThemeFont::Standard,
+            overlay_font: ThemeFont::Medium,
 
             sensitivity: 1.0,
             attack_time_ms: 20.0,
@@ -304,6 +307,16 @@ pub struct AppConfig {
     // === Media Settings ===
     pub media_display_mode: MediaDisplayMode,
     pub media_fade_duration_sec: f32,
+
+    // === BeOS Settings === 
+    /// BeOS Easter Egg Mode
+    pub beos_mode: bool,
+    
+    /// Horizontal offset for the sliding BeOS tab
+    pub beos_tab_offset: f32,
+
+    /// Whether the window is 'shuttered' (collapsed into the tab)
+    pub beos_window_collapsed: bool,
 }
 
 impl Default for AppConfig {
@@ -321,6 +334,9 @@ impl Default for AppConfig {
             noise_floor_db: -60.0,
             media_display_mode: MediaDisplayMode::FadeOnUpdate,
             media_fade_duration_sec: 5.0,
+            beos_mode: false,
+            beos_tab_offset: 20.0,
+            beos_window_collapsed: false,
         }
     }
 }

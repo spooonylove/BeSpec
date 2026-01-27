@@ -580,7 +580,6 @@ fn main (){
     let (media_tx, media_rx) = bounded(10);
     media_manager.start(media_tx);
 
-
     tracing::info!("[Main] Starting GUI...\n");
 
     // Load the icon
