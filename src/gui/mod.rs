@@ -18,7 +18,7 @@ use crate::shared_state::{Color32 as StateColor32, ColorProfile, MediaDisplayMod
 use crate::shared_state::ColorRef;
 
 #[derive(PartialEq, Debug)]
-enum SettingsTab {
+pub enum SettingsTab {
     Visual, 
     Audio,
     Colors,
@@ -27,7 +27,7 @@ enum SettingsTab {
 }
 
 #[derive(PartialEq)]
-enum SaveTarget {
+pub enum SaveTarget {
     None,
     Visual,
     Color,
@@ -463,135 +463,6 @@ impl SpectrumApp {
         }
     }
 
-/* 
-    /// Helper to draw vector buttons (ISO 60417 standard geometry)
-    fn render_transport_controls(&self, ui: &mut egui::Ui, is_playing: bool, opacity: f32, base_color: egui::Color32) {
-        let btn_size = egui::vec2(28.0, 28.0); 
-        let color = base_color.linear_multiply(opacity);
-        // background highlight on hover
-        let hover_bg = base_color.linear_multiply(0.15 * opacity);
-
-        // Use Right-to-Left to anchor to the right side
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-
-            // === 3. NEXT (ISO 60417-5862) ===
-            // Drawn FIRST so it appears on the Far Right
-            let (rect, resp) = ui.allocate_exact_size(btn_size, egui::Sense::click());
-            if resp.hovered() { ui.painter().rect_filled(rect.expand(2.0), 4.0, hover_bg); }
-            if resp.clicked() { self.media_controller.try_next(); }
-
-            if ui.is_rect_visible(rect) {
-                let painter = ui.painter();
-                let c = rect.center();
-                let w = 12.0;
-                let h = 12.0;
-                let bar_w = 2.0;
-
-                // Right Bar
-                let bar_rect = egui::Rect::from_min_size(
-                    egui::pos2(c.x + (w / 2.0) - bar_w, c.y - (h / 2.0)), 
-                    egui::vec2(bar_w, h)
-                );
-                painter.rect_filled(bar_rect, 0.5, color);
-
-                // Right Triangle
-                let tip = egui::pos2(c.x + (w / 2.0) - bar_w - 1.0, c.y);
-                let base_x = c.x - (w / 2.0);
-
-                painter.add(egui::Shape::convex_polygon(
-                    vec![
-                        tip,
-                        egui::pos2(base_x, c.y - (h / 2.0)),
-                        egui::pos2(base_x, c.y + (h / 2.0)),
-                    ],
-                    color,
-                    egui::Stroke::NONE
-                ));
-            }
-
-            // === 2. PLAY / PAUSE (ISO 60417-5857 / 5858) ===
-            // Drawn SECOND so it appears to the LEFT of Next
-            let (rect, resp) = ui.allocate_exact_size(btn_size, egui::Sense::click());
-            if resp.hovered() { ui.painter().rect_filled(rect.expand(2.0), 4.0, hover_bg);}
-            if resp.clicked() { self.media_controller.try_play_pause(); }
-
-            if ui.is_rect_visible(rect) {
-                let painter= ui.painter();
-                let c = rect.center();
-                let h = 14.0; 
-
-                if is_playing {
-                    // PAUSE 
-                    let bar_w = 4.0;
-                    let gap = 3.0;
-
-                    painter.rect_filled(
-                        egui::Rect::from_min_size(egui::pos2(c.x - gap/2.0 - bar_w, c.y - h/2.0), egui::vec2(bar_w, h)),
-                        1.0, color
-                    );
-                    painter.rect_filled(
-                        egui::Rect::from_min_size(egui::pos2(c.x + gap/2.0, c.y - h/2.0), egui::vec2(bar_w, h)), 
-                        1.0, color
-                    );
-                } else {
-                    // PLAY
-                    let optical_offset = 1.5; 
-                    let tri_h = 14.0;
-                    let tri_w = 12.0;
-
-                    let tip = egui::pos2(c.x + (tri_w / 2.0) + optical_offset, c.y);
-                    let base_x = c.x - (tri_w / 2.0) + optical_offset;
-
-                    painter.add(egui::Shape::convex_polygon(
-                        vec![
-                            tip,
-                            egui::pos2(base_x, c.y - (tri_h / 2.0)),
-                            egui::pos2(base_x, c.y + (tri_h / 2.0)),
-                        ],
-                        color,
-                        egui::Stroke::NONE
-                    ));
-                }
-            }
-
-            // === 1. PREVIOUS (ISO 60417-5861) ===
-            // Drawn LAST so it appears to the LEFT of Play
-            let (rect, resp) = ui.allocate_exact_size(btn_size, egui::Sense::click());
-            if resp.hovered() { ui.painter().rect_filled(rect.expand(2.0), 4.0, hover_bg);}
-            if resp.clicked() { self.media_controller.try_prev(); }
-
-            if ui.is_rect_visible(rect) {
-                let painter = ui.painter();
-                let c = rect.center();
-                let w = 12.0;
-                let h = 12.0;
-                let bar_w = 2.0;
-
-                // left bar
-                let bar_rect = egui::Rect::from_min_size(
-                    egui::pos2(c.x - (w / 2.0), c.y - (h / 2.0)),
-                    egui::vec2(bar_w, h)
-                );
-                painter.rect_filled(bar_rect, 0.5, color);
-
-                // left triangle
-                let tip = egui::pos2(c.x  - (w / 2.0) + bar_w + 1.0, c.y);
-                let base_x = c.x + (w / 2.0);
-
-                painter.add(egui::Shape::convex_polygon(
-                    vec![
-                        tip,
-                        egui::pos2(base_x, c.y - (h / 2.0)),
-                        egui::pos2(base_x, c.y + (h / 2.0)),
-                    ],
-                    color,
-                    egui::Stroke::NONE
-                ));
-            }
-        });
-    }
-*/
     // === OVERLAYS ===
 
     fn draw_sonar_ping(&self, ui: &mut egui::Ui, rect: egui::Rect, strength: f32, colors: &ColorProfile) {
@@ -709,11 +580,11 @@ impl SpectrumApp {
         ui.horizontal(|ui| {
             let colors = state.config.resolve_colors(&state.user_color_presets);
             let highlight = to_egui_color(colors.high);
-            ui_tab_button(ui, " 🎨 Visual ", SettingsTab::Visual, &mut self.active_tab, highlight);
-            ui_tab_button(ui, " 🔊 Audio ", SettingsTab::Audio, &mut self.active_tab, highlight);
-            ui_tab_button(ui, " 🌈 Colors ", SettingsTab::Colors, &mut self.active_tab, highlight);
-            ui_tab_button(ui, " 🪟 Window ", SettingsTab::Window, &mut self.active_tab, highlight);
-            ui_tab_button(ui, " 📊 Stats ", SettingsTab::Performance, &mut self.active_tab, highlight);
+            widgets::ui_tab_button(ui, " 🎨 Visual ", SettingsTab::Visual, &mut self.active_tab, highlight);
+            widgets::ui_tab_button(ui, " 🔊 Audio ", SettingsTab::Audio, &mut self.active_tab, highlight);
+            widgets::ui_tab_button(ui, " 🌈 Colors ", SettingsTab::Colors, &mut self.active_tab, highlight);
+            widgets::ui_tab_button(ui, " 🪟 Window ", SettingsTab::Window, &mut self.active_tab, highlight);
+            widgets::ui_tab_button(ui, " 📊 Stats ", SettingsTab::Performance, &mut self.active_tab, highlight);
         });
         ui.separator();
 
@@ -770,7 +641,7 @@ impl SpectrumApp {
 
             // -- Save Popup --
             if self.save_target == SaveTarget::Visual {
-                ui_save_popup(ui, &mut self.new_preset_name, |name| {
+                widgets::ui_save_popup(ui, &mut self.new_preset_name, |name| {
                     state.config.profile.name = name.clone();
                     if let Err(e) = crate::shared_state::AppConfig::save_user_visual_preset(&state.config.profile) {
                         eprintln!("Error saving visual preset: {}", e);
@@ -1052,7 +923,7 @@ impl SpectrumApp {
 
          // -- Save Popup --
          if self.save_target == SaveTarget::Color {
-            ui_save_popup(ui, &mut self.new_preset_name, |name| {
+            widgets::ui_save_popup(ui, &mut self.new_preset_name, |name: String| {
                 let mut new_profile = current_colors.clone();
                 new_profile.name = name.clone();
                 if let Err(e) = crate::shared_state::AppConfig::save_user_color_preset(&new_profile) {
@@ -1217,8 +1088,8 @@ impl SpectrumApp {
 
 
 // === Helper Functions ===
-
-    /// A custom "Pill" style tab button with animations and theme integration
+/* 
+/// A custom "Pill" style tab button with animations and theme integration
 fn ui_tab_button(
     ui: &mut egui::Ui,
     label: &str,
@@ -1277,7 +1148,7 @@ fn ui_save_popup(
         });
     });
 }
-
+*/
 
 
 fn from_egui_color(c: egui::Color32) -> StateColor32 {

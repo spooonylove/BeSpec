@@ -1,6 +1,7 @@
 use eframe::egui::{self, Ui, Rect, Context, Sense, RichText, Color32};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use crate::gui::{SettingsTab, SaveTarget};
 use crate::shared_state::{self, ColorProfile, SharedState};
 use crate::media::MediaController;
 
@@ -401,5 +402,70 @@ pub fn draw_transport_controls(
                 egui::Stroke::NONE
             ));
         }
+    });
+}
+
+// =======================================================================================
+// SETTING UI COMPONENTS
+// =======================================================================================
+
+/// "Pill" style tab button
+pub fn ui_tab_button(
+    ui: &mut Ui,
+    label: &str,
+    tab: SettingsTab,
+    active_tab: &mut SettingsTab,
+    highlight_color: Color32,
+){
+    let is_selected = *active_tab == tab;
+
+    // Text color: Black/White if selected, default grey if not
+    let text_color = if is_selected {
+        egui::Color32::BLACK 
+    } else {
+        ui.visuals().text_color()
+    };
+    
+    // Draw the button
+    let response = ui.add(
+        egui::Button::new(egui::RichText::new(label).size(14.0).color(text_color))
+            .fill(if is_selected {highlight_color} else {egui::Color32::TRANSPARENT})
+            .frame(is_selected)     // only paint the background if selected
+            .rounding(12.0)         // Rounding = 1/2 the hieght for pill shape
+            .min_size(egui::vec2(80.0, 28.0)) // Wide clickable area
+    );
+    if response.clicked() {
+        *active_tab = tab;
+    }
+
+    // Subltle hover effect for inactive tabs
+    if response.hovered() && !is_selected {
+        ui.painter().rect_filled(
+            response.rect,
+            12.0,
+            ui.visuals().widgets.hovered.bg_fill.linear_multiply(0.2)
+        );
+    }
+}
+
+/// Simple Text Entry Pop-up
+pub fn ui_save_popup( 
+    ui: &mut Ui,
+    name_buffer: &mut String,
+    mut on_save: impl FnMut(String),
+    target_flag: &mut SaveTarget,
+){
+    ui.group(|ui| {
+        ui.horizontal(|ui| {
+            ui.label("Name:");
+            ui.text_edit_singleline(name_buffer);
+            if ui.button("Confirm").clicked() && !name_buffer.is_empty() {
+                on_save(name_buffer.clone());
+                *target_flag = SaveTarget::None;
+            }
+            if ui.button("Cancel").clicked() {
+                *target_flag = SaveTarget::None;
+            }
+        });
     });
 }
