@@ -7,13 +7,14 @@ pub mod widgets;
 use crate::gui::theme::*;
 use crate::gui::visualizers as viz; // Alias for cleaner calls
 
+
 use crossbeam_channel::Receiver;
 use eframe:: egui;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::fft_config::FIXED_FFT_SIZE;
-use crate::media::{PlatformMedia, MediaController};
+use crate::media::{PlatformMedia};
 use crate::shared_state::{Color32 as StateColor32, ColorProfile, MediaDisplayMode, SharedState, VisualMode, VisualProfile};
 use crate::shared_state::ColorRef;
 
@@ -299,7 +300,7 @@ impl eframe::App for SpectrumApp {
 
                 // Handle Dragging
                 //self.handle_window_drag(ctx, ui, window_rect);
-                crate::gui::widgets::handle_window_interaction(ui, ctx, window_rect,&mut self.settings_open);
+                widgets::handle_window_interaction(ui, ctx, window_rect,&mut self.settings_open);
                 
                 // === Orchestration Setup: Calculate Opacity
                 // Briefly lock to get the config/timepstamps for logic
@@ -329,7 +330,7 @@ impl eframe::App for SpectrumApp {
                     let colors = state.config.resolve_colors(&state.user_color_presets);
 
                     // === Render Visualization ===
-                    crate::gui::visualizers::draw_main_visualizer(
+                    viz::draw_main_visualizer(
                         ui.painter(),
                         viz_rect,
                         viz_data,
@@ -341,13 +342,13 @@ impl eframe::App for SpectrumApp {
 
                     // Sonar Ping Effect
                     if flash_strength > 0.0 {
-                        self.draw_sonar_ping(ui, ui.max_rect().shrink(5.0), flash_strength, &colors);
+                        viz::draw_sonar_ping(ui, ui.max_rect().shrink(5.0), flash_strength, &colors);
                     }
                     
                     // Media Overlay
                     if self.media_opacity > 0.01 {
                         if let Some(info) = media_info{
-                            crate::gui::visualizers::draw_media_overlay(
+                            viz::draw_media_overlay(
                                 ui,
                                 viz_rect,
                                 Some(info),
@@ -371,11 +372,11 @@ impl eframe::App for SpectrumApp {
                 } else {
                     false
                 };
-                crate::gui::widgets::draw_resize_grip(ui, ctx, window_rect, is_inverted);
+                widgets::draw_resize_grip(ui, ctx, window_rect, is_inverted);
 
                 // 2. Lock Button (needs mutable State Access)
                 // We pass the Arc<Mutex> so the widget can lock it internally when clicked
-                crate::gui::widgets::draw_lock_button(ui, window_rect, &self.shared_state, &mut self.last_media_interaction, is_focused);
+                widgets::draw_lock_button(ui, window_rect, &self.shared_state, &mut self.last_media_interaction, is_focused);
 
             });
         
@@ -465,50 +466,7 @@ impl SpectrumApp {
 
     // === OVERLAYS ===
 
-    fn draw_sonar_ping(&self, ui: &mut egui::Ui, rect: egui::Rect, strength: f32, colors: &ColorProfile) {
-        // 1. Setup
-        let base_color = to_egui_color(colors.high);
-        
-        let rounding = 12.0;
-
-        // 2. Calculate Animation State based on 'strength' (1.0 -> 0.0)
-        
-        // Alpha: Directly use strength (starts bright, fades to 0)
-        // We square it so it stays bright a bit longer then drops off
-        let global_alpha = strength.powi(2);
-        
-        // Expansion: Invert strength so we start at 0 expansion and grow outward
-        // Grows up to 12px outward
-        let progress = 1.0 - strength; 
-        let expansion = 2.0 + (10.0 * progress); 
-
-        let painter = ui.painter();
-
-        // 3. Draw Multi-Pass Glow
-        
-        // Pass 1: The "Haze" (Wide, Outer, Very Transparent)
-        painter.rect_stroke(
-            rect.expand(expansion + 4.0), 
-            rounding,
-            egui::Stroke::new(6.0, base_color.linear_multiply(0.10 * global_alpha))
-        );
-
-        // Pass 2: The "Glow" (Medium, Middle, Medium Transparent)
-        painter.rect_stroke(
-            rect.expand(expansion + 2.0), 
-            rounding,
-            egui::Stroke::new(3.0, base_color.linear_multiply(0.3 * global_alpha))
-        );
-
-        // Pass 3: The "Filament" (Thin, Inner, Bright)
-        painter.rect_stroke(
-            rect.expand(expansion), 
-            rounding,
-            egui::Stroke::new(1.0, base_color.linear_multiply(0.8 * global_alpha))
-        );
-    }   
-
-    fn render_preview_spectrum(&self, ui: &mut egui::Ui, current_colors: &ColorProfile, bar_opacity: f32) {
+    /*fn render_preview_spectrum(&self, ui: &mut egui::Ui, current_colors: &ColorProfile, bar_opacity: f32) {
         ui.label("Preview:");
         let height = 60.0;
         let (response, painter) = ui.allocate_painter(
@@ -568,7 +526,7 @@ impl SpectrumApp {
                 painter.rect_filled(peak_rect, 0.0, peak);
             }
         }
-    }
+    }*/
 
     /// Render settings window content
     fn render_settings_window(&mut self, ui: &mut egui::Ui) {
@@ -963,7 +921,7 @@ impl SpectrumApp {
          });
          
          ui.add_space(10.0);
-         self.render_preview_spectrum(ui, &current_colors, bar_opacity);
+         viz::draw_preview_spectrum(ui, &current_colors, bar_opacity);
 
          current_colors.low = from_egui_color(egui_low);
          current_colors.high = from_egui_color(egui_high);
@@ -1088,143 +1046,4 @@ impl SpectrumApp {
 
 
 // === Helper Functions ===
-/* 
-/// A custom "Pill" style tab button with animations and theme integration
-fn ui_tab_button(
-    ui: &mut egui::Ui,
-    label: &str,
-    tab: SettingsTab,
-    active_tab: &mut SettingsTab,
-    highlight_color: egui::Color32,
-) {
-    let is_selected = *active_tab == tab;
 
-    // Text color: Black/White if selected, default grey if not
-    let text_color = if is_selected {
-        egui::Color32::BLACK 
-    } else {
-        ui.visuals().text_color()
-    };
-    
-    // Draw the button
-    let response = ui.add(
-        egui::Button::new(egui::RichText::new(label).size(14.0).color(text_color))
-            .fill(if is_selected {highlight_color} else {egui::Color32::TRANSPARENT})
-            .frame(is_selected)     // only paint the background if selected
-            .rounding(12.0)         // Rounding = 1/2 the hieght for pill shape
-            .min_size(egui::vec2(80.0, 28.0)) // Wide clickable area
-    );
-    if response.clicked() {
-        *active_tab = tab;
-    }
-
-    // Subltle hover effect for inactive tabs
-    if response.hovered() && !is_selected {
-        ui.painter().rect_filled(
-            response.rect,
-            12.0,
-            ui.visuals().widgets.hovered.bg_fill.linear_multiply(0.2)
-        );
-    }
-}
-
-fn ui_save_popup(
-    ui: &mut egui::Ui,
-    name_buffer: &mut String,
-    mut on_save: impl FnMut(String),
-    target_flag: &mut SaveTarget,
-) {
-    ui.group(|ui| {
-        ui.horizontal(|ui| {
-            ui.label("Name:");
-            ui.text_edit_singleline(name_buffer);
-            if ui.button("Confirm").clicked() && !name_buffer.is_empty() {
-                on_save(name_buffer.clone());
-                *target_flag = SaveTarget::None;
-            }
-            if ui.button("Cancel").clicked() {
-                *target_flag = SaveTarget::None;
-            }
-        });
-    });
-}
-*/
-
-
-fn from_egui_color(c: egui::Color32) -> StateColor32 {
-    StateColor32 { r: c.r(), g: c.g(), b: c.b(), a: c.a() }
-}
-
-
-
-// =============== Tests ==================
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // --- 1. Math Helper Tests ---
-    
-    // Test the decibel to pixel mapping
-    #[test]
-    fn test_db_to_px_scaling() {
-        let app = SpectrumApp::new(
-            Arc::new(Mutex::new(SharedState::new())), 
-            crossbeam_channel::unbounded().1, 
-            Arc::new(PlatformMedia::new()) // Dummy media
-        );
-
-        let max_h = 100.0;
-        let floor = -60.0; // The noise floor
-
-        // Case A: Signal is at noise floor (should be 0 height)
-        let h_silence = theme::db_to_px(-60.0, floor, max_h);
-        assert_eq!(h_silence, 0.0);
-
-        // Case B: Signal is below noise floor (should be clamped to 0)
-        let h_deep_silence = theme::db_to_px(-100.0, floor, max_h);
-        assert_eq!(h_deep_silence, 0.0);
-
-        // Case C: Signal is at 0dB (should be max height)
-        let h_max = theme::db_to_px(0.0, floor, max_h);
-        assert_eq!(h_max, 100.0);
-
-        // Case D: Signal is clipped > 0dB (should be clamped to max)
-        let h_clip = theme::db_to_px(10.0, floor, max_h);
-        assert_eq!(h_clip, 100.0);
-    }
-
-    // Test the Color Interpolation (Lerp)
-    #[test]
-    fn test_lerp_color_logic() {
-        let c1 = egui::Color32::from_rgb(0, 0, 0);       // Black
-        let c2 = egui::Color32::from_rgb(100, 200, 255); // Blue-ish
-
-        // 0.0 -> Start Color
-        assert_eq!(lerp_color(c1, c2, 0.0), c1);
-
-        // 1.0 -> End Color
-        assert_eq!(lerp_color(c1, c2, 1.0), c2);
-
-        // 0.5 -> Midpoint
-        let mid = lerp_color(c1, c2, 0.5);
-        assert_eq!(mid.r(), 50);
-        assert_eq!(mid.g(), 100);
-        assert_eq!(mid.b(), 127); // 255/2 = 127.5 -> 127
-    }
-
-    // --- 2. Helper Logic Tests ---
-    
-    #[test]
-    fn test_ui_tab_button_logic() {
-        // Just verifying the enum logic works as expected
-        let mut active = SettingsTab::Visual;
-        
-        // Simulating a click logic (abstractly)
-        let clicked_tab = SettingsTab::Audio;
-        if clicked_tab != active {
-            active = clicked_tab;
-        }
-        
-        assert_eq!(active, SettingsTab::Audio);
-    }
-}

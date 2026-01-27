@@ -1,8 +1,8 @@
-use eframe::egui::{self, Ui, Rect, Context, Sense, RichText, Color32};
+use eframe::egui::{self, Ui, Rect, Context, Sense, Color32};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use crate::gui::{SettingsTab, SaveTarget};
-use crate::shared_state::{self, ColorProfile, SharedState};
+use crate::shared_state::{SharedState};
 use crate::media::MediaController;
 
 // =======================================================================================

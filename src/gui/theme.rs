@@ -1,5 +1,6 @@
 use egui::{Color32, FontId, FontFamily};
 use crate::shared_state::{Color32 as SharedColor, ThemeFont};
+use crate::gui::StateColor32;
 
 // === BeOS / Haiku Design Tokens ====
 pub const BEOS_YELLOW: Color32 = Color32::from_rgb(255, 203, 0);
@@ -47,4 +48,9 @@ pub fn to_egui_font(font_variant: &ThemeFont) -> FontId {
         ThemeFont::Large => FontId::new(18.0, FontFamily::Proportional),
         ThemeFont::Monospace => FontId::new(12.0, FontFamily::Monospace),
     }
+}
+
+/// Converts EGUI colors to our internal Color32 type
+pub fn from_egui_color(c: egui::Color32) -> StateColor32 {
+    StateColor32 { r: c.r(), g: c.g(), b: c.b(), a: c.a() }
 }

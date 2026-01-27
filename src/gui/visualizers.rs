@@ -5,7 +5,6 @@ use crate::shared_state::{AppConfig, ColorProfile, PerformanceStats, VisualMode,
 use crate::gui::theme::{to_egui_color, db_to_px, lerp_color};
 use crate::gui::widgets::draw_transport_controls;
 use crate::fft_processor::FFTProcessor;
-use std::sync::Arc;
 
 pub fn draw_main_visualizer(
     painter: &Painter,
@@ -666,4 +665,119 @@ pub fn draw_media_overlay(
             }
         });
     });
+}
+
+pub fn draw_sonar_ping(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    strength: f32,
+    colors: &ColorProfile,
+) {
+    // 1. Setup
+    let base_color = to_egui_color(colors.high);
+    
+    let rounding = 12.0;
+
+    // 2. Calculate Animation State based on 'strength' (1.0 -> 0.0)
+    
+    // Alpha: Directly use strength (starts bright, fades to 0)
+    // We square it so it stays bright a bit longer then drops off
+    let global_alpha = strength.powi(2);
+    
+    // Expansion: Invert strength so we start at 0 expansion and grow outward
+    // Grows up to 12px outward
+    let progress = 1.0 - strength; 
+    let expansion = 2.0 + (10.0 * progress); 
+
+    let painter = ui.painter();
+
+    // 3. Draw Multi-Pass Glow
+    
+    // Pass 1: The "Haze" (Wide, Outer, Very Transparent)
+    painter.rect_stroke(
+        rect.expand(expansion + 4.0), 
+        rounding,
+        egui::Stroke::new(6.0, base_color.linear_multiply(0.10 * global_alpha))
+    );
+
+    // Pass 2: The "Glow" (Medium, Middle, Medium Transparent)
+    painter.rect_stroke(
+        rect.expand(expansion + 2.0), 
+        rounding,
+        egui::Stroke::new(3.0, base_color.linear_multiply(0.3 * global_alpha))
+    );
+
+    // Pass 3: The "Filament" (Thin, Inner, Bright)
+    painter.rect_stroke(
+        rect.expand(expansion), 
+        rounding,
+        egui::Stroke::new(1.0, base_color.linear_multiply(0.8 * global_alpha))
+    );
+}
+
+
+pub fn draw_preview_spectrum(
+    ui: &mut egui::Ui,
+    current_colors: &ColorProfile,
+    bar_opacity: f32
+) {
+    ui.label("Preview:");
+    let height = 60.0;
+    let (response, painter) = ui.allocate_painter(
+        egui::vec2 (ui.available_width(), height),
+        egui::Sense::hover()
+    );
+    let rect = response.rect;
+
+    // Draw Background
+    let bg_color = to_egui_color(current_colors.background);
+    painter.rect_filled(rect, 4.0, bg_color);
+
+    // Mock Data Pattern (bass heavy, dip in mids, sparkle in highs)
+    let mock_levels = [
+        0.10, 0.40, 0.75, 0.95, 0.90, 0.85, 0.70, // Bass
+        0.55, 0.40, 0.30, 0.25,                   // Mids
+        0.40, 0.60, 0.50, 0.35,                   // High Mids
+        0.25, 0.15, 0.25, 0.40, 0.30, 0.20, 0.15, 0.10, 0.08, 0.04, 0.01 // Highs
+    ];
+
+    let low = to_egui_color(current_colors.low).linear_multiply(bar_opacity);
+    let high = to_egui_color(current_colors.high).linear_multiply(bar_opacity);
+    let peak = to_egui_color(current_colors.peak).linear_multiply(bar_opacity);
+
+    let bar_width = rect.width() / mock_levels.len() as f32;
+    let gap = 2.0;
+
+    for (i, &level) in mock_levels.iter().enumerate() {
+        let x = rect.left() + (i as f32 * bar_width) + gap/2.0;
+        let w = (bar_width - gap).max(1.0);
+        let h = level * rect.height();
+
+        // Gradient
+        let bar_color = lerp_color(low, high, level);
+
+        // Draw Bar (Bottom-up standard for preview)
+        let bar_rect = egui::Rect::from_min_size(
+            egui::pos2(x, rect.bottom() - h), 
+            egui::vec2(w, h)
+        );
+        
+        // Simple gradient mesh for preview
+        use egui::epaint::{Mesh, Vertex};
+        let mut mesh = Mesh::default();
+        mesh.vertices.push(Vertex { pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: low });
+        mesh.vertices.push(Vertex { pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: low });
+        mesh.vertices.push(Vertex { pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: bar_color });
+        mesh.vertices.push(Vertex { pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: bar_color });
+        mesh.add_triangle(0, 1, 2);
+        mesh.add_triangle(0, 2, 3);
+        painter.add(egui::Shape::mesh(mesh));
+
+        // Peak
+        if level > 0.05 {
+            let peak_y = bar_rect.top() - 4.0;
+            let peak_rect = egui::Rect::from_min_size(egui::pos2(x, peak_y), egui::vec2(w, 2.0));
+            painter.rect_filled(peak_rect, 0.0, peak);
+        }
+    }
 }
