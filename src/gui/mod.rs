@@ -239,7 +239,7 @@ impl eframe::App for SpectrumApp {
         }
 
         // Use Profile Background Color
-        let (bg_color_egui, window_locked, background_alpha) = if let Ok(state) = self.shared_state.lock() {
+        let (window_fill, content_fill, window_locked, background_alpha) = if let Ok(state) = self.shared_state.lock() {
             let colors = state.config.resolve_colors(&state.user_color_presets);
             let bg = to_egui_color(colors.background);
             let base_alpha = bg.a() as f32 / 255.0;
@@ -247,14 +247,22 @@ impl eframe::App for SpectrumApp {
             // Apply flash
             let final_alpha = (base_alpha + (flash_strength * 0.2)).min(1.0);
             
-            // Reconstruct with new alpha
-            let final_bg = egui::Color32::from_rgba_premultiplied(
+            // Reconstruct the user's desired background color
+            let user_bg_color = egui::Color32::from_rgba_premultiplied(
                 bg.r(), bg.g(), bg.b(), (final_alpha * 255.0) as u8
             );
-            
-            (final_bg, state.config.window_locked, final_alpha)
+
+            // LOGIC CHANGE FOR BEOS MODE:
+            // If BeOS mode is active, the "Window" (CentralPanel) must be TRANSPARENT 
+            // so the area around the tab is clear. We will paint the 'user_bg_color' 
+            // manually inside the decorations module.
+            if state.config.beos_mode {
+                (egui::Color32::TRANSPARENT, user_bg_color, state.config.window_locked, final_alpha)
+            } else {
+                (user_bg_color, user_bg_color, state.config.window_locked, final_alpha)
+            }
         } else {
-            (egui::Color32::BLACK, false, 1.0) 
+            (egui::Color32::BLACK, egui::Color32::BLACK, false, 1.0) 
         };
 
         // === 3. Ghost Mode Logic === (Focus-to-Wake) ===
@@ -288,18 +296,36 @@ impl eframe::App for SpectrumApp {
         // 4. Media Overlay: "Now Playing" info (drawn in a floating Area, so technically separate Z-layer).
         // 5. Window Controls: Resize grips, lock button, and drag logic (top interaction layer).
         
-        let custom_frame = egui::Frame::central_panel(&ctx.style()).fill(bg_color_egui).inner_margin(1.0);
+        let custom_frame = egui::Frame::central_panel(&ctx.style())
+            .fill(window_fill)
+            .inner_margin(0.0);
+
         egui::CentralPanel::default().frame(custom_frame).show(ctx, |ui| {
                 // === Layout & Interaction Setup ===
                 // Setup the basic window rects
                 let window_rect  = ui.available_rect_before_wrap();
-                let viz_rect = window_rect.shrink(1.0);
-
+                
+                // If Enabled, draw BeOS Decorations & calculate layout
+                // We need to lock the state mutably briefly to update dragging offsets
+                let (chrome_layout, beos_active) = {
+                    let mut state= self.shared_state.lock().unwrap();
+                    let layout = crate::gui::decorations::draw_beos_window_frame(
+                        ui,
+                        ctx,
+                        window_rect,
+                        &mut state.config,
+                        content_fill
+                    );
+                    (layout, state.config.beos_mode)
+                };
+                
+                let viz_rect =  chrome_layout.content_rect;
 
 
                 // Handle Dragging
-                //self.handle_window_drag(ctx, ui, window_rect);
-                widgets::handle_window_interaction(ui, ctx, window_rect,&mut self.settings_open);
+                if !chrome_layout.is_collapsed {
+                    widgets::handle_window_interaction(ui, ctx, viz_rect, &mut self.settings_open);
+                }
                 
                 // === Orchestration Setup: Calculate Opacity
                 // Briefly lock to get the config/timepstamps for logic
