@@ -854,10 +854,37 @@ pub fn settings_tab_colors(
 pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
     let grid_spacing = egui::vec2(40.0, 12.0);
 
-    ui.heading("Window Behavior");
+    ui.heading("Window Configuration");
     ui.add_space(5.0);
     
     ui.group(|ui| {
+
+        ui.label(egui::RichText::new("Decorations & Style").strong());
+        ui.separator();
+        
+        // 1. BeOS / Haiku Mode Toggle
+        if ui.checkbox(&mut state.config.beos_mode, "Enable BeOS / Haiku Mode").changed() {
+            // UX: If enabling for the first time (and offset is 0), bump it 
+            // to 20px so the tab doesn't look "stuck" in the left corner.
+            if state.config.beos_mode && state.config.beos_tab_offset < 1.0 {
+                state.config.beos_tab_offset = 20.0;
+            }
+        }
+
+        // Instructions (Only visible when enabled)
+        if state.config.beos_mode {
+            ui.indent("beos_help", |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0; // Tighter spacing for help text
+                ui.label("• Shift + Drag tab to slide it horizontally");
+                ui.label("• Double-click tab to collapse/shutter window");
+            });
+        }
+    });
+
+    ui.add_space(10.0);
+    ui.group(|ui| {
+        ui.label(egui::RichText::new("Behavior").strong());
+        ui.separator();
         egui::Grid::new("window_grid")
             .num_columns(2)
             .spacing(grid_spacing)
