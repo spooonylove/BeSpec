@@ -40,8 +40,8 @@ pub const BEOS_TAB_HEIGHT: f32 = 24.0;
 pub const BEOS_BORDER_WIDTH: f32 = 4.0;
 
 // === Global UI Constants ===
-pub const PANEL_WIDTH: f32 = 250.0;
-pub const ANIMATION_SPEED: f32 = 0.1;
+//pub const PANEL_WIDTH: f32 = 250.0;
+//pub const ANIMATION_SPEED: f32 = 0.1;
 
 /// Convert our Color32 to egui::Color32
 pub fn to_egui_color(color: SharedColor) -> egui::Color32 {

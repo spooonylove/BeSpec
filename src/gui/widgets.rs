@@ -1,9 +1,29 @@
 use eframe::egui::{self, Ui, Rect, Context, Sense, Color32};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use crate::gui::{SettingsTab, SaveTarget};
 use crate::shared_state::{SharedState};
-use crate::media::MediaController;
+use crate::shared_state::{ColorProfile, MediaDisplayMode, VisualMode, VisualProfile};
+use crate::shared_state::ColorRef;use crate::media::MediaController;
+use crate::gui::{theme::*, visualizers};
+use crate::fft_config::FIXED_FFT_SIZE;
+
+/// Settings Tab Definition
+#[derive(PartialEq, Debug)]
+pub enum SettingsTab {
+    Visual, 
+    Audio,
+    Colors,
+    Window,
+    Performance,
+}
+
+/// Save Dialog Box Types
+#[derive(PartialEq)]
+pub enum SaveTarget {
+    None,
+    Visual,
+    Color,
+}
 
 // =======================================================================================
 // WINDOW CONTROLS  (Drag, Resize, Lock)
@@ -404,6 +424,539 @@ pub fn draw_transport_controls(
         }
     });
 }
+
+
+// =======================================================================================
+// SETTINGS 
+// =======================================================================================
+/// Render settings window content
+pub fn show_settings_window(
+    ui: &mut egui::Ui,
+    state: &mut SharedState,
+    active_tab: &mut SettingsTab,
+    save_target: &mut SaveTarget,
+    new_preset_name: &mut String
+) {
+    // Tabs
+    ui.add_space(5.0);
+    ui.horizontal(|ui| {
+        let colors = state.config.resolve_colors(&state.user_color_presets);
+        let highlight = to_egui_color(colors.high);
+        ui_tab_button(ui, " 🎨 Visual ", SettingsTab::Visual, active_tab, highlight);
+        ui_tab_button(ui, " 🔊 Audio ", SettingsTab::Audio, active_tab, highlight);
+        ui_tab_button(ui, " 🌈 Colors ", SettingsTab::Colors, active_tab, highlight);
+        ui_tab_button(ui, " 🪟 Window ", SettingsTab::Window, active_tab, highlight);
+        ui_tab_button(ui, " 📊 Stats ", SettingsTab::Performance, active_tab, highlight);
+    });
+    ui.separator();
+
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        match active_tab {
+            SettingsTab::Visual => settings_tab_visual(ui, state, save_target, new_preset_name),
+            SettingsTab::Audio => settings_tab_audio(ui, state),
+            SettingsTab::Colors => settings_tab_colors(ui, state, save_target, new_preset_name),
+            SettingsTab::Window => settings_tab_window(ui, state),
+            SettingsTab::Performance => settings_tab_performance(ui, state),
+        }
+    });
+}
+
+pub fn settings_tab_visual(
+    ui: &mut egui::Ui,
+    state: &mut SharedState,
+    save_target: &mut SaveTarget,
+    new_preset_name: &mut String
+) {
+    let grid_spacing = egui::vec2(40.0, 12.0); 
+        ui.horizontal(|ui| {
+            ui.label("Visual Profile:");
+            egui::ComboBox::from_id_salt("viz_profile_combo")
+                .selected_text(&state.config.profile.name)
+                .show_ui(ui, |ui| {
+                    // --- User Visual Presets ---
+                    let user_visuals = state.user_visual_presets.clone();
+                    if !user_visuals.is_empty() {
+                        let _ = ui.selectable_label(false, egui::RichText::new("--- User Presets ---").strong());
+                        for vp in &user_visuals {
+                            ui.horizontal(|ui| {
+                                if ui.selectable_label(state.config.profile.name == vp.name, &vp.name).clicked() {
+                                    state.config.profile = vp.clone();
+                                }
+                                // Delete button
+                                if ui.small_button("🗑").clicked() {
+                                    let _ = crate::shared_state::AppConfig::delete_user_visual_preset(&vp.name);
+                                    // Remove from memory immediately
+                                    state.user_visual_presets.retain(|p| p.name != vp.name);
+                                }
+                            });
+                        }
+                        ui.separator();
+                    }
+                    // --- Built-in Visual Presets ---
+                    let _ = ui.selectable_label(false, egui::RichText::new("--- Built-in ---").strong());
+                    for vp in VisualProfile::built_in() {
+                        if ui.selectable_label(state.config.profile.name == vp.name, &vp.name).clicked() {
+                            state.config.profile = vp;
+                        }
+                    }
+                });
+            if ui.button("💾").on_hover_text("Save Profile").clicked() { 
+                *save_target = SaveTarget::Visual;
+                *new_preset_name = state.config.profile.name.clone(); // Pre-fill
+            }
+        });
+
+        // -- Save Popup --
+        if *save_target == SaveTarget::Visual {
+            ui_save_popup(ui, new_preset_name, |name| {
+                state.config.profile.name = name.clone();
+                if let Err(e) = crate::shared_state::AppConfig::save_user_visual_preset(&state.config.profile) {
+                    eprintln!("Error saving visual preset: {}", e);
+                } else {
+                    if let Some(existing) = state.user_visual_presets.iter_mut().find(|p| p.name == name) {
+                        *existing = state.config.profile.clone();
+                    } else {
+                        state.user_visual_presets.push(state.config.profile.clone());
+                    }
+                }
+            }, save_target);
+        }
+
+        ui.separator();
+
+        // --- Visual Controls ---
+        ui.group(|ui| {
+            egui::Grid::new("visual_grid").num_columns(2).spacing(grid_spacing).show(ui, |ui| {
+                ui.label("Mode");
+                egui::ComboBox::from_id_salt("viz_mode")
+                    .selected_text(format!("{:?}", state.config.profile.visual_mode))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut state.config.profile.visual_mode, VisualMode::SolidBars, "Solid Bars");
+                        ui.selectable_value(&mut state.config.profile.visual_mode, VisualMode::SegmentedBars, "Segmented (LED)");
+                        ui.selectable_value(&mut state.config.profile.visual_mode, VisualMode::LineSpectrum, "Line Spectrum");
+                        ui.selectable_value(&mut state.config.profile.visual_mode, VisualMode::Oscilloscope, "Oscilloscope");
+                    });
+                ui.end_row();
+                
+                // Specific Controls
+                if state.config.profile.visual_mode != VisualMode::Oscilloscope {
+                    ui.label("Bar Count");
+                    ui.add(egui::Slider::new(&mut state.config.profile.num_bars, 10..=512)
+                        .step_by(1.0).drag_value_speed(1.0).smart_aim(false));
+                    ui.end_row();
+
+                    ui.label("Bar Gap");
+                    ui.add(egui::Slider::new(&mut state.config.profile.bar_gap_px, 0..=10).suffix(" px"));
+                    ui.end_row();
+                }
+                
+                ui.label("Bar Opacity");
+                ui.add(egui::Slider::new(&mut state.config.profile.bar_opacity, 0.0..=1.0));
+                ui.end_row();
+
+                // NEW: Background Opacity Slider Logic
+                ui.label("Background Opacity");
+                // FIX: Resolve immutable colors first, don't hold lock long if possible, 
+                // but here we are modifying state in UI so we need the lock anyway.
+                // The error was that we borrowed `state.config` (immutable via resolve_colors) 
+                // and then tried to mutate `state.config.profile.background`.
+                // FIX: Clone the color needed, don't hold the borrow from resolve_colors
+                let current_bg = state.config.resolve_colors(&state.user_color_presets).background;
+                
+                // Calculate current alpha (0.0 - 1.0)
+                let mut alpha = current_bg.a as f32 / 255.0;
+                
+                ui.horizontal(|ui|{
+                    if ui.add(egui::Slider::new(&mut alpha, 0.0..=1.0).show_value(true)).changed() {
+                        // Override: Keep active RGB, but enforce new Alpha
+                        let new_bg = crate::shared_state::Color32 {
+                            r: current_bg.r,
+                            g: current_bg.g,
+                            b: current_bg.b,
+                            a: (alpha * 255.0) as u8
+                        };
+                        state.config.profile.background = Some(new_bg);
+                    }
+                    
+                    // Show Reset button if override is active
+                    if state.config.profile.background.is_some() {
+                        if ui.button("↺").on_hover_text("Reset to Preset Default").clicked() {
+                            state.config.profile.background = None;
+                        }
+                    }
+                });
+                ui.end_row();
+
+                if state.config.profile.visual_mode == VisualMode::SegmentedBars {
+                    ui.label("Segment Height");
+                    ui.add(egui::Slider::new(&mut state.config.profile.segment_height_px, 1.0..=20.0).suffix(" px"));
+                    ui.end_row();
+
+                    ui.label("Segment Gap");
+                    ui.add(egui::Slider::new(&mut state.config.profile.segment_gap_px, 0.0..=10.0).suffix(" px"));
+                    ui.end_row();
+                }
+
+                if state.config.profile.visual_mode != VisualMode::Oscilloscope {
+                    ui.label("Peak Indicators");
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut state.config.profile.show_peaks, "Show");
+                        if state.config.profile.show_peaks && state.config.profile.visual_mode == VisualMode::SegmentedBars {
+                            ui.checkbox(&mut state.config.profile.fill_peaks, "Fill to Peak");
+                        }
+                    });
+                    ui.end_row();
+                }
+
+                ui.label("Font Style");
+                egui::ComboBox::from_id_salt("font_combo")
+                    .selected_text(format!("{:?}", state.config.profile.overlay_font))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut state.config.profile.overlay_font, crate::shared_state::ThemeFont::Medium, "Standard");
+                        ui.selectable_value(&mut state.config.profile.overlay_font, crate::shared_state::ThemeFont::Monospace, "Retro (Mono)");
+                    });
+                ui.end_row();
+            });
+        });
+
+        ui.add_space(10.0);
+        ui.group(|ui| {
+            ui.label("Aggregation Mode:");
+            ui.horizontal(|ui| {
+                ui.radio_value(&mut state.config.profile.use_peak_aggregation, true, "Peak (Dramatic)");
+                ui.radio_value(&mut state.config.profile.use_peak_aggregation, false, "Average (Smooth)");
+            });
+
+            ui.add_space(5.0);
+            ui.label("Orientation:");
+            ui.checkbox(&mut state.config.profile.inverted_spectrum, "Inverted (Top-Down)");
+        });
+}
+
+pub fn settings_tab_audio(ui: &mut egui::Ui, state: &mut SharedState) {
+    let grid_spacing = egui::vec2(40.0, 12.0);
+    ui.heading("Audio Configuration");
+    ui.add_space(5.0);
+
+    ui.group(|ui| {
+        egui::Grid::new("audio_grid")
+            .num_columns(2)
+            .spacing(grid_spacing)
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label("FFT Window Size");
+                ui.label(format!("{} samples (fixed)", FIXED_FFT_SIZE));
+                ui.end_row();
+
+                ui.label("Sensitivity");
+                ui.add(egui::Slider::new(&mut state.config.profile.sensitivity, 0.01..=100.0)
+                    .logarithmic(true)
+                    .custom_formatter(|v, _| format!("{:+.1} dB", 20.0 * v.log10()))
+                );
+                ui.end_row();
+
+                ui.label("Noise Floor");
+                ui.add(egui::Slider::new(&mut state.config.noise_floor_db, -120.0..=-20.0).suffix(" dB"));
+                ui.end_row();
+            });
+    });
+
+    ui.add_space(10.0);
+    ui.heading("Response Timing");
+    ui.group(|ui| {
+        egui::Grid::new("timing_grid")
+            .num_columns(2)
+            .spacing(grid_spacing)
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label("Bar Attack (Rise)");
+                ui.add(egui::Slider::new(&mut state.config.profile.attack_time_ms, 1.0..=500.0).suffix(" ms"));
+                ui.end_row();
+
+                ui.label("Bar Release (Fall)");
+                ui.add(egui::Slider::new(&mut state.config.profile.release_time_ms, 1.0..=2000.0).suffix(" ms"));
+                ui.end_row();
+
+                if state.config.profile.show_peaks {
+                    ui.label("Peak Hold Time");
+                    ui.add(egui::Slider::new(&mut state.config.profile.peak_hold_time_ms, 0.0..=2000.0).suffix(" ms"));
+                    ui.end_row();
+
+                    ui.label("Peak Fall Speed");
+                    ui.add(egui::Slider::new(&mut state.config.profile.peak_release_time_ms, 10.0..=2000.0).suffix(" ms"));
+                    ui.end_row();
+                }
+            });
+    });
+
+    ui.add_space(10.0);
+    ui.heading("Input Source");
+    ui.add_space(5.0);
+
+    ui.group(|ui| {
+        egui::Grid::new("audio_source_grid")
+            .num_columns(2)
+            .spacing(grid_spacing)
+            .show(ui, |ui| {
+                ui.label("Device");
+                
+                ui.horizontal(|ui| {
+                    // Clone data to satisfy borrow checker (state is already locked)
+                    let (current_sel, devices) = {
+                        (state.config.selected_device.clone(), state.audio_devices.clone())
+                    };
+
+                    // Device Selector
+                    egui::ComboBox::from_id_salt("audio_device_combo")
+                        .selected_text(&current_sel)
+                        .width(220.0)
+                        .show_ui(ui, |ui| {
+                            
+                            // 1. Default Option
+                            if ui.selectable_label(current_sel == "Default", "Default System Device").clicked() {
+                                tracing::info!("[GUI] User selected device: Default");
+                                state.config.selected_device = "Default".to_string();
+                                state.device_changed = true;
+                            }
+                            
+                            ui.separator();
+
+                            // 2. Enumerated Hardware Devices
+                            for name in devices {
+                                let is_selected = current_sel == name;
+                                if ui.selectable_label(is_selected, &name).clicked() {
+                                    tracing::info!("[GUI] User selected device: '{}'", name);
+                                    state.config.selected_device = name;
+                                    state.device_changed = true;
+                                }
+                            }
+                        });
+
+                    // Refresh Button
+                    if ui.button("🔄").on_hover_text("Refresh Device List").clicked() {
+                        tracing::info!("[GUI] User requested device list refresh");
+                        state.refresh_devices_requested = true;
+                    }
+                });
+                ui.end_row();
+            });
+    });
+}
+
+pub fn settings_tab_colors(
+    ui: &mut egui::Ui, 
+    state: &mut SharedState,
+    save_target: &mut SaveTarget,
+    new_preset_name: &mut String
+) {
+        let grid_spacing = egui::vec2(40.0, 12.0); 
+        let mut current_colors = state.config.resolve_colors(&state.user_color_presets);
+        let initial_colors = current_colors.clone();
+        let bar_opacity = state.config.profile.bar_opacity;
+
+        // -- Preset Loader --
+        ui.horizontal(|ui| {
+        ui.label("Preset:");
+        let combo_text = match &state.config.profile.color_link {
+            ColorRef::Preset(name) => name.clone(),
+            ColorRef::Custom(_) => "Custom (Unsaved)".to_string(),
+        };
+        egui::ComboBox::from_id_salt("color_preset_combo").selected_text(combo_text).show_ui(ui, |ui| {
+                let user_presets = state.user_color_presets.clone();
+                if !user_presets.is_empty() {
+                    let _ = ui.selectable_label(false, egui::RichText::new("--- User Presets ---").strong());
+                    for p in &user_presets {
+                        ui.horizontal(|ui| {
+                            if ui.selectable_label(false, &p.name).clicked() {
+                                state.config.profile.color_link = ColorRef::Preset(p.name.clone());
+                                state.config.profile.background = None;
+                            }
+                            if ui.small_button("🗑").clicked() {
+                                let _ = crate::shared_state::AppConfig::delete_user_color_preset(&p.name);
+                                state.user_color_presets.retain(|x| x.name != p.name);
+                            }
+                        });
+                    }
+                    ui.separator();
+                }
+                let _ = ui.selectable_label(false, egui::RichText::new("--- Built-in ---").strong());
+                for cp in ColorProfile::built_in() {
+                    if ui.selectable_label(false, &cp.name).clicked() {
+                        state.config.profile.color_link = ColorRef::Preset(cp.name);
+                        state.config.profile.background = None;
+                    }
+                }
+            });
+        if ui.button("💾").on_hover_text("Save as User Preset").clicked() {
+                *save_target = SaveTarget::Color;
+                new_preset_name.clear(); // Colors usually saved as new name
+        }
+        });
+
+        // -- Save Popup --
+        if *save_target == SaveTarget::Color {
+            ui_save_popup(ui, new_preset_name, |name: String| {
+                let mut new_profile = current_colors.clone();
+                new_profile.name = name.clone();
+                if let Err(e) = crate::shared_state::AppConfig::save_user_color_preset(&new_profile) {
+                    tracing::error!("Failed to save preset: {}", e);
+                } else {
+                    if let Some(existing) = state.user_color_presets.iter_mut().find(|p| p.name == name) {
+                        *existing = new_profile.clone();
+                    } else {
+                        state.user_color_presets.push(new_profile.clone());
+                    }
+                    state.config.profile.color_link = ColorRef::Preset(new_profile.name);
+                    state.config.profile.background = None;
+                }
+            }, save_target);
+        }
+        ui.separator();
+
+        // -- Editors --
+        let mut egui_low = to_egui_color(current_colors.low);
+        let mut egui_high = to_egui_color(current_colors.high);
+        let mut egui_peak = to_egui_color(current_colors.peak);
+        let mut egui_bg = to_egui_color(current_colors.background);
+        let mut egui_text = to_egui_color(current_colors.text);
+        let mut egui_insp_bg = to_egui_color(current_colors.inspector_bg);
+        let mut egui_insp_fg = to_egui_color(current_colors.inspector_fg);
+
+        ui.group(|ui| {
+        egui::Grid::new("color_grid").num_columns(2).spacing(grid_spacing).show(ui, |ui| {
+            ui.label("Low"); ui.color_edit_button_srgba(&mut egui_low); ui.end_row();
+            ui.label("High"); ui.color_edit_button_srgba(&mut egui_high); ui.end_row();
+            ui.label("Peak"); ui.color_edit_button_srgba(&mut egui_peak); ui.end_row();
+            ui.label("Background"); ui.color_edit_button_srgba(&mut egui_bg); ui.end_row();
+            ui.label("Overlay Text"); ui.color_edit_button_srgba(&mut egui_text); ui.end_row();
+            ui.label("Inspector Box"); ui.color_edit_button_srgba(&mut egui_insp_bg); ui.end_row();
+            ui.label("Inspector Text/Line"); ui.color_edit_button_srgba(&mut egui_insp_fg); ui.end_row();
+        });
+        });
+        
+        ui.add_space(10.0);
+        visualizers::draw_preview_spectrum(ui, &current_colors, bar_opacity);
+
+        current_colors.low = from_egui_color(egui_low);
+        current_colors.high = from_egui_color(egui_high);
+        current_colors.peak = from_egui_color(egui_peak);
+        current_colors.background = from_egui_color(egui_bg);
+        current_colors.text = from_egui_color(egui_text);
+        current_colors.inspector_bg = from_egui_color(egui_insp_bg);
+        current_colors.inspector_fg = from_egui_color(egui_insp_fg);
+
+        if current_colors != initial_colors {
+        state.config.profile.color_link = ColorRef::Custom(current_colors);
+        state.config.profile.background = None; 
+        }
+}
+
+pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
+    let grid_spacing = egui::vec2(40.0, 12.0);
+
+    ui.heading("Window Behavior");
+    ui.add_space(5.0);
+    
+    ui.group(|ui| {
+        egui::Grid::new("window_grid")
+            .num_columns(2)
+            .spacing(grid_spacing)
+            .show(ui, |ui| {
+                ui.label("Main Window");
+                if ui.checkbox(&mut state.config.always_on_top, "Always on Top").changed() {
+                    let level = if state.config.always_on_top {
+                        egui::WindowLevel::AlwaysOnTop
+                    } else {
+                        egui::WindowLevel::Normal
+                    };
+                    ui.ctx().send_viewport_cmd_to(
+                        egui::ViewportId::ROOT,
+                        egui::ViewportCommand::WindowLevel(level)
+                    );
+                }
+                ui.end_row();
+
+                ui.label("Ghost Mode 👻");
+                ui.horizontal(|ui| {
+                    ui.label("Enable via Lock Icon 🔒");
+                    ui.add(egui::Label::new("❓").sense(egui::Sense::hover()))
+                        .on_hover_text(
+                            "How to use Ghost Mode:\n\
+                            1. Click the Lock icon (bottom-left) to enable click-through.\n\
+                            2. The window will ignore mouse clicks so you can work through it.\n\
+                            3. To UNLOCK: Alt-Tab (switch focus) back to this window.\n\
+                            The lock will reactivate temporarily."
+                        );
+                });
+                ui.end_row();
+
+                ui.label("Decorations");
+                if ui.checkbox(&mut state.config.window_decorations, "Show Title Bar").changed() {
+                    let show = state.config.window_decorations;
+                    ui.ctx().send_viewport_cmd_to(
+                        egui::ViewportId::ROOT,
+                        egui::ViewportCommand::Decorations(show));
+                }
+                ui.end_row();
+
+                ui.label("Inspector Tool");
+                ui.checkbox(&mut state.config.inspector_enabled, "Enabled").on_hover_text("Show frequency and dB on mouse hover");
+                ui.end_row();
+
+                // Media Settings
+                ui.label("Now Playing");
+                egui::ComboBox::from_id_salt("media_mode")
+                    .selected_text(format!("{:?}", state.config.media_display_mode))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::FadeOnUpdate, "Fade On Update");
+                        ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::AlwaysOn, "Always On");
+                        ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::Off, "Off");
+                    });
+                ui.end_row();
+            });
+    });
+}
+
+pub fn settings_tab_performance(ui: &mut egui::Ui, state: &mut SharedState) {
+
+    
+    ui.group(|ui| {
+        ui.heading("Performance Monitoring");
+        ui.checkbox(&mut state.config.show_stats, "Show Performance Overlay");
+        ui.small("Displays FPS, FFT latency, and processing times.");
+        
+        ui.add_space(10.0);
+        ui.heading("Diagnostics");
+        
+        let info = &state.performance.fft_info;
+        egui::Grid::new("perf_grid")
+            .num_columns(2)
+            .spacing([20.0, 10.0])
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label("Sample Rate");
+                ui.label(format!("{} Hz", info.sample_rate));
+                ui.end_row();
+
+                ui.label("FFT Size");
+                ui.label(format!("{} samples (fixed)", info.fft_size));
+                ui.end_row();
+
+                ui.label("Frequency Resolution");
+                ui.label(format!("{:.2} Hz / bin", info.frequency_resolution));
+                ui.end_row();
+
+                ui.label("Theoretical Latency");
+                ui.label(format!("{:.2} ms", info.latency_ms));
+                ui.end_row();
+
+                ui.label("GUI Frame Rate");
+                ui.label(format!("{:.1} FPS", state.performance.gui_fps));
+                ui.end_row();
+            });
+    });
+}
+
 
 // =======================================================================================
 // SETTING UI COMPONENTS

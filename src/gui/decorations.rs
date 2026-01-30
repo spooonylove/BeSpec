@@ -71,7 +71,7 @@ pub fn draw_beos_window_frame(
     let tab_width = dynamic_tab_width.min(max_tab_width);
     
     let max_offset = window_rect.width() - tab_width;
-    config.beos_tab_offset = config.beos_tab_offset.clamp(border_width, max_offset);
+    config.beos_tab_offset = config.beos_tab_offset.clamp(0.0, max_offset);
     
     let tab_rect = egui::Rect::from_min_size(
         window_rect.min + egui::vec2(config.beos_tab_offset, 0.0),
