@@ -7,6 +7,7 @@ use egui::{Mesh, Pos2};
 pub struct ChromeLayout {
     pub content_rect: egui::Rect,
     pub is_collapsed: bool,
+    pub tab_response: Option<egui::Response>,
 }
 
 fn draw_haiku_rect(
@@ -44,7 +45,11 @@ pub fn draw_beos_window_frame(
 ) -> ChromeLayout {
     
     if !config.beos_mode {
-        return ChromeLayout { content_rect: window_rect, is_collapsed: false };
+        return ChromeLayout { 
+            content_rect: window_rect, 
+            is_collapsed: false,
+            tab_response: None
+        };
     }
 
     let painter = ui.painter();
@@ -80,7 +85,7 @@ pub fn draw_beos_window_frame(
 
     // Interaction
     let tab_id = ui.make_persistent_id("beos_tab_interact");
-    let tab_sense = ui.interact(tab_rect, tab_id, egui::Sense::drag());
+    let tab_sense = ui.interact(tab_rect, tab_id, egui::Sense::click_and_drag());
     
     if tab_sense.dragged() {
         if ui.input(|i| i.modifiers.shift) {
@@ -206,7 +211,12 @@ pub fn draw_beos_window_frame(
     }
 
     ChromeLayout {
-        content_rect: if config.beos_window_collapsed { egui::Rect::from_min_size(frame_rect.min, egui::vec2(0.0, 0.0)) } else { frame_rect.shrink(border_width) },
+        content_rect: if config.beos_window_collapsed { 
+            egui::Rect::from_min_size(frame_rect.min, egui::vec2(0.0, 0.0)) 
+        } else {
+            frame_rect.shrink(border_width) 
+        },
         is_collapsed: config.beos_window_collapsed,
+        tab_response: Some(tab_sense),
     }
 }
