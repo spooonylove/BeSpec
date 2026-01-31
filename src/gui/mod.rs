@@ -334,13 +334,70 @@ impl eframe::App for SpectrumApp {
                     self.calculate_media_opacity(ui, &state);
                 } // Lock drops here, self.media_opacity is now updated for this frame
 
+                //=== Update Notification Setup ===
+                let mut dismissed_click = false;
+                let mut update_url_copy: Option<String> = None;
+                let mut show_banner = false;
+
+                // Quick check! (small scope lock)
+                if let Ok(state) = self.shared_state.lock(){
+                    if state.update_url.is_some() && !state.update_dismissed {
+                        show_banner = true;
+                        update_url_copy = state.update_url.clone();
+                    }
+                }
+
                 //Scope management for State Lock!!!
                 {
-
                     // Visualization (requres Read-only Lock)
                     let state = self.shared_state.lock().unwrap(); //lock once!
+                    let mut final_viz_rect = viz_rect;
 
+                    // ======= Update Notification Banner =========
+                    if show_banner{
 
+                        // Define the banner area (top 25px of the content area)
+                        let banner_height = 28.0;
+                        let split = final_viz_rect.split_top_bottom_at_y(final_viz_rect.top() + banner_height);
+                        let banner_rect = split.0;
+                        final_viz_rect = split.1;
+
+                        // Draw the Banner
+                        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(banner_rect), |ui| {
+                            // "Info Blue" background
+                            ui.painter().rect_filled(banner_rect, 0.0, egui::Color32::from_rgb(0, 90, 160));
+                            // Add a subtle bottom border for contrast
+                            ui.painter().line_segment(
+                                [banner_rect.left_bottom(), banner_rect.right_bottom()], 
+                                egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 120, 200))
+                            );
+
+                            ui.horizontal_centered(|ui|{
+                                ui.spacing_mut().item_spacing.x = 10.0;
+                                ui.label(egui::RichText::new("🚀 New version available!").color(egui::Color32::WHITE).strong());
+
+                                if ui.button("Download").clicked() {
+                                    if let Some(url) = &update_url_copy {
+                                        let _ = open::that(url);
+                                    }
+                                }
+
+                                //Push to right
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui|{
+                                    ui.add_space(8.0);
+                                    // the X button
+                                    if ui.add(egui::Button::new(egui::RichText::new(" 🗙 ").color(egui::Color32::WHITE).strong()).frame(false))
+                                        .on_hover_text("Dismiss")
+                                        .clicked()
+                                    {
+                                            dismissed_click = true;
+                                    }
+                                
+                                });
+                            });
+                        });
+                    }
+                    //=============================================
                     
                     let viz_data = &state.visualization;
 
@@ -351,7 +408,7 @@ impl eframe::App for SpectrumApp {
                     // === Render Visualization ===
                     viz::draw_main_visualizer(
                         ui.painter(),
-                        viz_rect,
+                        final_viz_rect,
                         viz_data,
                         &state.config,
                         &colors,
@@ -363,7 +420,7 @@ impl eframe::App for SpectrumApp {
                     if flash_strength > 0.0 {
                       
 
-                        viz::draw_sonar_ping(ui, ui.max_rect().shrink(5.0), flash_strength, &colors);
+                        viz::draw_sonar_ping(ui, final_viz_rect.shrink(5.0), flash_strength, &colors);
                     }
                     
                     // Media Overlay
@@ -371,7 +428,7 @@ impl eframe::App for SpectrumApp {
                         if let Some(info) = media_info{
                             viz::draw_media_overlay(
                                 ui,
-                                viz_rect,
+                                final_viz_rect,
                                 Some(info),
                                 state.config.media_display_mode,
                                 &state.config.profile.overlay_font,
@@ -382,8 +439,15 @@ impl eframe::App for SpectrumApp {
                             );
                         }
                     }
-                }
+                }//State Lock Drops Here!
 
+                // We manage the dismissal click out of the state lock block above, due to limited access
+                // to the shared state. Hence, double bools!
+                if dismissed_click {
+                    if let Ok(mut state) = self.shared_state.lock() {
+                        state.update_dismissed = true;
+                    }
+                }
 
                 // === WINDOW CONTROLS ====
                 // 1. Resize Grip (Needs Context + Window Rect)

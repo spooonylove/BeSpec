@@ -211,6 +211,10 @@ pub struct SharedState{
     pub user_color_presets: Vec<ColorProfile>,
     pub user_visual_presets: Vec<VisualProfile>,
 
+    // === Update Notification ===
+    pub update_url: Option<String>,
+    pub update_dismissed: bool,
+
 }
 
 impl SharedState {
@@ -233,6 +237,8 @@ impl SharedState {
             last_media_update: None,
             user_color_presets,
             user_visual_presets,
+            update_url: None,
+            update_dismissed: false,
         }
     }
 }

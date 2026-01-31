@@ -3,6 +3,7 @@ name: Release Build
 on:
   push:
     tags:
+      # NOTE: Tags must be "vX.Y.Z" (e.g. v1.5.1) for the in-app update checker to work.
       - 'v*'
   # Enables the "Run workflow" button in GitHub Actions for testing
   workflow_dispatch:
