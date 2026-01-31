@@ -863,16 +863,16 @@ pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
         ui.separator();
         
         // 1. BeOS / Haiku Mode Toggle
-        if ui.checkbox(&mut state.config.beos_mode, "Enable BeOS / Haiku Mode").changed() {
+        if ui.checkbox(&mut state.config.profile.beos_enabled, "Enable BeOS / Haiku Mode").changed() {
             // UX: If enabling for the first time (and offset is 0), bump it 
             // to 20px so the tab doesn't look "stuck" in the left corner.
-            if state.config.beos_mode && state.config.beos_tab_offset < 1.0 {
+            if state.config.profile.beos_enabled && state.config.beos_tab_offset < 1.0 {
                 state.config.beos_tab_offset = 20.0;
             }
         }
 
         // Instructions (Only visible when enabled)
-        if state.config.beos_mode {
+        if state.config.profile.beos_enabled {
             ui.indent("beos_help", |ui| {
                 ui.spacing_mut().item_spacing.y = 2.0; // Tighter spacing for help text
                 ui.label("• Shift + Drag tab to slide it horizontally");

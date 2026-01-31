@@ -131,6 +131,9 @@ pub struct VisualProfile {
     // === Color Link ===
     pub color_link: ColorRef,
 
+    // === Window Decoratoin ===
+    pub beos_enabled: bool,
+
     // MAY REMOVE THIS LATER?
     pub background: Option<Color32>,
 }
@@ -158,6 +161,8 @@ impl Default for VisualProfile {
             use_peak_aggregation: true,
 
             color_link: ColorRef::Preset("Default".to_string()),
+
+            beos_enabled: false,
 
             background: None,
         }
@@ -309,9 +314,6 @@ pub struct AppConfig {
     pub media_fade_duration_sec: f32,
 
     // === BeOS Settings === 
-    /// BeOS Easter Egg Mode
-    pub beos_mode: bool,
-    
     /// Horizontal offset for the sliding BeOS tab
     pub beos_tab_offset: f32,
 
@@ -334,7 +336,6 @@ impl Default for AppConfig {
             noise_floor_db: -60.0,
             media_display_mode: MediaDisplayMode::FadeOnUpdate,
             media_fade_duration_sec: 5.0,
-            beos_mode: false,
             beos_tab_offset: 20.0,
             beos_window_collapsed: false,
         }

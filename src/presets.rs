@@ -172,6 +172,16 @@ pub fn built_in_colors() -> Vec<ColorProfile> {
             inspector_bg: Color32::from_rgb(20, 10, 5).with_opacity(0.9),
             inspector_fg: Color32::from_rgb(255, 215, 0),
         },
+         ColorProfile {
+            name: "BeOS Desktop".to_string(),
+            low: Color32::from_rgb(230, 166, 0),
+            high: Color32::from_rgb(255, 242, 153),
+            peak: Color32::from_rgb(255, 147, 27),
+            background: Color32::from_rgb(51, 102, 152),
+            text: Color32::from_rgb(220, 220, 220), 
+            inspector_bg: Color32::from_rgb(0, 0, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 255, 255),
+        },
         ColorProfile {
             name: "Deep Space".to_string(),
             low: Color32::from_rgb(0, 0, 0),
@@ -362,6 +372,65 @@ pub fn built_in_colors() -> Vec<ColorProfile> {
             inspector_bg: Color32::from_rgb(40, 20, 30).with_opacity(0.9),
             inspector_fg: Color32::from_rgb(0, 255, 255),
         },
+        // --- Winamp Classic ---
+        ColorProfile {
+            name: "Classic Skin".to_string(),
+            low: Color32::from_rgb(0, 200, 0),     // Green
+            high: Color32::from_rgb(220, 220, 0),  // Yellow
+            peak: Color32::from_rgb(220, 0, 0),    // Red
+            background: Color32::from_rgb(10, 10, 10),
+            text: Color32::from_rgb(0, 255, 0),    // Bitmap font green
+            inspector_bg: Color32::from_rgb(20, 20, 20).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(0, 255, 0),
+        },
+
+        // --- CRT Phosphor (P1 Green) ---
+        ColorProfile {
+            name: "Phosphor P1".to_string(),
+            low: Color32::from_rgb(0, 50, 0),      // Dim trace
+            high: Color32::from_rgb(50, 255, 50),  // Bright trace
+            peak: Color32::from_rgb(200, 255, 200),// Overdrive
+            background: Color32::from_rgb(0, 5, 0),// Dark glass
+            text: Color32::from_rgb(50, 255, 50),
+            inspector_bg: Color32::from_rgb(0, 20, 0).with_opacity(0.8),
+            inspector_fg: Color32::from_rgb(50, 255, 50),
+        },
+
+        // --- VFD Amber (Marantz/Pioneer) ---
+        ColorProfile {
+            name: "VFD Amber".to_string(),
+            low: Color32::from_rgb(180, 80, 0),    // Dim Orange
+            high: Color32::from_rgb(255, 160, 0),  // Amber
+            peak: Color32::from_rgb(255, 220, 100),// Bright Yellow
+            background: Color32::from_rgb(15, 5, 0),
+            text: Color32::from_rgb(255, 160, 0),
+            inspector_bg: Color32::from_rgb(20, 10, 0).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(255, 160, 0),
+        },
+
+        // --- VFD Blue (Sony/Panasonic) ---
+        ColorProfile {
+            name: "VFD Blue".to_string(),
+            low: Color32::from_rgb(0, 100, 150),
+            high: Color32::from_rgb(0, 200, 255),
+            peak: Color32::from_rgb(200, 240, 255),
+            background: Color32::from_rgb(0, 5, 15),
+            text: Color32::from_rgb(0, 200, 255),
+            inspector_bg: Color32::from_rgb(0, 10, 20).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(0, 255, 255),
+        },
+
+        // --- Gameboy (Dot Matrix) ---
+        ColorProfile {
+            name: "Gameboy".to_string(),
+            low: Color32::from_rgb(48, 98, 48),    // Dark Olive
+            high: Color32::from_rgb(139, 172, 15), // LCD Green
+            peak: Color32::from_rgb(155, 188, 15), // Brightest
+            background: Color32::from_rgb(15, 56, 15), // Darkest (Off)
+            text: Color32::from_rgb(15, 56, 15),   // Text is usually dark on GB
+            inspector_bg: Color32::from_rgb(139, 172, 15).with_opacity(0.9),
+            inspector_fg: Color32::from_rgb(15, 56, 15),
+        },
     ]
 }
 
@@ -370,6 +439,101 @@ pub fn built_in_visuals() -> Vec<VisualProfile> {
     vec![
         VisualProfile::default(), // Classic
 
+        // --- 1. The "Winamp" Classic ---
+        // 19 bars, specific gap, simple colors.
+        VisualProfile {
+            name: "Llama Whipper".to_string(),
+            visual_mode: VisualMode::SolidBars,
+            num_bars: 19, // Authentic Winamp bar count
+            bar_gap_px: 1,
+            overlay_font: ThemeFont::Mini,
+            color_link: ColorRef::Preset("Classic Skin".to_string()), // (See below)
+            show_peaks: true,
+            peak_hold_time_ms: 600.0,
+            peak_release_time_ms: 200.0,
+            ..VisualProfile::default()
+        },
+
+        VisualProfile {
+            name: "Beos (Haiku!)".to_string(),
+            visual_mode: VisualMode::SolidBars,
+            num_bars: 80, // Affects resolution even in scope mode sometimes
+            overlay_font: ThemeFont::Small,
+            color_link: ColorRef::Preset("BeOS Desktop".to_string()),
+            sensitivity: 2.0,
+            beos_enabled: true,
+            ..VisualProfile::default()
+        },
+
+        // --- 2. High-Fidelity Analysis ---
+        // Maximizes density for checking mixes.
+        VisualProfile {
+            name: "Spectrogram 512".to_string(),
+            visual_mode: VisualMode::SolidBars,
+            num_bars: 512, // Requires a wide window!
+            bar_gap_px: 0, // No gaps for maximum data density
+            overlay_font: ThemeFont::Small,
+            color_link: ColorRef::Preset("Monochrome".to_string()), 
+            show_peaks: false, // Peaks are distracting in analysis
+            sensitivity: 1.5,
+            ..VisualProfile::default()
+        },
+
+        // --- 3. Retro 8-Bit ---
+        // Very chunky, slow update for that NES feel.
+        VisualProfile {
+            name: "8-Bit Arcade".to_string(),
+            visual_mode: VisualMode::SolidBars,
+            num_bars: 10,
+            bar_gap_px: 4,
+            overlay_font: ThemeFont::Monospace,
+            color_link: ColorRef::Preset("Gameboy".to_string()), // (See below)
+            attack_time_ms: 0.0, // Instant movement
+            release_time_ms: 0.0, // Instant drop (no smoothing)
+            show_peaks: false,
+            ..VisualProfile::default()
+        },
+
+        // --- 4. Analog Oscilloscope (CRT) ---
+        // Simulates a lab bench tool.
+        VisualProfile {
+            name: "Lab Bench CRT".to_string(),
+            visual_mode: VisualMode::Oscilloscope,
+            num_bars: 256, // High resolution for smooth lines
+            overlay_font: ThemeFont::Monospace,
+            color_link: ColorRef::Preset("Phosphor P1".to_string()), // (See below)
+            sensitivity: 2.5, // Scopes need high gain
+            background: Some(Color32::from_rgb(0, 15, 0)), // Slight green tint background
+            ..VisualProfile::default()
+        },
+
+        // --- 5. 90s Car Stereo (Segmented) ---
+        // Dancing lights style.
+        VisualProfile {
+            name: "Highway Night".to_string(),
+            visual_mode: VisualMode::SegmentedBars,
+            num_bars: 24,
+            segment_height_px: 3.0,
+            segment_gap_px: 1.0,
+            overlay_font: ThemeFont::Large, // Big text for "Driving"
+            color_link: ColorRef::Preset("VFD Amber".to_string()), // (See below)
+            show_peaks: true,
+            fill_peaks: true, // Connects the bar to the peak
+            ..VisualProfile::default()
+        },
+
+        // --- 6. Sony Minidisc Deck ---
+        // Tight, high-tech segments.
+        VisualProfile {
+            name: "MD Deck".to_string(),
+            visual_mode: VisualMode::SegmentedBars,
+            num_bars: 14,
+            segment_height_px: 2.0,
+            segment_gap_px: 1.0,
+            color_link: ColorRef::Preset("VFD Blue".to_string()), // (See below)
+            beos_enabled: false,
+            ..VisualProfile::default()
+        },
         VisualProfile {
             name: "Retro Dashboard".to_string(),
             visual_mode: VisualMode::SegmentedBars,
@@ -412,211 +576,6 @@ pub fn built_in_visuals() -> Vec<VisualProfile> {
             color_link: ColorRef::Preset("Blueprint (Light)".to_string()),
             sensitivity: 2.0,
             ..VisualProfile::default()
-        }
+        },
     ]
 }
-
-
-/*
-==== OLD PRESETS - KEEP FOR REFERENCE ====
-
-ColorPreset {
-                name: "Classic Winamp".to_string(),
-                low: Color32::from_rgb(50, 205, 50),    // LimeGreen
-                high: Color32::from_rgb(255, 255, 0),   // Yellow
-                peak: Color32::from_rgb(255, 0, 0),     // Red
-            },
-            ColorPreset {
-                name: "Ocean Blue".to_string(),
-                low: Color32::from_rgb(30, 144, 255),   // DodgerBlue
-                high: Color32::from_rgb(0, 255, 255),   // Cyan
-                peak: Color32::from_rgb(255, 255, 255), // White
-            },
-            ColorPreset {
-                name: "Sunset".to_string(),
-                low: Color32::from_rgb(255, 69, 0),     // OrangeRed
-                high: Color32::from_rgb(255, 255, 0),   // Yellow
-                peak: Color32::from_rgb(255, 255, 255), // White
-            },
-            ColorPreset {
-                name: "Synthwave".to_string(),
-                low: Color32::from_rgb(255, 0, 255),    // Magenta
-                high: Color32::from_rgb(0, 255, 255),   // Cyan
-                peak: Color32::from_rgb(255, 255, 0),   // Yellow
-            },
-            ColorPreset {
-                name: "Spy Black".to_string(),
-                low: Color32::from_rgb(0, 0, 0),        // Black
-                high: Color32::from_rgb(47, 79, 79),    // DarkSlateGray
-                peak: Color32::from_rgb(220, 20, 60),   // Crimson
-            },
-            ColorPreset {
-                name: "Forest Canopy".to_string(),
-                low: Color32::from_rgb(0, 100, 0),      // DarkGreen
-                high: Color32::from_rgb(0, 255, 0),     // Lime
-                peak: Color32::from_rgb(255, 255, 0),   // Yellow
-            },
-            ColorPreset {
-                name: "Molten Core".to_string(),
-                low: Color32::from_rgb(139, 0, 0),      // DarkRed
-                high: Color32::from_rgb(255, 165, 0),   // Orange
-                peak: Color32::from_rgb(255, 255, 255), // White
-            },
-            ColorPreset {
-                name: "Arctic Night".to_string(),
-                low: Color32::from_rgb(75, 0, 130),     // Indigo
-                high: Color32::from_rgb(173, 216, 230), // LightBlue
-                peak: Color32::from_rgb(255, 255, 255), // White
-            },
-            ColorPreset {
-                name: "Matrix".to_string(),
-                low: Color32::from_rgb(0, 0, 0),        // Black
-                high: Color32::from_rgb(0, 255, 0),     // Lime
-                peak: Color32::from_rgb(245, 245, 245), // WhiteSmoke
-            },
-            ColorPreset {
-                name: "Bubblegum".to_string(),
-                low: Color32::from_rgb(255, 20, 147),   // DeepPink
-                high: Color32::from_rgb(0, 255, 255),   // Aqua
-                peak: Color32::from_rgb(255, 255, 0),   // Yellow
-            },
-            ColorPreset {
-                name: "Monochrome".to_string(),
-                low: Color32::from_rgb(105, 105, 105),  // DimGray
-                high: Color32::from_rgb(211, 211, 211), // LightGray
-                peak: Color32::from_rgb(255, 255, 255), // White
-            },
-            ColorPreset {
-                name: "Vintage VU".to_string(),
-                low: Color32::from_rgb(184, 134, 11),   // DarkGoldenrod
-                high: Color32::from_rgb(255, 215, 0),   // Gold
-                peak: Color32::from_rgb(205, 92, 92),   // IndianRed
-            },
-            ColorPreset {
-                name: "Deep Space".to_string(),
-                low: Color32::from_rgb(0, 0, 0),        // Black
-                high: Color32::from_rgb(148, 0, 211),   // DarkViolet
-                peak: Color32::from_rgb(0, 255, 255),   // Cyan
-            },
-            ColorPreset {
-                name: "8-Bit Blueberry".to_string(),
-                low: Color32::from_rgb(0, 0, 128),      // Navy
-                high: Color32::from_rgb(65, 105, 225),  // RoyalBlue
-                peak: Color32::from_rgb(255, 255, 255), // White
-            },
-            ColorPreset {
-                name: "Desert Heat".to_string(),
-                low: Color32::from_rgb(128, 0, 0),      // Maroon
-                high: Color32::from_rgb(255, 69, 0),    // OrangeRed
-                peak: Color32::from_rgb(240, 230, 140), // Khaki
-            },
-            ColorPreset {
-                name: "Super Mario Bros.".to_string(),
-                low: Color32::from_rgb(0, 0, 205),      // Medium Blue
-                high: Color32::from_rgb(220, 20, 60),   // Crimson
-                peak: Color32::from_rgb(255, 215, 0),   // Gold
-            },
-            ColorPreset {
-                name: "Halo".to_string(),
-                low: Color32::from_rgb(85, 107, 47),    // Olive Drab
-                high: Color32::from_rgb(218, 165, 32),  // Goldenrod
-                peak: Color32::from_rgb(0, 191, 255),   // Deep Sky Blue (Cortana)
-            },
-            ColorPreset {
-                name: "Fallout".to_string(),
-                low: Color32::from_rgb(75, 0, 130),     // Indigo
-                high: Color32::from_rgb(0, 255, 255),   // Cyan
-                peak: Color32::from_rgb(240, 248, 255), // Alice Blue
-            },
-            ColorPreset {
-                name: "Sith Lord".to_string(),
-                low: Color32::from_rgb(20, 20, 20),     // Near Black
-                high: Color32::from_rgb(220, 20, 60),   // Crimson
-                peak: Color32::from_rgb(255, 255, 255), // White
-            },
-            ColorPreset {
-                name: "Neon Genesis Evangelion".to_string(),
-                low: Color32::from_rgb(106, 13, 173),   // Purple
-                high: Color32::from_rgb(57, 255, 20),   // Neon Green
-                peak: Color32::from_rgb(255, 140, 0),   // Dark Orange
-            },
-            ColorPreset {
-                name: "Neon Tokyo".to_string(),
-                low: Color32::from_rgb(255, 0, 127),    // Hot Pink
-                high: Color32::from_rgb(0, 255, 255),   // Cyan
-                peak: Color32::from_rgb(255, 255, 0),   // Yellow
-            },
-            ColorPreset {
-                name: "Lava Lamp".to_string(),
-                low: Color32::from_rgb(128, 0, 128),    // Purple
-                high: Color32::from_rgb(255, 140, 0),   // Dark Orange
-                peak: Color32::from_rgb(255, 255, 100), // Bright Yellow
-            },
-            ColorPreset {
-                name: "Northern Lights".to_string(),
-                low: Color32::from_rgb(0, 100, 0),      // Dark Green
-                high: Color32::from_rgb(0, 255, 127),   // Spring Green
-                peak: Color32::from_rgb(138, 43, 226),  // Blue Violet
-            },
-            ColorPreset {
-                name: "Cyberpunk".to_string(),
-                low: Color32::from_rgb(255, 0, 255),    // Magenta
-                high: Color32::from_rgb(0, 255, 255),   // Cyan
-                peak: Color32::from_rgb(255, 255, 0),   // Yellow
-            },
-            ColorPreset {
-                name: "Radioactive".to_string(),
-                low: Color32::from_rgb(50, 50, 0),      // Dark Yellow
-                high: Color32::from_rgb(173, 255, 47),  // Green Yellow
-                peak: Color32::from_rgb(255, 0, 0),     // Red
-            },
-            ColorPreset {
-                name: "Ice Fire".to_string(),
-                low: Color32::from_rgb(0, 191, 255),    // Deep Sky Blue
-                high: Color32::from_rgb(255, 165, 0),   // Orange
-                peak: Color32::from_rgb(255, 0, 0),     // Red
-            },
-            ColorPreset {
-                name: "Retrowave".to_string(),
-                low: Color32::from_rgb(255, 0, 128),    // Pink
-                high: Color32::from_rgb(128, 0, 255),   // Purple
-                peak: Color32::from_rgb(0, 255, 255),   // Cyan
-            },
-            ColorPreset {
-                name: "Blood Moon".to_string(),
-                low: Color32::from_rgb(25, 0, 0),       // Very Dark Red
-                high: Color32::from_rgb(139, 0, 0),     // Dark Red
-                peak: Color32::from_rgb(255, 69, 0),    // Orange Red
-            },
-            ColorPreset {
-                name: "Mint Condition".to_string(),
-                low: Color32::from_rgb(0, 100, 100),    // Dark Cyan
-                high: Color32::from_rgb(127, 255, 212), // Aquamarine
-                peak: Color32::from_rgb(255, 255, 255), // White
-            },
-            ColorPreset {
-                name: "Golden Hour".to_string(),
-                low: Color32::from_rgb(255, 140, 0),    // Dark Orange
-                high: Color32::from_rgb(255, 215, 0),   // Gold
-                peak: Color32::from_rgb(255, 250, 205), // Lemon Chiffon
-            },
-            ColorPreset {
-                name: "Tequila Sunrise".to_string(),
-                low: Color32::from_rgb(178, 34, 34),    // Firebrick
-                high: Color32::from_rgb(255, 165, 0),   // Orange
-                peak: Color32::from_rgb(255, 255, 0),   // Yellow
-            },
-            ColorPreset {
-                name: "Espresso Martini".to_string(),
-                low: Color32::from_rgb(28, 20, 13),     // Very Dark Brown
-                high: Color32::from_rgb(160, 82, 45),   // Sienna
-                peak: Color32::from_rgb(255, 248, 220), // Cornsilk
-            },
-            ColorPreset {
-                name: "Cotton Candy".to_string(),
-                low: Color32::from_rgb(255, 105, 180),  // Hot Pink
-                high: Color32::from_rgb(135, 206, 250), // Light Sky Blue
-                peak: Color32::from_rgb(255, 255, 255), // White
-            },
-            
-            */
