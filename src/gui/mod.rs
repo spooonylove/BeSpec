@@ -293,7 +293,7 @@ impl eframe::App for SpectrumApp {
                 
                 // If Enabled, draw BeOS Decorations & calculate layout
                 // We need to lock the state mutably briefly to update dragging offsets
-                let (chrome_layout, beos_active) = {
+                let chrome_layout = {
                     let mut state= self.shared_state.lock().unwrap();
                     let layout = crate::gui::decorations::draw_beos_window_frame(
                         ui,
@@ -302,7 +302,7 @@ impl eframe::App for SpectrumApp {
                         &mut state.config,
                         content_fill
                     );
-                    (layout, state.config.profile.beos_enabled)
+                    layout
                 };
                 
                 let viz_rect =  chrome_layout.content_rect;
