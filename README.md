@@ -28,14 +28,16 @@ A high-performance, cross-platform, real-time audio spectrum visualizer written 
     * **Optimized FFT Engine:** Uses a fixed 2048-point FFT for excellent frequency resolution across all sample rates (e.g., 23.4 Hz/bin @ 48kHz).
     * **Responsiveness:** Configure Attack/Release times for bars and Peak Hold/Decay mechanics.
 * **🎨 Theming:**
-    * **Presets:** Select from 25+ hand-crafted color schemes (Neon Tokyo, Cyberpunk, Winamp Classic, Molten Core).
+    * **Revamped Theme System:** A completely new way to handle color presets and visual profiles independently.
+    * **Presets:** Select from 25+ hand-crafted color schemes including **Winamp Classic**, **Gameboy**, and **O-Scope**.
     * **Custom:** Define your own Low/High/Peak colors to match your setup.
 * **🎵 Media Integration:**
     * **Now Playing Overlay:** Elegantly displays current track details (Title, Artist, Album) and full-color **Album Art**.
+    * **Wikipedia Integration:** Click on Album Art to link to the associated album's Wikipedia page. (Intelligently searches for the specific artist/album and defaults to a Google search if not found).
     * **Interactive Controls:** Control your music (Play/Pause, Next, Previous) directly from the overlay (Windows/Linux only).
-    * **Smart Behavior:** Configurable to fade out after updates, remain persistent, or hide completely.
 * 🔍 **Interactive Inspector:** Turn the visualizer into a precision analysis tool. Hover over the spectrum to activate a vertical crosshair that highlights specific frequency bins and displays exact Frequency (Hz) and Amplitude (dB) metrics.
 * **🖥️ Modern UI:**
+    * **BeOS / Haiku Window Mode:** A distinct, toggleable window decoration style inspired by the classic BeOS interface.
     * **Borderless Window:** A clean, chrome-less window that floats on your desktop with "Always on Top" and "Click-through" support.
     * **Persistent Settings:** Configuration is automatically saved to your OS's standard application data folder.
     * **Performance HUD:** Real-time overlay displaying FPS, FFT latency, and frequency resolution.
@@ -56,12 +58,11 @@ BeSpec is designed for precision. See how it uncovers hidden artifacts in profes
 
 * **[Queens of the Stone Age Analysis](./docs/case_study.md):** Detecting a 15.75 kHz CRT whine hidden in the outro of *I Was a Teenage Hand Model* using the 512-bar high-resolution mode.
 
-## New in v1.3-rc1
-* **Media Transport Controls:** Added Play, Pause, Previous, and Next buttons to the media overlay (Windows/Linux).
-* **Album Art Integration:** Now fetches high-res cover art with optimized "Lazy Loading" to keep CPU usage near zero.
-* **Ghost Mode 2.0:** Improved "Click-through" behavior with transparent background. The window ignores mouse clicks until focused via Alt-Tab.
-* **UI Polish:** New Right-to-Left media layout and cohesive control clusters.
-
+## New in v1.5
+* **BeOS / Haiku Window Mode:** Added a distinct new window decoration style that pays homage to the Haiku OS interface. Users can toggle this mode in the Window settings.
+* **Wikipedia Link Integration:** Clicking the Album Art in the media overlay now intelligently searches Wikipedia for the associated album or artist (defaults to Google Search if no direct match is found).
+* **New Theme System:** Completely re-engineered the way color presets and visual profiles are handled, allowing for more robust saving, loading, and mixing of styles.
+* **New Presets:** Added **Winamp**, **Gameboy**, and **O-Scope** presets to the built-in library.
 ## Compatibility & Support
 
 | Platform | Support Status | Media Capabilities |
