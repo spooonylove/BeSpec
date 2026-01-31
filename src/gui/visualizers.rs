@@ -462,7 +462,10 @@ pub fn draw_inspector_overlay(
 
     // Screen bounds check
     if pos.x + w > rect.right() { pos.x -= w + 30.0; }
-    pos.y = pos.y.clamp(rect.top(), rect.bottom() - h);
+    // SAFETY FIX: Prevent crash when window height < tooltip height.
+    // Ensure 'max' bound is never smaller than 'min' bound (rect.top()).
+    let max_y = (rect.bottom() - h).max(rect.top());
+    pos.y = pos.y.clamp(rect.top(), max_y);
 
     let label_rect = egui::Rect::from_min_size(pos, egui::vec2(w, h));
     painter.rect_filled(label_rect, 4.0, to_egui_color(colors.inspector_bg));

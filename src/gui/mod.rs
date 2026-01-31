@@ -242,7 +242,7 @@ impl eframe::App for SpectrumApp {
             // If BeOS mode is active, the "Window" (CentralPanel) must be TRANSPARENT 
             // so the area around the tab is clear. We will paint the 'user_bg_color' 
             // manually inside the decorations module.
-            if state.config.beos_mode {
+            if state.config.profile.beos_enabled {
                 (egui::Color32::TRANSPARENT, user_bg_color, state.config.window_locked, final_alpha)
             } else {
                 (user_bg_color, user_bg_color, state.config.window_locked, final_alpha)
@@ -302,7 +302,7 @@ impl eframe::App for SpectrumApp {
                         &mut state.config,
                         content_fill
                     );
-                    (layout, state.config.beos_mode)
+                    (layout, state.config.profile.beos_enabled)
                 };
                 
                 let viz_rect =  chrome_layout.content_rect;

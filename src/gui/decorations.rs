@@ -44,7 +44,7 @@ pub fn draw_beos_window_frame(
     background_color: egui::Color32,
 ) -> ChromeLayout {
     
-    if !config.beos_mode {
+    if !config.profile.beos_enabled{
         return ChromeLayout { 
             content_rect: window_rect, 
             is_collapsed: false,
@@ -71,12 +71,22 @@ pub fn draw_beos_window_frame(
     let title_font = egui::FontId::proportional(13.0);
     let galley = painter.layout_no_wrap(title_text.to_string(), title_font.clone(), col_text);
     
+    // 1. Calculate Widths
     let dynamic_tab_width = galley.rect.width() + 80.0;
-    let max_tab_width = window_rect.width() - (border_width * 2.0);
+    // Protect against negative width if window is tiny
+    let max_tab_width = (window_rect.width() - (border_width * 2.0)).max(1.0);
     let tab_width = dynamic_tab_width.min(max_tab_width);
     
-    let max_offset = window_rect.width() - tab_width;
-    config.beos_tab_offset = config.beos_tab_offset.clamp(0.0, max_offset);
+    // 2. Calculate Offsets (Defensive)
+    // We want the tab to be clampable between 'border_width' and the far right edge.
+    let min_offset = 0.0; // Or 'border_width' if you want it strictly inside
+    let raw_max_offset = window_rect.width() - tab_width;
+    
+    // CRITICAL FIX: Ensure max is never less than min
+    let valid_max_offset = raw_max_offset.max(min_offset);
+    
+    // 3. Apply Clamp with safe bounds
+    config.beos_tab_offset = config.beos_tab_offset.clamp(min_offset, valid_max_offset);
     
     let tab_rect = egui::Rect::from_min_size(
         window_rect.min + egui::vec2(config.beos_tab_offset, 0.0),
