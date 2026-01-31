@@ -189,19 +189,28 @@ fn start_fft_processing(
 
         let mut mono_buffer: Vec<f32> = Vec::with_capacity(4096);
         
-        // === Performance Tracking ===
+        // === Performance Tracking ====
         let mut total_process_time = Duration::ZERO;
         let mut min_process_time = Duration::MAX;
         let mut max_process_time = Duration::ZERO;
+        // =============================
+        // === Decay State Tracking ====
+        let mut is_decaying = false;
+        let mut last_audio_time = Instant::now();
+        // Safety: Stop decaying after 5 seconds!
+        const SILENCE_TIMEOUT: Duration = Duration::from_secs(5);
         // =============================
 
         loop{
             if shutdown.load(Ordering::Relaxed) {
                 break;
             }
-            match rx.recv_timeout(Duration::from_millis(100)) {
+            // Timeout set for smooth 60fps decay
+            match rx.recv_timeout(Duration::from_millis(16)) {
                 Ok(packet) => {
                     frame_count += 1;
+                    is_decaying = true;
+                    last_audio_time = Instant::now();
 
                     // ====== Initialization: First packet tells us the sample rate
                     if processor.is_none() || fft_config.is_none() {
@@ -419,6 +428,41 @@ fn start_fft_processing(
                 }
                 
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    if is_decaying {
+                        if let Some(proc) = processor.as_mut(){
+                            // 1. Safety Check: don't run forever
+                            if last_audio_time.elapsed() > SILENCE_TIMEOUT {
+                                is_decaying = false;
+                                tracing::debug!("[FFT] Silence timeout reached, stopping updates.");
+                                continue;
+                            }
+
+                            // 2. Feed Silence
+                            // Passing an empty slice works because apply_window zero-pads
+                            // the internal buffer up to the FFT_size.
+                            let (bars, peaks) = proc.process(&[]);
+
+                            // 3. Check if we have hit the noise floor
+                            // if all bars are at SILENCE_DB, we can stop updating
+                            let max_val = bars.iter().fold(SILENCE_DB, |a, &b| a.max(b));
+                            let max_peak = peaks.iter().fold(SILENCE_DB, |a, &b| a.max(b));
+
+                            // Add a small epsilon (0.1) to handle float imprecision
+                            if max_val <= SILENCE_DB + 0.1 &&  max_peak <= SILENCE_DB + 0.1 {
+                                is_decaying = false;
+                                tracing::debug!("[FFT] Visual decay complete.");
+                            }
+
+                            // 4. Update GUI
+                            if let Ok(mut state) = shared_state.lock(){
+                                state.visualization.bars = bars;
+                                state.visualization.peaks = peaks;
+                            }
+
+                        }
+                    }
+
+                    /* 
                     // if we haven't received audio for 100ms, the stream is likely 
                     // stopped, switching, or silent. Reset bars to silence
                     if let Ok(mut state) = shared_state.lock() {
@@ -434,9 +478,10 @@ fn start_fft_processing(
                         }
                     }
                     continue;
+                    */
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    tracing::error!("[FFT] Capture disconnected!");
+                    tracing::error!("[FFT] Audio stream disconnected!");
                     break;
                 }
             }

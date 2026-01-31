@@ -179,7 +179,7 @@ pub fn built_in_colors() -> Vec<ColorProfile> {
             peak: Color32::from_rgb(255, 147, 27),
             background: Color32::from_rgb(51, 102, 152),
             text: Color32::from_rgb(220, 220, 220), 
-            inspector_bg: Color32::from_rgb(0, 0, 0).with_opacity(0.9),
+            inspector_bg: Color32::from_rgb(85, 85, 85).with_opacity(0.9),
             inspector_fg: Color32::from_rgb(255, 255, 255),
         },
         ColorProfile {
