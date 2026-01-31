@@ -1,6 +1,6 @@
 [package]
 name = "BeSpec"
-version = "1.5.0"
+version = "1.5.1"
 edition = "2021"
 authors = ["BeSpec-Dev"]
 description = "A lightweight, highly configurable, real-time audio spectrum visualizer"
