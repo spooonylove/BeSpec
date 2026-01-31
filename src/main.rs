@@ -8,6 +8,7 @@ mod gui;
 mod shared_state;
 mod media;
 mod presets;
+mod update_check;
 
 use core::panic;
 use std::thread;
@@ -26,6 +27,7 @@ use directories::ProjectDirs;
 use crate::audio_device::AudioDeviceEnumerator;
 use crate::fft_processor::{FFTProcessor, FFTConfig};
 use crate::shared_state::{SILENCE_DB, VisualMode};
+use crate::update_check::check_for_updates;
 use shared_state::SharedState;
 use crate::gui::SpectrumApp;
 use crate::audio_capture::{AudioCaptureManager, AudioPacket};
@@ -613,17 +615,46 @@ fn main (){
     // Shutdown signal for audio threads
     let shutdown = Arc::new(AtomicBool::new(false));
 
+    // ==================================
     // Start audio capture thread
+    // ==================================
     let audio_rx = start_audio_capture(shutdown.clone(), shared_state.clone());
 
+    // ==================================
     // Start FFT processing thread
+    // ==================================
     start_fft_processing(audio_rx, shared_state.clone(), shutdown.clone());
 
+    // ==================================
     // Start Media Monitoring thread
+    // ==================================
     tracing::info!("[Main] Starting Media Monitor...");
     let media_manager = Arc::new(PlatformMedia::new());
     let (media_tx, media_rx) = bounded(10);
     media_manager.start(media_tx);
+
+    // ==================================
+    // Start Update Update Checker Thread
+    // ==================================
+    let update_notifier = Arc::clone(&shared_state);
+
+    thread::spawn(move || {
+        match check_for_updates() {
+            Ok(Some(url)) => {
+                tracing::info!("[Update]🔔 New version available: {}", url);
+                // Locl the mutex to safely write the URL to the shared state
+                if let Ok(mut state) = update_notifier.lock() {
+                    state.update_url = Some(url);
+                }
+            }
+            Ok(None) => tracing::info!("[Update] ✓ App is up to date."),
+            Err(e) => tracing::warn!("[Update] ⚠️ Check failed: {}", e),
+        }
+    });
+
+    // ========================================================================
+    // 3. APPLICATION START
+    // ========================================================================
 
     tracing::info!("[Main] Starting GUI...\n");
 
