@@ -306,7 +306,15 @@ impl eframe::App for SpectrumApp {
                 };
                 
                 let viz_rect =  chrome_layout.content_rect;
-
+                
+                // Handle BeOS Tab Right-Click (Toggle Settings)
+                // Since the tab captures mouse events, we check its specific response 
+                // to see if the user right-clicked it.
+                if let Some(tab_resp) = &chrome_layout.tab_response {
+                    if tab_resp.clicked_by(egui::PointerButton::Secondary) {
+                        self.settings_open = !self.settings_open;
+                    }
+                }
 
                 // Handle Dragging
                 if !chrome_layout.is_collapsed {
@@ -353,6 +361,8 @@ impl eframe::App for SpectrumApp {
 
                     // Sonar Ping Effect
                     if flash_strength > 0.0 {
+                      
+
                         viz::draw_sonar_ping(ui, ui.max_rect().shrink(5.0), flash_strength, &colors);
                     }
                     
