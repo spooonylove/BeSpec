@@ -419,58 +419,108 @@ pub fn draw_inspector_overlay(
     colors: &ColorProfile,
     data: &crate::shared_state::VisualizationData,
     perf: &crate::shared_state::PerformanceStats,
-    index: usize,
-    slot_width: f32,
+    hovered_index: usize,
+    bar_slot_width: f32,
     _noise_floor: f32,
 ) {
+    let num_bars = data.bars.len();
+    if hovered_index >= num_bars { return; }
 
-    // Crosshair
-    let center_x = rect.left() + (index as f32 * slot_width) + (slot_width / 2.0);
-    painter.line_segment(
-        [egui::pos2(center_x, rect.top()), egui::pos2(center_x, rect.bottom())],
-        egui::Stroke::new(1.0, to_egui_color(colors.inspector_fg))
+    // === 1. Calculate Data ===
+    let db_value = data.bars[hovered_index];
+    let sr = perf.fft_info.sample_rate;
+    let fft_size = perf.fft_info.fft_size;
+    
+    // Get precise frequency bounds from the engine
+    let max_freq = FFTProcessor::calculate_bar_frequency(hovered_index, num_bars, sr, fft_size);
+    let min_freq = if hovered_index == 0 {
+        0.0
+    } else {
+        FFTProcessor::calculate_bar_frequency(hovered_index - 1, num_bars, sr, fft_size)
+    };
+    
+    // Calculate Center (Average) Frequency for display
+    let center_freq = (min_freq + max_freq) / 2.0;
+
+    // === 2. Build Rich Text Layout ===
+    // We use a LayoutJob to mix font sizes and colors in one text block
+    let mut job = egui::text::LayoutJob::default();
+    let text_color = to_egui_color(colors.inspector_fg);
+    let faint_color = text_color.linear_multiply(0.7);
+
+    // [Primary]: Center Freq & dB Level (Medium Size, Strong)
+    job.append(
+        &format!("{:.0} Hz  |  {:.1} dB\n", center_freq, db_value),
+        0.0,
+        egui::text::TextFormat {
+            font_id: egui::FontId::proportional(14.0), // Medium text
+            color: text_color,
+            ..Default::default()
+        },
     );
 
-    // Label Calculation
-    let amp_db = data.bars[index];
-    let freq_hz = FFTProcessor::calculate_bar_frequency(
-        index, 
-        data.bars.len(),
-        perf.fft_info.sample_rate,
-        perf.fft_info.fft_size
+    // [Secondary]: Band # and Range (Small, Monospace for alignment)
+    job.append(
+        &format!("Band {}  [{:.0} - {:.0} Hz]", hovered_index + 1, min_freq, max_freq),
+        0.0,
+        egui::text::TextFormat {
+            font_id: egui::FontId::monospace(10.0), // Small text
+            color: faint_color,
+            ..Default::default()
+        },
     );
 
-    let freq_text = if freq_hz >= 1000.0 {
-        format!("{:.1} kHz", freq_hz / 1000.0)
-    } else {
-        format!("{:.0} Hz", freq_hz)
-    };
-    let label = format!("{} | {:+.1} dB", freq_text, amp_db);
+    // Create the Galley (Layout result)
+    let galley = painter.layout_job(job);
 
-    // ToolTip
-    let font_id = egui::FontId::proportional(14.0);
-    let galley = painter.layout_no_wrap(label,  font_id, egui::Color32::WHITE);
-    let padding = 6.0;
-    let w =  galley.size().x + padding * 2.0;
-    let h = galley.size().y + padding * 2.0;
+    // === 3. Position the Tooltip ===
+    let bar_center_x = rect.left() + (hovered_index as f32 * bar_slot_width) + (bar_slot_width / 2.0);
+    
+    // Position: Above the click position, centered horizontally
+    // Add some padding around the text
+    let padding = egui::vec2(8.0, 6.0);
+    let tooltip_size = galley.size() + (padding * 2.0);
+    
+    let mut tooltip_pos = egui::pos2(
+        bar_center_x - (tooltip_size.x / 2.0),
+        rect.top() + 30.0 // Push it down a bit from the top edge
+    );
 
-    let mut pos = if let Some(mouse) = painter.ctx().input(|i| i.pointer.hover_pos()) {
-        mouse + egui::vec2(15.0, 0.0)
-    } else {
-        rect.center()
-    };
+    // Clamp to window bounds (don't let it clip off right edge)
+    if tooltip_pos.x + tooltip_size.x > rect.right() {
+        tooltip_pos.x = rect.right() - tooltip_size.x - 5.0;
+    }
+    // Clamp to left edge
+    if tooltip_pos.x < rect.left() {
+        tooltip_pos.x = rect.left() + 5.0;
+    }
 
-    // Screen bounds check
-    if pos.x + w > rect.right() { pos.x -= w + 30.0; }
-    // SAFETY FIX: Prevent crash when window height < tooltip height.
-    // Ensure 'max' bound is never smaller than 'min' bound (rect.top()).
-    let max_y = (rect.bottom() - h).max(rect.top());
-    pos.y = pos.y.clamp(rect.top(), max_y);
+    let tooltip_rect = Rect::from_min_size(tooltip_pos, tooltip_size);
 
-    let label_rect = egui::Rect::from_min_size(pos, egui::vec2(w, h));
-    painter.rect_filled(label_rect, 4.0, to_egui_color(colors.inspector_bg));
-    painter.rect_stroke(label_rect, 4.0, egui::Stroke::new(1.0, to_egui_color(colors.inspector_fg)));
-    painter.galley(label_rect.min + egui::vec2(padding, padding), galley, egui::Color32::WHITE);
+    // === 4. Draw Background & Border ===
+    let bg_color = to_egui_color(colors.inspector_bg);
+    
+    // Background with rounding
+    painter.rect_filled(tooltip_rect, 4.0, bg_color);
+    
+    // "Very light border"
+    painter.rect_stroke(
+        tooltip_rect, 
+        4.0, 
+        egui::Stroke::new(1.0, text_color.linear_multiply(0.2)) // 20% opacity of text color
+    );
+
+    // === 5. Draw Text ===
+    painter.galley(tooltip_pos + padding, galley, egui::Color32::WHITE);
+
+    // === 6. Draw Target Dot (Optional) ===
+    // Helps user see exactly which bar they are probing
+    let dot_y = rect.bottom() - 10.0;
+    painter.circle_filled(
+        egui::pos2(bar_center_x, dot_y),
+        2.5,
+        text_color.linear_multiply(0.8)
+    );
 }
 
 /// Render performance statistics overlay
