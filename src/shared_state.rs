@@ -305,9 +305,12 @@ pub struct AppConfig {
     /// Shop window title bar and borders
     pub window_decorations: bool,
 
+    /// User-definable Hide shortcut key
+    pub minimize_key: egui::Key,
+
     pub show_stats: bool,
 
-    pub inspector_enabled: bool,    
+    pub inspector_enabled: bool,
 
     /// Name of selected input device (default: "Default")
     pub selected_device: String,
@@ -336,6 +339,7 @@ impl Default for AppConfig {
             always_on_top: false,
             window_locked: false,
             window_decorations: false,
+            minimize_key: egui::Key::H,
             inspector_enabled: true,
             show_stats: false,
             selected_device: "Default".to_string(),
