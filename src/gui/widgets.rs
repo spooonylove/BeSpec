@@ -823,27 +823,55 @@ pub fn settings_tab_colors(
         let mut egui_insp_fg = to_egui_color(current_colors.inspector_fg);
 
         ui.group(|ui| {
-        egui::Grid::new("color_grid").num_columns(2).spacing(grid_spacing).show(ui, |ui| {
-            ui.label("Low"); ui.color_edit_button_srgba(&mut egui_low); ui.end_row();
-            ui.label("High"); ui.color_edit_button_srgba(&mut egui_high); ui.end_row();
-            ui.label("Peak"); ui.color_edit_button_srgba(&mut egui_peak); ui.end_row();
-            ui.label("Background"); ui.color_edit_button_srgba(&mut egui_bg); ui.end_row();
-            ui.label("Overlay Text"); ui.color_edit_button_srgba(&mut egui_text); ui.end_row();
-            ui.label("Inspector Box"); ui.color_edit_button_srgba(&mut egui_insp_bg); ui.end_row();
-            ui.label("Inspector Text/Line"); ui.color_edit_button_srgba(&mut egui_insp_fg); ui.end_row();
-        });
+            egui::Grid::new("color_grid").num_columns(2).spacing(grid_spacing).show(ui, |ui| {
+                // 2. The Logic Fix: Only write back Egui -> State IF CHANGED
+                
+                ui.label("Low"); 
+                if ui.color_edit_button_srgba(&mut egui_low).changed() {
+                    current_colors.low = from_egui_color(egui_low);
+                }
+                ui.end_row();
+
+                ui.label("High"); 
+                if ui.color_edit_button_srgba(&mut egui_high).changed() {
+                    current_colors.high = from_egui_color(egui_high);
+                }
+                ui.end_row();
+
+                ui.label("Peak"); 
+                if ui.color_edit_button_srgba(&mut egui_peak).changed() {
+                    current_colors.peak = from_egui_color(egui_peak);
+                }
+                ui.end_row();
+
+                ui.label("Background"); 
+                if ui.color_edit_button_srgba(&mut egui_bg).changed() {
+                    current_colors.background = from_egui_color(egui_bg);
+                }
+                ui.end_row();
+
+                ui.label("Overlay Text"); 
+                if ui.color_edit_button_srgba(&mut egui_text).changed() {
+                    current_colors.text = from_egui_color(egui_text);
+                }
+                ui.end_row();
+
+                ui.label("Inspector Box"); 
+                if ui.color_edit_button_srgba(&mut egui_insp_bg).changed() {
+                    current_colors.inspector_bg = from_egui_color(egui_insp_bg);
+                }
+                ui.end_row();
+
+                ui.label("Inspector Text/Line"); 
+                if ui.color_edit_button_srgba(&mut egui_insp_fg).changed() {
+                    current_colors.inspector_fg = from_egui_color(egui_insp_fg);
+                }
+                ui.end_row();
+            });
         });
         
         ui.add_space(10.0);
         visualizers::draw_preview_spectrum(ui, &current_colors, bar_opacity);
-
-        current_colors.low = from_egui_color(egui_low);
-        current_colors.high = from_egui_color(egui_high);
-        current_colors.peak = from_egui_color(egui_peak);
-        current_colors.background = from_egui_color(egui_bg);
-        current_colors.text = from_egui_color(egui_text);
-        current_colors.inspector_bg = from_egui_color(egui_insp_bg);
-        current_colors.inspector_fg = from_egui_color(egui_insp_fg);
 
         if current_colors != initial_colors {
         state.config.profile.color_link = ColorRef::Custom(current_colors);

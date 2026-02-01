@@ -43,9 +43,29 @@ pub const BEOS_BORDER_WIDTH: f32 = 4.0;
 //pub const PANEL_WIDTH: f32 = 250.0;
 //pub const ANIMATION_SPEED: f32 = 0.1;
 
-/// Convert our Color32 to egui::Color32
+/// Convert our internal StateColor32 (Straight Alpha) to egui::Color32 (Premultiplied)
 pub fn to_egui_color(color: SharedColor) -> egui::Color32 {
-    egui::Color32::from_rgba_premultiplied(color.r, color.g, color.b, color.a)
+    // ✅ CORRECT: 'unmultiplied' forces Egui to multiply Alpha for us.
+    egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a)
+}
+
+/// Convert egui::Color32 (Premultiplied) back to StateColor32 (Straight Alpha)
+pub fn from_egui_color(c: egui::Color32) -> StateColor32 {
+    let alpha = c.a() as f32 / 255.0;
+
+    // Safety check for divide-by-zero (fully transparent)
+    if alpha <= 0.001 {
+        return StateColor32 { r: 0, g: 0, b: 0, a: 0 };
+    }
+
+    // ✅ CORRECT: We UN-MULTIPLY the rgb values to restore "Straight" color.
+    // We add 0.5 to round to nearest integer (matches f32::round behavior).
+    StateColor32 {
+        r: ((c.r() as f32 / alpha) + 0.5).min(255.0) as u8,
+        g: ((c.g() as f32 / alpha) + 0.5).min(255.0) as u8,
+        b: ((c.b() as f32 / alpha) + 0.5).min(255.0) as u8,
+        a: c.a(),
+    }
 }
 
 // == Helper Functions ==
@@ -56,7 +76,6 @@ pub fn db_to_px(db: f32, noise_floor: f32, max_height: f32) -> f32 {
     normalized * max_height
 }
 
-/// Linear interpolation between two egui colors
 pub fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
     let t = t.clamp(0.0, 1.0);
     egui::Color32::from_rgba_premultiplied(
@@ -67,7 +86,6 @@ pub fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
     )
 }
 
-/// Converts our internal ThemeFont setting into a usable egui FontID
 pub fn to_egui_font(font_variant: &ThemeFont) -> FontId {
     match font_variant {
         ThemeFont::Mini => FontId::new(9.0, FontFamily::Proportional),
@@ -76,9 +94,4 @@ pub fn to_egui_font(font_variant: &ThemeFont) -> FontId {
         ThemeFont::Large => FontId::new(18.0, FontFamily::Proportional),
         ThemeFont::Monospace => FontId::new(12.0, FontFamily::Monospace),
     }
-}
-
-/// Converts EGUI colors to our internal Color32 type
-pub fn from_egui_color(c: egui::Color32) -> StateColor32 {
-    StateColor32 { r: c.r(), g: c.g(), b: c.b(), a: c.a() }
 }
