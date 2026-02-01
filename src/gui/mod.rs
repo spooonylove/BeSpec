@@ -176,16 +176,25 @@ impl eframe::App for SpectrumApp {
         }
 
         // --- Window Size tracking (Keep separate to avoid growth bug) ---
-         if let Some(rect) = ctx.input(|i| i.viewport().inner_rect) {
-             let size = rect.size();
-             let size_changed = self.last_window_size.map_or(true, |ls| (ls - size).length() > 1.0);
-             if size_changed {
-                 if let Ok(mut state) = self.shared_state.lock() {
-                     state.config.window_size = [size.x, size.y];
-                 }
-                 self.last_window_size = Some(size);
-             }
-         }
+        if let Some(rect) = ctx.input(|i| i.viewport().inner_rect) {
+            let size = rect.size();
+            let size_changed = self.last_window_size.map_or(true, |ls| (ls - size).length() > 1.0);
+             
+            // ADD THIS: Check maximized state
+            let is_maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+
+            if size_changed {
+                if let Ok(mut state) = self.shared_state.lock() {
+                    // FIX: Only save if "Normal".
+                    // If we are collapsed or maximized, the current size is temporary/OS-controlled.
+                    // We MUST NOT save it to config, or we lose the user's preferred window size.
+                    if !state.config.beos_window_collapsed && !is_maximized {
+                        state.config.window_size = [size.x, size.y];
+                    }
+                }
+                self.last_window_size = Some(size);
+            }
+        }
         
         // === Performance Stats (FPS) ===
         // Calculate FPS
@@ -459,12 +468,15 @@ impl eframe::App for SpectrumApp {
                 // === WINDOW CONTROLS ====
                 // 1. Resize Grip (Needs Context + Window Rect)
                 // We check the inverted state first (read-only lock)
-                let is_inverted = if let Ok(s) = self.shared_state.lock() {
-                    s.config.profile.inverted_spectrum
+                let (is_inverted, is_collapsed) = if let Ok(s) = self.shared_state.lock() {
+                    (s.config.profile.inverted_spectrum, s.config.beos_window_collapsed)
                 } else {
-                    false
+                    (false, false)
                 };
-                widgets::draw_resize_grip(ui, ctx, window_rect, is_inverted);
+                
+                if !is_collapsed{
+                    widgets::draw_resize_grip(ui, ctx, window_rect, is_inverted);
+                }
 
                 // 2. Lock Button (needs mutable State Access)
                 // We pass the Arc<Mutex> so the widget can lock it internally when clicked

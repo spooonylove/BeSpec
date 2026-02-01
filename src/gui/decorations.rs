@@ -181,7 +181,26 @@ pub fn draw_beos_window_frame(
 
     if ui.interact(zoom_hitbox, tab_id.with("zoom"), egui::Sense::click()).clicked() {
         let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized));
+        
+        if config.beos_window_collapsed {
+            // STATE 1: Window is Windowshaded (Tiny).
+            // Action: Unshade AND Maximize.
+            config.beos_window_collapsed = false;
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        } else if is_maximized {
+            // STATE 2: Window is Maximized.
+            // Action: Un-maximize.
+            // CRITICAL FIX: The OS thinks "previous size" was the tiny windowshade size.
+            // We must force it to use our stored 'config.window_size'.
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(
+                egui::vec2(config.window_size[0], config.window_size[1])
+            ));
+        } else {
+            // STATE 3: Window is Normal.
+            // Action: Maximize.
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        }
     }
 
 
