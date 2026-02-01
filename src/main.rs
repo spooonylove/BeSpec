@@ -201,6 +201,7 @@ fn start_fft_processing(
         let mut last_audio_time = Instant::now();
         // Safety: Stop decaying after 5 seconds!
         const SILENCE_TIMEOUT: Duration = Duration::from_secs(5);
+        const JITTER_TOLERANCE:Duration = Duration::from_millis(50);
         // =============================
 
         loop{
@@ -430,8 +431,24 @@ fn start_fft_processing(
                 }
                 
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+
+                    // === HYSTERESIS CHECK ===
+                    // On Linux, audio packets might arrive slightly irregularly (e.g. every 20ms).
+                    // If we timeout at 16ms, it doesn't necessarily mean "Silence".
+                    // If we feed silence immediately, we get visual stutter (drop to 0 and back).
+                    //
+                    // We only switch to "Decay Mode" if the gap exceeds our tolerance.
+                    if last_audio_time.elapsed() < JITTER_TOLERANCE {
+                        // Packet is just late. Hold the current visual state.
+                        // This 'continue' restarts the loop and waits another 16ms 
+                        // (or until the packet actually arrives).
+                        continue;
+                    }
+                    
                     if is_decaying {
+
                         if let Some(proc) = processor.as_mut(){
+                            
                             // 1. Safety Check: don't run forever
                             if last_audio_time.elapsed() > SILENCE_TIMEOUT {
                                 is_decaying = false;
