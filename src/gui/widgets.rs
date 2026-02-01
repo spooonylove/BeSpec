@@ -974,6 +974,16 @@ pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
                 });
         });
         ui.add_space(10.0); // Bottom padding
+
+        ui.separator();
+        ui.vertical_centered(|ui| {
+            ui.add_space(5.0);
+            ui.label(
+                egui::RichText::new(format!("BeSpec v{}", env!("CARGO_PKG_VERSION")))
+                .small()
+                .weak()
+            );
+        });
     });
 }
 
