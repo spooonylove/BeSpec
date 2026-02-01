@@ -880,95 +880,100 @@ pub fn settings_tab_colors(
 }
 
 pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
-    let grid_spacing = egui::vec2(40.0, 12.0);
-
-    ui.heading("Window Configuration");
-    ui.add_space(5.0);
-    
-    ui.group(|ui| {
-
-        ui.label(egui::RichText::new("Decorations & Style").strong());
-        ui.separator();
+    // Add inner margin so text doesn't touch window edges
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.add_space(10.0); // Margin from top
         
-        // 1. BeOS / Haiku Mode Toggle
-        if ui.checkbox(&mut state.config.profile.beos_enabled, "Enable BeOS / Haiku Mode").changed() {
-            // UX: If enabling for the first time (and offset is 0), bump it 
-            // to 20px so the tab doesn't look "stuck" in the left corner.
-            if state.config.profile.beos_enabled && state.config.beos_tab_offset < 1.0 {
-                state.config.beos_tab_offset = 20.0;
+        let grid_spacing = egui::vec2(40.0, 12.0);
+
+        ui.heading("Window Configuration");
+        ui.add_space(5.0);
+        
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Decorations & Style").strong());
+            ui.separator();
+            
+            if ui.checkbox(&mut state.config.profile.beos_enabled, "Enable BeOS / Haiku Mode").changed() {
+                if state.config.profile.beos_enabled && state.config.beos_tab_offset < 1.0 {
+                    state.config.beos_tab_offset = 20.0;
+                }
             }
-        }
 
-        // Instructions (Only visible when enabled)
-        if state.config.profile.beos_enabled {
-            ui.indent("beos_help", |ui| {
-                ui.spacing_mut().item_spacing.y = 2.0; // Tighter spacing for help text
-                ui.label("• Shift + Drag tab to slide it horizontally");
-                ui.label("• Double-click tab to collapse/shutter window");
-            });
-        }
-    });
-
-    ui.add_space(10.0);
-    ui.group(|ui| {
-        ui.label(egui::RichText::new("Behavior").strong());
-        ui.separator();
-        egui::Grid::new("window_grid")
-            .num_columns(2)
-            .spacing(grid_spacing)
-            .show(ui, |ui| {
-                ui.label("Main Window");
-                if ui.checkbox(&mut state.config.always_on_top, "Always on Top").changed() {
-                    let level = if state.config.always_on_top {
-                        egui::WindowLevel::AlwaysOnTop
-                    } else {
-                        egui::WindowLevel::Normal
-                    };
-                    ui.ctx().send_viewport_cmd_to(
-                        egui::ViewportId::ROOT,
-                        egui::ViewportCommand::WindowLevel(level)
-                    );
-                }
-                ui.end_row();
-
-                ui.label("Ghost Mode 👻");
-                ui.horizontal(|ui| {
-                    ui.label("Enable via Lock Icon 🔒");
-                    ui.add(egui::Label::new("❓").sense(egui::Sense::hover()))
-                        .on_hover_text(
-                            "How to use Ghost Mode:\n\
-                            1. Click the Lock icon (bottom-left) to enable click-through.\n\
-                            2. The window will ignore mouse clicks so you can work through it.\n\
-                            3. To UNLOCK: Alt-Tab (switch focus) back to this window.\n\
-                            The lock will reactivate temporarily."
-                        );
+            if state.config.profile.beos_enabled {
+                ui.indent("beos_help", |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    ui.label("• Shift + Drag tab to slide it horizontally");
+                    ui.label("• Double-click tab to collapse/shutter window");
                 });
-                ui.end_row();
+            }
+        });
 
-                ui.label("Decorations");
-                if ui.checkbox(&mut state.config.window_decorations, "Show Title Bar").changed() {
-                    let show = state.config.window_decorations;
-                    ui.ctx().send_viewport_cmd_to(
-                        egui::ViewportId::ROOT,
-                        egui::ViewportCommand::Decorations(show));
-                }
-                ui.end_row();
-
-                ui.label("Inspector Tool");
-                ui.checkbox(&mut state.config.inspector_enabled, "Enabled").on_hover_text("Show frequency and dB on mouse hover");
-                ui.end_row();
-
-                // Media Settings
-                ui.label("Now Playing");
-                egui::ComboBox::from_id_salt("media_mode")
-                    .selected_text(format!("{:?}", state.config.media_display_mode))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::FadeOnUpdate, "Fade On Update");
-                        ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::AlwaysOn, "Always On");
-                        ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::Off, "Off");
+        ui.add_space(10.0);
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Behavior").strong());
+            ui.separator();
+            
+            egui::Grid::new("window_grid")
+                .num_columns(2)
+                .spacing(grid_spacing)
+                .min_col_width(150.0) // Ensures the left labels have enough breathing room
+                .show(ui, |ui| {
+                    // --- Row: Always on Top ---
+                    ui.label("Main Window");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.checkbox(&mut state.config.always_on_top, "Always on Top").changed() {
+                            let level = if state.config.always_on_top {
+                                egui::WindowLevel::AlwaysOnTop
+                            } else {
+                                egui::WindowLevel::Normal
+                            };
+                            ui.ctx().send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::WindowLevel(level));
+                        }
                     });
-                ui.end_row();
-            });
+                    ui.end_row();
+
+                    // --- Row: Shortcut Picker ---
+                    ui.label("Minimize Shortcut (Ctrl + )");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Call the new widget from our widgets module
+                        crate::gui::widgets::key_binder_widget(ui, &mut state.config.minimize_key);
+                    });
+                    ui.end_row();
+
+                    // --- Row: Ghost Mode ---
+                    ui.label("Ghost Mode 👻");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add(egui::Label::new("❓").sense(egui::Sense::hover()))
+                            .on_hover_text("How to use Ghost Mode:\n1. Click the Lock icon (bottom-left) to enable click-through.\n2. The window will ignore mouse clicks.\n3. To UNLOCK: Alt-Tab back to this window.");
+                        ui.label("Enable via Lock Icon 🔒");
+                    });
+                    ui.end_row();
+
+                    // --- Row: Decorations ---
+                    ui.label("Decorations");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.checkbox(&mut state.config.window_decorations, "Show Title Bar").changed() {
+                            let show = state.config.window_decorations;
+                            ui.ctx().send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Decorations(show));
+                        }
+                    });
+                    ui.end_row();
+
+                    // --- Row: Media Mode ---
+                    ui.label("Now Playing");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        egui::ComboBox::from_id_salt("media_mode")
+                            .selected_text(format!("{:?}", state.config.media_display_mode))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::FadeOnUpdate, "Fade On Update");
+                                ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::AlwaysOn, "Always On");
+                                ui.selectable_value(&mut state.config.media_display_mode, MediaDisplayMode::Off, "Off");
+                            });
+                    });
+                    ui.end_row();
+                });
+        });
+        ui.add_space(10.0); // Bottom padding
     });
 }
 
@@ -1076,4 +1081,54 @@ pub fn ui_save_popup(
             }
         });
     });
+}
+
+/// Method to capture key binding from user\
+pub fn key_binder_widget(
+    ui: &mut egui::Ui,
+    current_key: &mut egui::Key
+) {
+    let id = ui.id();
+    // 1. Get the current recording state and immediately drop the borrow
+    let mut recording = ui.data_mut(|d| *d.get_temp_mut_or_default::<bool>(id));
+    let mut should_stop_recording = false;
+
+    let button_text = if recording {
+        "Press a key...".to_string()
+    } else {
+        format!("{:?}", current_key)
+    };
+
+    let response = ui.button(egui::RichText::new(button_text).monospace());
+
+    if response.clicked() {
+        recording = true;
+        ui.data_mut(|d| d.insert_temp(id, true));
+    }
+
+    if recording {
+        ui.memory_mut(|mem| mem.request_focus(id));
+
+        // 2. Check input and events without nested data_mut calls
+        ui.input(|i| {
+            // Check for key presses
+            for event in &i.events {
+                if let egui::Event::Key { key, pressed: true, .. } = event {
+                    *current_key = *key;
+                    should_stop_recording = true;
+                }
+            }
+            // Check for clicking away
+            if i.pointer.any_pressed() && !response.clicked() {
+                should_stop_recording = true;
+            }
+        });
+    }
+
+    // 3. Finalize state changes after all input/data borrows are closed
+    if should_stop_recording {
+        ui.data_mut(|d| d.insert_temp(id, false));
+        // Request a repaint so the UI updates immediately to show the new key
+        ui.ctx().request_repaint();
+    }
 }

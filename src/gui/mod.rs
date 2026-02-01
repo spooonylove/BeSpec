@@ -111,6 +111,13 @@ impl eframe::App for SpectrumApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         
+        let minimize_key = self.shared_state.lock().unwrap().config.minimize_key;
+        let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, minimize_key);
+
+        if ctx.input_mut(|i| i.consume_shortcut(&shortcut)) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+        }
+
         // --- Poll for Media Updates ---
         let mut new_track = None;
         while let Ok(info) = self.media_rx.try_recv() {
