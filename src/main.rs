@@ -608,6 +608,7 @@ fn main (){
 
     // Log startup info
     tracing::info!("=== BeSpec Startup ===");
+    tracing::info!("Version: v{}", env!("CARGO_PKG_VERSION"));
     tracing::info!("Platform: {}", std::env::consts::OS);
     tracing::info!("Log Directory: {:?}", log_dir);
     
