@@ -127,7 +127,7 @@ jobs:
               <key>CFBundleIconFile</key>
               <string>icon.icns</string>
               <key>CFBundleIdentifier</key>
-              <string>com.BeSpec-Dev.bespec</string>
+              <string>com.bespec-dev.bespec</string>
               <key>CFBundleName</key>
               <string>$APP_NAME</string>
               <key>CFBundlePackageType</key>
