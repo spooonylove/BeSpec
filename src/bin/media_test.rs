@@ -11,7 +11,7 @@ use crossbeam_channel::bounded;
 use media::{PlatformMedia, MediaMonitor, MediaController, MediaTrackInfo};
 
 fn print_track_info(info: &MediaTrackInfo) {
-    println!("\n🎵 NOW PLAYING 🎵");
+    println!("\n NOW PLAYING ");
     println!("   App:    {}", info.source_app);
     println!("   Track:  {}", info.title);
     println!("   Artist: {}", info.artist);

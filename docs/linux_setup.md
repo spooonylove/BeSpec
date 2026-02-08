@@ -45,7 +45,7 @@ If you cloned the repository:
 
 cargo run \--release
 
-## **3\. 🔊 Audio Routing (Crucial Step)**
+## **3\.  Audio Routing (Crucial Step)**
 
 By default, Linux applications "Capture" audio from your **Microphone**. To visualize music from Spotify, YouTube, or your browser, you must tell the system to capture the **Monitor** of your speakers instead.
 

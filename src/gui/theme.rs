@@ -45,7 +45,7 @@ pub const BEOS_BORDER_WIDTH: f32 = 4.0;
 
 /// Convert our internal StateColor32 (Straight Alpha) to egui::Color32 (Premultiplied)
 pub fn to_egui_color(color: SharedColor) -> egui::Color32 {
-    // ✅ CORRECT: 'unmultiplied' forces Egui to multiply Alpha for us.
+    // CORRECT: 'unmultiplied' forces Egui to multiply Alpha for us.
     egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a)
 }
 
@@ -58,7 +58,7 @@ pub fn from_egui_color(c: egui::Color32) -> StateColor32 {
         return StateColor32 { r: 0, g: 0, b: 0, a: 0 };
     }
 
-    // ✅ CORRECT: We UN-MULTIPLY the rgb values to restore "Straight" color.
+    // CORRECT: We UN-MULTIPLY the rgb values to restore "Straight" color.
     // We add 0.5 to round to nearest integer (matches f32::round behavior).
     StateColor32 {
         r: ((c.r() as f32 / alpha) + 0.5).min(255.0) as u8,

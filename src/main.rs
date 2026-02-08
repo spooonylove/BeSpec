@@ -50,17 +50,17 @@ fn start_audio_capture(
         tracing::info!("[Capture] Starting audio capture thread");
 
         // 1. Initial Device List Population
-        tracing::info!("[Capture] 🔍 Initializing audio device list...");
+        tracing::info!("[Capture] Initializing audio device list...");
         if let Ok(devices) = AudioCaptureManager::list_devices() {
             let mut state = shared_state.lock().unwrap();
             state.audio_devices = devices.iter().map(|d| d.name.clone()).collect();
 
-            tracing::info!("[Capture] ✓ Found {} audio devices", state.audio_devices.len());
+            tracing::info!("[Capture] Found {} audio devices", state.audio_devices.len());
             for (i, name) in state.audio_devices.iter().enumerate() {
                 tracing::info!("[Capture]    {}: {}", i, name);
             }
         } else {
-            tracing::error!("[Capture] ❌ Failed to enumerate initial audio devices");
+            tracing::error!("[Capture] Failed to enumerate initial audio devices");
         }
 
         // 2. Initial Device Selection
@@ -72,22 +72,22 @@ fn start_audio_capture(
         // 3. Create Audio Capture Manager
         let mut capture = if initial_device == "Default" {
             AudioCaptureManager::new().unwrap_or_else(|e|{
-                tracing::error!("[Capture] ❌ Critical: Failed to create default audio device: {}", e);
+                tracing::error!("[Capture] Critical: Failed to create default audio device: {}", e);
                 panic!("Audio init failed");
             })
         } else {
             AudioCaptureManager::with_device_id(&initial_device).unwrap_or_else(|_|{
-                tracing::info!("[Capture] ⚠️ Saved device not found, falling back to System Default ");
+                tracing::info!("[Capture] Saved device not found, falling back to System Default ");
                 AudioCaptureManager::new().expect("Failed to init default device")
             })
         };
 
         // Start capturing
         if let Err(e) = capture.start_capture() {
-            tracing::error!("[Capture] ❌ Failed to start capture: {}", e);
+            tracing::error!("[Capture] Failed to start capture: {}", e);
             return;
         }
-        tracing::info!("[Capture] ✓ Audio capture thread started");
+        tracing::info!("[Capture] Audio capture thread started");
 
         // Keep receiving audio packets and forward them
         while !shutdown.load(Ordering::Relaxed) {
@@ -114,7 +114,7 @@ fn start_audio_capture(
 
             // === ACTION: REFRESH === 
             if needs_refresh {
-                tracing::info!("[Capture] 🔄 Manual refresh requested. Scanning hardware...");
+                tracing::info!("[Capture] Manual refresh requested. Scanning hardware...");
                 let start = Instant::now();
 
                 if let Ok(devices) = AudioCaptureManager::list_devices() {
@@ -126,13 +126,13 @@ fn start_audio_capture(
                         );
                     }
                 } else {
-                    tracing::error!("[Capture] ⚠️ Device scan failed");
+                    tracing::error!("[Capture] Device scan failed");
                 }
             }
             
             // === ACTION: DEVICE CHANGE ===
             if let Some(new_name) = new_device_req {
-                tracing::info!("[Capture] 🔄 Audio device change requested: {}", new_name);
+                tracing::info!("[Capture] Audio device change requested: {}", new_name);
                 
                 let result = if new_name == "Default" {
                     if let Ok((_, info)) = AudioDeviceEnumerator::get_default_device() {
@@ -146,8 +146,8 @@ fn start_audio_capture(
                 };
 
                 match result {
-                    Ok(_) => tracing::info!("[Capture] ✓ Switched to new device: {}", new_name),
-                    Err(e) => tracing::error!("[Capture] ❌ Failed to switch device: {}", e),
+                    Ok(_) => tracing::info!("[Capture] Switched to new device: {}", new_name),
+                    Err(e) => tracing::error!("[Capture] Failed to switch device: {}", e),
                 }
             }
             
@@ -159,7 +159,7 @@ fn start_audio_capture(
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    eprint!("[Capture] ⚠️ Stream disconnected unexpectedly");
+                    eprint!("[Capture] Stream disconnected unexpectedly");
                     break;
                 },
             }
@@ -218,7 +218,7 @@ fn start_fft_processing(
                     // ====== Initialization: First packet tells us the sample rate
                     if processor.is_none() || fft_config.is_none() {
                         tracing::info!(
-                            "[FFT] 🎵 First audio packet received at {} Hz",
+                            "[FFT] First audio packet received at {} Hz",
                             packet.sample_rate
                         );
                     
@@ -245,7 +245,7 @@ fn start_fft_processing(
                         
                         let info = new_fft_config.info();
                         tracing::info!(
-                            "[FFT] ✓ Initialized: {} Hz, FFT size: {}, latency: {:.2}ms, mode: {}",
+                            "[FFT] Initialized: {} Hz, FFT size: {}, latency: {:.2}ms, mode: {}",
                                 info.sample_rate, info.fft_size, info.latency_ms,
                                 if new_processor.get_config().use_peak_aggregation { "Peak" } else { "Average" }
                         );
@@ -270,7 +270,7 @@ fn start_fft_processing(
                     // If device sample rate changed, update FFT config
                     if packet.sample_rate != fft_config.get_sample_rate() {
                         tracing::info!(
-                            "[FFT] 🔄 Sample rate changed: {} Hz → {} Hz",
+                            "[FFT] Sample rate changed: {} Hz → {} Hz",
                             fft_config.get_sample_rate(),
                             packet.sample_rate
                         );
@@ -282,7 +282,7 @@ fn start_fft_processing(
                         // Rebuild FFT processor with new FFT size
                         let info = fft_config.info();
                         tracing::info!(
-                            "[FFT] ⚙️  Rebuilding FFT: {} Hz, latency: {:.2}ms",
+                            "[FFT]  Rebuilding FFT: {} Hz, latency: {:.2}ms",
                             info.sample_rate, info.latency_ms
                         );
 
@@ -419,10 +419,10 @@ fn start_fft_processing(
                             // Apply confiig update if needed
                             if let Some(new_config) = pending_config_update {
                                 if new_config.num_bars != processor.get_config().num_bars {
-                                    tracing::debug!("[FFT]♻️ Recreating processor for new bar count: {}", new_config.num_bars);
+                                    tracing::debug!("[FFT] Recreating processor for new bar count: {}", new_config.num_bars);
                                     *processor = FFTProcessor::new(new_config);
                                 } else {
-                                    tracing::debug!("[FFT]🔧 Updating processor config");
+                                    tracing::debug!("[FFT] Updating processor config");
                                     processor.update_config(new_config);
                                 }
                             }
@@ -550,7 +550,7 @@ fn load_icon() -> Option<Arc<egui::IconData>> {
             }))
         }
         Err(e) => {
-            tracing::error!("[Main] ❌ Failed to load icon : {}", e);
+            tracing::error!("[Main] Failed to load icon : {}", e);
             None
         }
     }
@@ -575,7 +575,7 @@ fn main (){
 
     // Ensure the directoy exists (otherwise logging will fail)
     if let Err(e) = fs::create_dir_all(&log_dir) {
-        tracing::error!("[Main] ❌ Failed to create log directory {:?}: {}", log_dir, e);
+        tracing::error!("[Main] Failed to create log directory {:?}: {}", log_dir, e);
     }
 
     // Set up the file appender
@@ -659,7 +659,7 @@ fn main (){
     thread::spawn(move || {
         match check_for_updates() {
             Ok(Some(url)) => {
-                tracing::info!("[Update]🔔 New version available: {}", url);
+                tracing::info!("[Update] New version available: {}", url);
                 // Locl the mutex to safely write the URL to the shared state
                 if let Ok(mut state) = update_notifier.lock() {
                     state.update_url = Some(url);

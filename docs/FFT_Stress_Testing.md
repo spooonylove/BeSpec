@@ -112,10 +112,10 @@ Latency (ms) = (FFT_Size / Sample_Rate) × 1000
 ```
 
 **Test results:**
-- 1024 FFT = 21.3ms ✅ Feels instant
-- 2048 FFT = 42.7ms ✅ Acceptable
-- 4096 FFT = 85.3ms ⚠️ Starts to feel laggy
-- 8192 FFT = 170.7ms ❌ Noticeably out of sync
+- 1024 FFT = 21.3ms - Feels instant
+- 2048 FFT = 42.7ms - Acceptable
+- 4096 FFT = 85.3ms - Starts to feel laggy
+- 8192 FFT = 170.7ms - Noticeably out of sync
 
 ---
 
@@ -161,49 +161,7 @@ Latency (ms) = (FFT_Size / Sample_Rate) × 1000
 
 **Good for:** Pitch detection, tuning apps, offline analysis
 
----
 
-## Why The Test Checks This
-```rust
-#[test]
-fn test_fft_latency() {
-    let mut config = AppConfig::default();
-    config.fft_size = 2048;
-    assert!((config.fft_latency_ms() - 42.667).abs() < 0.01);
-}
-```
-
-**What this catches:**
-
-### Bug #1: Wrong Formula
-```rust
-// WRONG:
-pub fn fft_latency_ms(&self) -> f32 {
-    (self.fft_size as f32 * 48000.0) / 1000.0  // ← Multiply instead of divide!
-}
-
-// Test fails: expected 42.7ms, got 98,304ms
-```
-
-### Bug #2: Forgot to Convert to Milliseconds
-```rust
-// WRONG:
-pub fn fft_latency_ms(&self) -> f32 {
-    self.fft_size as f32 / 48000.0  // ← Returns seconds, not ms!
-}
-
-// Test fails: expected 42.667ms, got 0.042667ms
-```
-
-### Bug #3: Hardcoded Sample Rate
-```rust
-// WRONG:
-pub fn fft_latency_ms(&self) -> f32 {
-    (self.fft_size as f32 / 44100.0) * 1000.0  // ← Wrong sample rate!
-}
-
-// Test fails: expected 42.667ms, got 46.439ms
-```
 
 ---
 
@@ -225,17 +183,8 @@ With 10ms of audio:   "Could be C, D, E, or F..."
 With 1ms of audio:    "No idea - not enough information"
 ```
 
-**The Heisenberg Uncertainty Principle of Audio:**
-```
-Δt × Δf ≥ 1
-
-Time resolution × Frequency resolution ≥ constant
-```
-
-You can't have **both** high time resolution (low latency) **and** high frequency resolution (detailed spectrum) at the same time!
 
 ---
-
 ## Real-World Analogy
 
 Imagine trying to identify someone's handwriting:
@@ -255,59 +204,10 @@ Same with FFT:
 
 ---
 
-## Why We Display This in the UI
-```
-[FFT] Performance: Avg: 125.9µs | Min: 86.8µs | Max: 1.45ms
-                    ^^^^^^^^^^
-                    Processing time
-
-[Stats Overlay] 1024 FFT | 46.9 Hz/bin | 21.3ms latency
-                                         ^^^^^^^^^^^^^^^
-                                         This is intrinsic delay
-```
-
-**Users should know:**
+**Developers should know:**
 - Higher FFT size = better detail BUT more delay
 - If bars feel "laggy," reduce FFT size
 - If bass looks "mushy," increase FFT size
 
 ---
 
-## The Specific Test Case
-```rust
-config.fft_size = 2048;
-assert!((config.fft_latency_ms() - 42.667).abs() < 0.01);
-//                                  ^^^^^^
-//                         This is PHYSICS, not arbitrary!
-```
-
-**That 42.667ms is not a magic number - it's calculated from:**
-```
-2048 samples ÷ 48,000 samples/sec × 1000 = 42.666... ms
-```
-
-**The test verifies:**
-- ✅ Formula is correct
-- ✅ Math doesn't overflow
-- ✅ Units are right (milliseconds, not seconds)
-
----
-
-## Summary
-
-**FFT latency is intrinsic because:**
-1. FFT **requires** a complete window of samples
-2. Collecting samples **takes time**
-3. Larger window = better frequency resolution BUT more delay
-4. This is **fundamental physics**, not a software limitation
-
-**The test ensures:**
-- Your latency calculation matches reality
-- Users get accurate latency numbers in the UI
-- You can make informed trade-offs (detail vs responsiveness)
-
----
-
-## Key Takeaway
-
-This is one of those beautiful moments where **math, physics, and user experience** all intersect. The latency isn't a bug or limitation of your code - it's an intrinsic property of how Fourier transforms work in the physical universe. Understanding this helps you make better design decisions about which FFT size to offer users and how to communicate the trade-offs in your UI.

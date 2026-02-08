@@ -7,156 +7,93 @@
 
 A high-performance, cross-platform, real-time audio spectrum visualizer written in **Rust**.
 
-**BeSpec** listens to your system audio loopback (what you hear from your speakers) and renders a customizable frequency spectrum overlay on your desktop. It is designed to be minimal, beautiful, and efficient.
-
+BeSpec captures system audio loopback and renders a customizable frequency spectrum overlay. It is architected for low latency, minimal resource footprint, and visual precision.
 
 ![BeSpec Demo](docs/images/main_window_animation03.gif)
+
 ---
 
-## ✨ Features
+## Features
 
-* **⚡ High Performance:** Built with `egui` (immediate mode GUI) and `realfft` for low-latency rendering and audio processing.
-* **🎧 Cross-Platform Audio:**
-    * Uses `cpal` to capture system audio on Windows (WASAPI), Linux (ALSA/Pulse/Jack), and macOS (CoreAudio).
-    * **Hot-Swappable Devices:** Select specific input devices and refresh hardware lists on the fly without restarting.
-* **🎛️ Deep Customization:**
-    * **4 Visualization Modes:**
-        * **📊 Solid Bars:** Classic smooth gradients with adjustable opacity.
-        * **📟 Retro LED (Segmented):** Old-school segmented bars with customizable segment height and gap. Includes a "Fill to Peak" warning mode.
-        * **📈 Line Spectrum:** A continuous, glowing frequency contour.
-        * **〰️ Oscilloscope:** Real-time raw waveform monitoring (Time Domain).
-    * **Optimized FFT Engine:** Uses a fixed 2048-point FFT for excellent frequency resolution across all sample rates (e.g., 23.4 Hz/bin @ 48kHz).
-    * **Responsiveness:** Configure Attack/Release times for bars and Peak Hold/Decay mechanics.
-* **🎨 Theming:**
-    * **Revamped Theme System:** A completely new way to handle color presets and visual profiles independently.
-    * **Presets:** Select from 25+ hand-crafted color schemes including **Winamp Classic**, **Gameboy**, and **O-Scope**.
-    * **Custom:** Define your own Low/High/Peak colors to match your setup.
-* **🎵 Media Integration:**
-    * **Now Playing Overlay:** Elegantly displays current track details (Title, Artist, Album) and full-color **Album Art**.
-    * **Wikipedia Integration:** Click on Album Art to link to the associated album's Wikipedia page. (Intelligently searches for the specific artist/album and defaults to a Google search if not found).
-    * **Interactive Controls:** Control your music (Play/Pause, Next, Previous) directly from the overlay (Windows/Linux only).
-* 🔍 **Interactive Inspector:** Turn the visualizer into a precision analysis tool. Hover over the spectrum to activate a vertical crosshair that highlights specific frequency bins and displays exact Frequency (Hz) and Amplitude (dB) metrics.
-* **🖥️ Modern UI:**
-    * **BeOS / Haiku Window Mode:** A distinct, toggleable window decoration style inspired by the classic BeOS interface.
-    * **Borderless Window:** A clean, chrome-less window that floats on your desktop with "Always on Top" and "Click-through" support.
-    * **Persistent Settings:** Configuration is automatically saved to your OS's standard application data folder.
-    * **Performance HUD:** Real-time overlay displaying FPS, FFT latency, and frequency resolution.
+* **High Performance Engine:** Built with `egui` (immediate mode GUI) and `realfft` for low-latency rendering and frequency processing.
+* **Cross-Platform Audio Capture:**
+    * Native capture via `cpal` for Windows (WASAPI), Linux (ALSA/Pulse/Jack), and macOS (CoreAudio).
+    * **Hot-Swappable Devices:** Switch input sources and refresh hardware lists in real-time without application restarts.
+* **Visualization Modes:**
+    * **Solid Bars:** Smooth gradients with adjustable opacity.
+    * **Retro LED:** Segmented bars with customizable height and gaps, including a "Fill to Peak" warning mode.
+    * **Line Spectrum:** A continuous, glowing frequency contour.
+    * **Oscilloscope:** Real-time raw waveform monitoring in the time domain.
+* **Precision FFT:** Uses a fixed 2048-point FFT for granular resolution (23.4 Hz/bin @ 48kHz) with configurable Attack/Release and Peak Hold dynamics.
+* **Theming Engine:** A revamped system handling 25+ presets (e.g., **Winamp Classic**, **Gameboy**, **O-Scope**) and custom user profiles independently.
+* **Media & Wikipedia Integration:** * Displays track metadata and full-color album art. 
+    * Clicking album art triggers an intelligent Wikipedia search for the artist or album.
+    * Native transport controls (Play/Pause/Skip) for Windows and Linux.
+* **Interactive Inspector:** Hover over the spectrum to activate a precision crosshair displaying exact frequency (Hz) and amplitude (dB) metrics for individual bins.
+* **Modern Desktop Integration:**
+    * **BeOS / Haiku Mode:** A distinct window style inspired by the classic BeOS interface.
+    * **Borderless Overlay:** Transparent, chrome-less window with "Always on Top" and "Click-through" support.
 
 | **Solid Bars** | **Retro LED** |
 | :---: | :---: |
 | ![Solid Mode](docs/images/mode_solid.gif) | ![LED Mode](docs/images/mode_led.gif) |
-| *Classic smooth gradients* | *Segmented bars with peak filling* |
 
 | **Line Spectrum** | **Oscilloscope** |
 | :---: | :---: |
 | ![Line Mode](docs/images/mode_line.gif) | ![Scope Mode](docs/images/mode_scope.gif) |
-| *Glowing frequency contour* | *Raw waveform monitoring* |
 
-## 📚 Case Studies
+## Case Studies
 
-BeSpec is designed for precision. See how it uncovers hidden artifacts in professional audio production:
+BeSpec is designed for audio analysis. See how it uncovers hidden artifacts in professional production:
 
-* **[Queens of the Stone Age Analysis](./docs/case_study.md):** Detecting a 15.75 kHz CRT whine hidden in the outro of *I Was a Teenage Hand Model* using the 512-bar high-resolution mode.
+* **[Queens of the Stone Age Analysis](./docs/case_study.md):** Using high-resolution mode to detect a 15.75 kHz CRT whine hidden in the outro of *I Was a Teenage Hand Model*.
 
-## New in v1.5
-* **BeOS / Haiku Window Mode:** Added a distinct new window decoration style that pays homage to the Haiku OS interface. Users can toggle this mode in the Window settings.
-* **Wikipedia Link Integration:** Clicking the Album Art in the media overlay now intelligently searches Wikipedia for the associated album or artist (defaults to Google Search if no direct match is found).
-* **New Theme System:** Completely re-engineered the way color presets and visual profiles are handled, allowing for more robust saving, loading, and mixing of styles.
-* **New Presets:** Added **Winamp**, **Gameboy**, and **O-Scope** presets to the built-in library.
-## Compatibility & Support
+## Compatibility
 
 | Platform | Support Status | Media Capabilities |
 | :--- | :--- | :--- |
-| **Windows** | ✅ Fully Supported | Metadata, Album Art, & **Transport Controls**. |
-| **Linux** | ✅ Fully Supported | Metadata, Album Art, & **Transport Controls** (MPRIS). |
-| **macOS** | ⚠️ Beta / RC | Metadata & Album Art supported.<br>*(Transport controls unavailable due to API restrictions)* |
+| **Windows** | ✅ Fully Supported | Metadata, Album Art, & Transport Controls. |
+| **Linux** | ✅ Fully Supported | Metadata, Album Art, & Transport (MPRIS). |
+| **macOS** | ⚠️ Beta / RC | Metadata & Album Art only. |
 
-## 🚀 Installation & Usage
+## Installation & Usage
 
-### Option A: Pre-built Binaries
-1.  Go to the [Releases Page](../../releases/latest).
-2.  Download the executable for your OS:
-    * **Windows:** `bespec-windows.exe`
-    * **macOS:** `bespec-macos-silicon` (M1/M2) or `bespec-macos-intel`
-    * **Linux:** `bespec-linux`
-3.  Run the application!
-    * *(Linux/macOS users may need to allow execution: `chmod +x bespec`)*
+### Pre-built Binaries
+1. Visit the [Releases Page](../../releases/latest).
+2. Download the binary for your architecture (Windows `.exe`, macOS Silicon/Intel, or Linux).
+3. Linux/macOS users: `chmod +x bespec` before running.
 
-macOS Users: To visualize system audio, you must set up a loopback driver. See the [macOS Setup Guide](docs/macos_setup.md).
+*Note: macOS and Linux users require loopback configuration. See the [macOS Setup Guide](docs/macos_setup.md) or [Linux Setup Guide](docs/linux_setup.md).*
 
-Linux Users: To visualize system audio, you must route audio into BeSpec via `pavucontrol` or equivalant. See the [Linux Setup Guide](docs/linux_setup.md).
+### Build from Source
+Requires the [Rust toolchain](https://www.rust-lang.org/tools/install).
 
-### Option B: Build from Source
-If you prefer to build it yourself, you will need the [Rust toolchain](https://www.rust-lang.org/tools/install) installed.
+```bash
+git clone https://github.com/BeSpec-Dev/bespec.git
+cd bespec
+# Ubuntu/Debian dependencies: libasound2-dev libudev-dev pkg-config
+cargo run --release
+```
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/BeSpec-Dev/bespec.git
-    cd bespec
-    ```
+### Architecture
+BeSpec utilizes a concurrent model to ensure the UI remains responsive at 60+ FPS:
 
-    **Linux Dependencies:**
-    If building from source, ensure you have the development headers installed:
-    ```bash
-    # Ubuntu/Debian
-    sudo apt-get install libasound2-dev libudev-dev pkg-config
-    ```
-2.  Run in release mode:
-    ```bash
-    cargo run --release
-    ```
+- **Audio Thread**: Stream capture and format normalization (I16/U16/F32).
+- **FFT Thread**: Signal processing via realfft with Hann windowing.
+- **GUI Thread**: Immediate-mode rendering via egui + wgpu.
+- **Synchronization**: `crossbeam_channel` for high-frequency data and `Arc<Mutex<SharedState>>` for configuration.
 
-## 🎮 Controls & Usage
+## Privacy & Network Activity
 
-* **Move:** Click and drag anywhere on the visualizer background to move the window.
-* **Resize:** Click and drag the **bottom-right corner** (indicated by subtle grip lines).
-* **Maximize:** Double-click the window background to toggle fullscreen.
-* **Context Menu:** **Right-click** anywhere on the window to open the main menu.
-    * **⚙ Settings:** Opens the advanced configuration window.
-    * **❌ Exit:** Closes the application.
+BeSpec is architected to be a privacy-first tool. All audio processing occurs locally in real-time. To support its feature set, the application performs the following minimal network requests:
 
-## ⚙️ Configuration
+* **Update Checker:** Queries the GitHub API (`api.github.com`) once on startup to check for new releases.
+* **Album Art Fetching:** If your media player provides a web URL for artwork (typical for Spotify or streaming services), BeSpec downloads the image file to display it in the overlay.
+* **Wikipedia Integration:** When you click the album art, BeSpec sends the current Artist and Album metadata to the Wikipedia Search API (`en.wikipedia.org`) to locate the relevant article. This only occurs upon a user click.
 
-The settings window is organized into tabs for easy navigation:
+**Privacy Promise:** No audio data, personal identifiers, or telemetry is ever recorded, stored, or transmitted to any third party.
 
-| Tab | Description |
-| :--- | :--- |
-| **🎨 Visual** | **Modes:** Switch between Solid Bars, Retro LED, Line Spectrum, or Oscilloscope.<br>**Layout:** Adjust Bar Count (10-512), Gap (px), and Segment Height/Gap (LED mode).<br>**Style:** Independently tune Bar Opacity and Background Opacity.<br>**Behavior:** Toggle Inverted Mode (Top-Down) and Aggregation (Peak vs Average). |
-| **🔊 Audio** | **Input:** Hot-swap input devices and refresh hardware lists instantly.<br>**Dynamics:** Tune Sensitivity (dB) and Noise Floor to match your volume.<br>**Timing:** Precise control over Bar Attack/Release (Rise/Fall) and Peak Hold/Decay times. |
-| **🌈 Colors** | **Presets:** Choose from 25+ themes (Neon Tokyo, Cyberpunk, Molten Core). Includes a live preview of the selected palette. |
-| **🪟 Window** | **Behavior:** Toggle "Always on Top" and Window Decorations (Title Bar).<br>**Media Overlay:** Configure "Now Playing" behavior (Fade on Update, Always On, or Off).<br>**Inspector:** Enable/Disable the mouse-hover frequency analyzer and adjust its opacity.<br>**OSD:** Toggle the real-time Performance Stats overlay. |
-| **📊 Stats** | **Diagnostics:** Real-time metrics for Sample Rate, FFT Size, Frequency Resolution (Hz/bin), Latency (ms), and GUI FPS. |
+**Why does my OS say the "Microphone" is on?** Operating systems (*Linux and MacOS*) classify any audio input stream (including loopback) as "Microphone Usage." BeSpec processes all audio data locally in real-time. No audio is recorded, stored, or transmitted over the network.
 
-## 🛠️ Architecture
-
-BeSpec uses a concurrent architecture to ensure the UI never stutters, even under heavy audio load:
-
-* **Audio Thread:** Captures raw samples via `cpal` and normalizes formats (I16/U16/F32).
-* **FFT Thread:** Processes signals using `realfft`, applying Hann windowing and smoothing logic.
-* **GUI Thread:** Renders the visualization at 60+ FPS using `egui` + `wgpu`.
-* **State Management:** Threads communicate via `crossbeam_channel` for high-speed audio data and `Arc<Mutex<SharedState>>` for configuration synchronization.
-
-## 🔒 Why does my OS say the "Microphone" is on?
-
-You might notice a "Microphone Active" indicator (often an orange icon) in your system tray or taskbar while BeSpec is running.
-
-**This is normal and expected behavior.**
-
-* **How it works:** To visualize your music, BeSpec must "listen" to your system's audio output (a technique called *loopback*).
-* **Why the icon appears:** Modern operating systems (Ubuntu/GNOME, macOS, etc.) classify *any* audio input stream as "Microphone Usage," even if the app is only listening to what the computer is playing.
-* **Privacy Promise:** BeSpec processes audio data **locally in real-time** solely to generate the graphics. No audio is ever recorded to disk, and no audio data is ever transmitted over the network.
-
-## 🔧 Troubleshooting & Logging
-
-BeSpec runs silently by default. If you encounter issues, logs are automatically rotated daily and stored in your OS standard data directory:
-
-* **Windows:** `%APPDATA%\BeSpec\logs\`
-* **macOS:** `~/Library/Application Support/BeSpec/logs/`
-* **Linux:** `~/.local/share/bespec/logs/`
-
-### Debug Mode
-To view granular details (like window resize events or specific FFT rebuild triggers), you can enable verbose logging via environment variables without recompiling:
-
-**Windows (PowerShell):**
-```powershell
-$env:RUST_LOG="debug"; .\bespec.exe
+Support
+If you find this tool useful, consider Buying Me a Coffee to support continued development.

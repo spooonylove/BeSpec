@@ -482,7 +482,7 @@ pub fn built_in_visuals() -> Vec<VisualProfile> {
         // --- 3. Retro 8-Bit ---
         // Very chunky, slow update for that NES feel.
         VisualProfile {
-            name: "8-Bit Arcade".to_string(),
+            name: "Gameboy Mode".to_string(),
             visual_mode: VisualMode::SolidBars,
             num_bars: 10,
             bar_gap_px: 4,

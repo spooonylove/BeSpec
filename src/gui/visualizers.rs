@@ -25,7 +25,7 @@ pub fn draw_main_visualizer(
         painter.text(
             rect.center(),
             egui::Align2::CENTER_CENTER,
-            "⏸ Waiting for audio...",
+            "Waiting for audio...",
             egui::FontId::proportional(20.0),
             text_color,
         );
