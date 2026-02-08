@@ -97,13 +97,16 @@ pub fn draw_beos_window_frame(
     let tab_id = ui.make_persistent_id("beos_tab_interact");
     let tab_sense = ui.interact(tab_rect, tab_id, egui::Sense::click_and_drag());
     
-    if tab_sense.dragged() {
-        if ui.input(|i| i.modifiers.shift) {
-            config.beos_tab_offset += tab_sense.drag_delta().x;
-        } else {
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
-        }
+    // Handle drag without shift (idiosyncratic BeOS tab behavior)
+    if tab_sense.drag_started() && !ui.input(|i| i.modifiers.shift){
+        ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
     }
+
+    if tab_sense.dragged() && ui.input(|i| i.modifiers.shift) {
+        config.beos_tab_offset += tab_sense.drag_delta().x;
+    }
+
+
     if tab_sense.double_clicked() {
         config.beos_window_collapsed = !config.beos_window_collapsed;
         let new_height = if config.beos_window_collapsed { tab_height + border_width } else { config.window_size[1] };
