@@ -1,4 +1,4 @@
-use eframe::egui::{self, Ui, Rect, Context, Sense, Color32};
+use eframe::egui::{self, Ui, Rect, Context, Color32};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use crate::shared_state::{SharedState};
