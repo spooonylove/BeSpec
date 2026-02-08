@@ -111,13 +111,15 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           APP_NAME="BeSpec"
-          mkdir -p "$APP_NAME.app/Contents/MacOS"
-          mkdir -p "$APP_NAME.app/Contents/Resources"
+          STAGING="staging"
+          mkdir -p "$STAGING/$APP_NAME.app/Contents/MacOS"
+          mkdir -p "$STAGING/$APP_NAME.app/Contents/Resources"
           
-          cp "target/${{ matrix.target }}/release/bespec" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-          cp "assets/icon.icns" "$APP_NAME.app/Contents/Resources/"
+          cp "target/${{ matrix.target }}/release/bespec" "$STAGING/$APP_NAME.app/Contents/MacOS/$APP_NAME"
+          cp "assets/icon.icns" "$STAGING/$APP_NAME.app/Contents/Resources/"
           
-          cat <<EOF > "$APP_NAME.app/Contents/Info.plist"
+          # Added the Microphone Usage Description here
+          cat <<EOF > "$STAGING/$APP_NAME.app/Contents/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -126,22 +128,30 @@ jobs:
               <string>$APP_NAME</string>
               <key>CFBundleIconFile</key>
               <string>icon.icns</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.bespec-dev.bespec</string>
-              <key>CFBundleName</key>
-              <string>$APP_NAME</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>LSUIElement</key>
-              <false/>
+              <key>CFBundleIdentifier</key>          <string>com.bespec-dev.bespec</string>
+              <key>CFBundleName</key>                <string>$APP_NAME</string>
+              <key>CFBundlePackageType</key>         <string>APPL</string>
+              <key>NSMicrophoneUsageDescription</key>
+              <string>BeSpec needs audio input access to analyze and visualize system sounds.</string>
+              <key>LSUIElement</key>                 <false/>
           </dict>
           </plist>
           EOF
           
-          chmod +x "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-          
-          # Zip the app
-          zip -r "${{ env.ASSET_NAME }}" "$APP_NAME.app"
+          chmod +x "$STAGING/$APP_NAME.app/Contents/MacOS/$APP_NAME"
+
+          # Install create-dmg and build the image
+          brew install create-dmg
+          create-dmg \
+            --volname "BeSpec Installer" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "BeSpec.app" 175 120 \
+            --hide-extension "BeSpec.app" \
+            --app-drop-link 425 120 \
+            "BeSpec-v${{ github.ref_name }}.dmg" \
+            "$STAGING/"
 
       # --- UPLOAD FOR TESTING ---
       # This allows you to download the files from the "Actions" tab
