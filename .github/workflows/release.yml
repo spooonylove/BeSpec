@@ -19,7 +19,7 @@ jobs:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     env:
-      ASSET_NAME: ""  # Placeholder to silence VSCode warnings
+      ASSET_NAME: "" # Placeholder; filled dynamically by the "Generate Asset Name" step
     strategy:
       fail-fast: false
       matrix:
@@ -32,13 +32,14 @@ jobs:
             target: x86_64-pc-windows-msvc
             suffix: windows.exe
             use_cross: false
+          # Changed suffixes to .dmg so the variable matches the output format
           - os: macos-latest
             target: x86_64-apple-darwin
-            suffix: macos-intel.zip
+            suffix: macos-intel.dmg
             use_cross: false
           - os: macos-latest
             target: aarch64-apple-darwin
-            suffix: macos-silicon.zip
+            suffix: macos-silicon.dmg
             use_cross: false
 
     steps:
@@ -65,13 +66,12 @@ jobs:
       # =========================================
 
       # --- Define the Versioned Name ---
-      # Uses the tag name (e.g., v1.0.0) or branch name (e.g., main)
+      # This creates a variable like "bespec-v1.6.3-macos-silicon.dmg"
       - name: Generate Asset Name
         shell: bash
         run: echo "ASSET_NAME=bespec-${{ github.ref_name }}-${{ matrix.suffix }}" >> $GITHUB_ENV
 
       # --- Windows Packaging ---
-      # Just copy the exe (Icon is already embedded by build.rs)
       - name: Package Windows
         if: runner.os == 'Windows'
         shell: bash
@@ -79,14 +79,12 @@ jobs:
           cp "target/${{ matrix.target }}/release/bespec.exe" "${{ env.ASSET_NAME }}"
 
       # --- Linux Packaging ---
-      # Bundle binary, icon, and install script
       - name: Package Linux
         if: runner.os == 'Linux'
         run: |
           mkdir bespec-dist
           cp "target/${{ matrix.target }}/release/bespec" bespec-dist/
           cp assets/icon.png bespec-dist/
-          # Ensure install.sh exists in your repo root before running this!
           cp install.sh bespec-dist/
           
           # Create a desktop shortcut for the bundle
@@ -105,8 +103,7 @@ jobs:
           # Compress
           tar -czvf "${{ env.ASSET_NAME }}" bespec-dist
 
-      # --- macOS Packaging ---
-      # Create .app Bundle structure
+      # --- macOS Packaging (DMG) ---
       - name: Package macOS
         if: runner.os == 'macOS'
         run: |
@@ -118,7 +115,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/bespec" "$STAGING/$APP_NAME.app/Contents/MacOS/$APP_NAME"
           cp "assets/icon.icns" "$STAGING/$APP_NAME.app/Contents/Resources/"
           
-          # Added the Microphone Usage Description here
+          # Create Info.plist with Microphone Permission
           cat <<EOF > "$STAGING/$APP_NAME.app/Contents/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -128,19 +125,23 @@ jobs:
               <string>$APP_NAME</string>
               <key>CFBundleIconFile</key>
               <string>icon.icns</string>
-              <key>CFBundleIdentifier</key>          <string>com.bespec-dev.bespec</string>
-              <key>CFBundleName</key>                <string>$APP_NAME</string>
-              <key>CFBundlePackageType</key>         <string>APPL</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.bespec-dev.bespec</string>
+              <key>CFBundleName</key>
+              <string>$APP_NAME</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
               <key>NSMicrophoneUsageDescription</key>
               <string>BeSpec needs audio input access to analyze and visualize system sounds.</string>
-              <key>LSUIElement</key>                 <false/>
+              <key>LSUIElement</key>
+              <false/>
           </dict>
           </plist>
           EOF
           
           chmod +x "$STAGING/$APP_NAME.app/Contents/MacOS/$APP_NAME"
 
-          # Install create-dmg and build the image
+          # Create DMG using the unified ASSET_NAME variable
           brew install create-dmg
           create-dmg \
             --volname "BeSpec Installer" \
@@ -150,12 +151,10 @@ jobs:
             --icon "BeSpec.app" 175 120 \
             --hide-extension "BeSpec.app" \
             --app-drop-link 425 120 \
-            "BeSpec-v${{ github.ref_name }}.dmg" \
+            "${{ env.ASSET_NAME }}" \
             "$STAGING/"
 
       # --- UPLOAD FOR TESTING ---
-      # This allows you to download the files from the "Actions" tab
-      # even if you didn't push a tag.
       - name: Upload Artifact for Testing
         uses: actions/upload-artifact@v4
         with:
@@ -164,7 +163,6 @@ jobs:
           if-no-files-found: error
 
       # --- UPLOAD TO RELEASE ---
-      # Only runs when you push a tag like 'v1.0.0'
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
