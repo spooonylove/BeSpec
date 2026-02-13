@@ -578,6 +578,15 @@ pub fn draw_media_overlay(
         return;
     }
 
+    let win_width = rect.width();
+
+    // If the window is tiny, don't show overlay at all (let the spectrum speak for itself!)
+    if win_width < 250.0 {
+        return;
+    }
+
+    let show_album_art = win_width > 450.0;
+
     // 2. Setup Styles
     let base_text_color = to_egui_color(colors.text);
     let base_font_id = crate::gui::theme::to_egui_font(overlay_font);
@@ -587,6 +596,8 @@ pub fn draw_media_overlay(
     // Anchor relative to the visulalizer 'rect' passed in
     let overlay_w = rect.width() * 0.5;
     let overlay_h = 100.0;
+
+    // Position top-right with padding
     let pos = egui::pos2(rect.right() - overlay_w - 20.0, rect.top() + 20.0);
     let overlay_rect = egui::Rect::from_min_size(pos, egui::vec2(overlay_w, overlay_h));
 
@@ -603,46 +614,47 @@ pub fn draw_media_overlay(
                     // === CASE A: Track Info Present ===
                     
                     // Album Art
-                    if let Some(texture) = album_art_texture {
-                        let tint = egui::Color32::WHITE.linear_multiply(media_opacity);
+                    if show_album_art{
+                        if let Some(texture) = album_art_texture {
+                            let tint = egui::Color32::WHITE.linear_multiply(media_opacity);
 
-                        let response = ui.add(
-                            egui::Image::new(texture)
-                                .max_height(50.0)
-                                .rounding(4.0)
-                                .tint(tint)
-                                .sense(egui::Sense::click())
-                            );   
+                            let response = ui.add(
+                                egui::Image::new(texture)
+                                    .max_height(50.0)
+                                    .rounding(4.0)
+                                    .tint(tint)
+                                    .sense(egui::Sense::click())
+                                );   
 
-                        // Interaction: Initiate Wiki Search!!
-                        if response.clicked() {
-                            // Clone string data to move into the thread
-                            let artist = info.artist.clone();
-                            let title = info.title.clone();
-                            let album = info.album.clone();
+                            // Interaction: Initiate Wiki Search!!
+                            if response.clicked() {
+                                // Clone string data to move into the thread
+                                let artist = info.artist.clone();
+                                let title = info.title.clone();
+                                let album = info.album.clone();
 
-                            // Spawn a thread to prevent blocking the GUI during the network request
-                            std::thread::spawn(move || {
-                                // Generate the URL (Blocking call to ureq inside fetch_wikipedia_url)
-                                let url = crate::media::fetch_wikipedia_url(&artist, &title, &album);
-                                tracing::info!("[GUI] Opening Wiki URL: {}", url);
+                                // Spawn a thread to prevent blocking the GUI during the network request
+                                std::thread::spawn(move || {
+                                    // Generate the URL (Blocking call to ureq inside fetch_wikipedia_url)
+                                    let url = crate::media::fetch_wikipedia_url(&artist, &title, &album);
+                                    tracing::info!("[GUI] Opening Wiki URL: {}", url);
 
-                                // Open in default system browser
-                                if let Err(e) = open::that(&url) {
-                                    tracing::error!("[GUI] Failed to open URL: {}", e);
-                                }
-                            });
+                                    // Open in default system browser
+                                    if let Err(e) = open::that(&url) {
+                                        tracing::error!("[GUI] Failed to open URL: {}", e);
+                                    }
+                                });
+                            }
+
+                            if response.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                response.on_hover_text(format!("Search Wikipedia for '{}'", info.artist));
+                            }
+                            
+                            ui.add_space(10.0); 
+
                         }
-
-                        if response.hovered() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                            response.on_hover_text(format!("Search Wikipedia for '{}'", info.artist));
-                        }
-                        
-                        ui.add_space(10.0); 
-
                     }
-
                     // Text Stack
                     ui.vertical(|ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
@@ -652,14 +664,14 @@ pub fn draw_media_overlay(
                                     .font(egui::FontId::new(16.0, font_family.clone()))
                                     .strong()
                                     .color(base_text_color.linear_multiply(media_opacity))
-                            ));
+                            ).truncate());
 
                             // Artist
                             ui.add(egui::Label::new(
                                 egui::RichText::new(format!("{} - {}", info.artist, info.album))
                                     .font(egui::FontId::new(11.0, font_family.clone()))
                                     .color(base_text_color.linear_multiply(0.8).linear_multiply(media_opacity))
-                            ));
+                            ).truncate());
 
                             ui.add_space(2.0);
 
