@@ -681,6 +681,7 @@ fn main (){
 
     // Create a mutable viewport_builder
     let mut viewport_builder = egui::ViewportBuilder::default()
+        .with_app_id("bespec")
         .with_inner_size(initial_size)
         .with_title("BeSpec - Audio Spectrum Analyzer")
         .with_resizable(true)
