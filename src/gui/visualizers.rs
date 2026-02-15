@@ -655,23 +655,20 @@ pub fn draw_media_overlay(
 
                         }
                     }
+                    
                     // Text Stack
                     ui.vertical(|ui| {
                         ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| {
-                            // Title
-                            ui.add(egui::Label::new(
-                                egui::RichText::new(&info.title)
-                                    .font(egui::FontId::new(16.0, font_family.clone()))
-                                    .strong()
-                                    .color(base_text_color.linear_multiply(media_opacity))
-                            ).truncate());
+                            
+                            // Title (Scrolling)
+                            let title_font = egui::FontId::new(16.0, font_family.clone());
+                            let title_color = base_text_color.linear_multiply(media_opacity);
+                            draw_scrolling_label(ui, &info.title, title_font, title_color);
 
                             // Artist
-                            ui.add(egui::Label::new(
-                                egui::RichText::new(format!("{} - {}", info.artist, info.album))
-                                    .font(egui::FontId::new(11.0, font_family.clone()))
-                                    .color(base_text_color.linear_multiply(0.8).linear_multiply(media_opacity))
-                            ).truncate());
+                            let artist_font = egui::FontId::new( 12.0, font_family.clone());
+                            let artist_color = base_text_color.linear_multiply(media_opacity);
+                            draw_scrolling_label(ui, &info.artist, artist_font, artist_color);
 
                             ui.add_space(2.0);
 
@@ -697,13 +694,7 @@ pub fn draw_media_overlay(
                                     info.is_playing,
                                     media_opacity,
                                     base_text_color);
-                            } else {
-                                ui.add(egui::Label::new(
-                                    egui::RichText::new(format!("via {}", info.source_app))
-                                        .font(egui::FontId::new(10.0, font_family.clone()))
-                                        .color(base_text_color.linear_multiply(0.5).linear_multiply(media_opacity))
-                                ));
-                            }
+                            } 
 
                             ui.add(egui::Label::new(
                                 egui::RichText::new(format!("via {}", info.source_app))
@@ -845,4 +836,61 @@ pub fn draw_preview_spectrum(
             painter.rect_filled(peak_rect, 0.0, peak);
         }
     }
+}
+
+/// Draw text that scrolls if it exceeds avaialable width
+fn draw_scrolling_label(
+    ui: &mut egui::Ui,
+    text: &str, 
+    font_id: egui::FontId,
+    color: egui::Color32)
+{
+    let available_width = ui.available_width();
+
+    // Create the galley for the text
+    let galley = ui.painter().layout_no_wrap(text.to_string(), font_id.clone(), color);
+    let text_width = galley.rect.width();
+    let height = galley.rect.height();
+
+    // Case 1: Text fits -> Draw static
+    if text_width <= available_width {
+        // We use allocate_space to ensure we take up the verticval room,
+        // but let alignment happen naturally
+        ui.add(egui::Label::new(
+            egui::RichText::new(text)
+                .font(font_id)
+                .color(color)
+        ));
+        return;
+    }
+
+    // Case 2: Text overflows -> Marqee Time!!
+    // Allocate exact space in the UI Layout
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(available_width, height), egui::Sense::hover());
+
+    let clip_rect = rect.intersect(ui.clip_rect());
+    let painter = ui.painter().with_clip_rect(clip_rect);
+
+    let time = ui.input(|i| i.time);
+    let speed = 30.0; // Pixels per second
+    
+    let gap = (available_width / 3.0).max(200.0); // Space between loops
+    let cycle_len = text_width + gap;
+
+    // Calculate offset (movers leftward)
+    let offset = (time * speed as f64) % cycle_len as f64;
+    let x_start = rect.min.x - offset as f32;
+
+    // Draw first instance
+    painter.galley(egui::pos2(x_start, rect.min.y), galley.clone(), egui::Color32::WHITE);
+
+    // Draw Loop Instance (if the first one has moved enough to reveal the gap)
+    if x_start + text_width + gap < rect.max.x {
+        painter.galley(egui::pos2(x_start + cycle_len as  f32, rect.min.y), galley, egui::Color32::WHITE);
+    }
+
+    // Request repaint to keep animation smooth
+    ui.ctx().request_repaint();
+
+
 }
