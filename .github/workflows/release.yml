@@ -168,3 +168,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: ${{ env.ASSET_NAME }}
+          generate_release_notes: true
+          prerelease: true
