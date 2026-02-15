@@ -24,18 +24,21 @@ pub fn sanitize_title(title: &str) -> String {
         "[Official Video]",
         "[Official Music Video]",
         "[Lyric Video]",
+        "[Official Audio]",
         "[Audio]",
         "ft.",
         "feat.",
         "featuring",
     ];
     let mut clean = title.to_string();
+
     for term in garbage_terms.iter() {
         // If any garbage term is found, truncate the string at that point
         if let Some(idx) = clean.to_lowercase().find(&term.to_lowercase()) {
             clean.truncate(idx);
         }
     }
+    
     clean.trim().to_string()
 }
 
@@ -63,6 +66,64 @@ pub fn url_encode(input: &str) -> String {
         }
     }
     encoded
+}
+
+/// Verifies if a Wikipedia search result is a valid match for the requested track.
+/// 
+/// This logic compares the search result title and snippet against the known
+/// Artist and Album to prevent false positives (e.g. matching a song with the same
+/// name by a different artist).
+///
+/// Returns `true` if it's a confirmed match.
+pub fn verify_wiki_match(
+    artist: &str,
+    _title: &str, // Unused in logic but kept for interface consistency if needed later
+    album: &str,
+    wiki_title: &str,
+    wiki_snippet: &str,
+) -> bool {
+    // 4. --- HEURISTIC CHECK ---
+    // Wikipedia search is fuzzy. Searching for "One" (Metallica) might return "One (U2 song)"
+    // or just the number "1". We need to verify the result is actually related to our artist.
+    let title_lower = wiki_title.to_lowercase();
+    let artist_lower = artist.to_lowercase();
+    let album_lower = album.to_lowercase();
+    
+    // Clean snippet (it often contains HTML like <span class="searchmatch">)
+    // We just lowercase it; 'contains' will ignore the tags around the words.
+    let snippet_lower = wiki_snippet.to_lowercase();
+
+    tracing::info!("[MEDIA] Checking Heuristic: does Title OR Snippet contain '{}'?", artist_lower);
+
+    // Condition A: Title contains Artist
+    // Example: Search "Metallica One" -> Result "One (Metallica song)" -> Match!
+    let title_has_artist = title_lower.contains(&artist_lower);
+    
+    // Condition B: Title contains Album (if album is valid)
+    // Example: Search "Pink Floyd Dark Side" -> Result "The Dark Side of the Moon" -> Match!
+    // (Even if artist name isn't in the title, the album name confirms it)
+    let title_has_album = !album.is_empty() && album != "Unknown Album" && title_lower.contains(&album_lower);
+
+    // Condition C: Snippet contains Artist
+    // This fixes cases like "I Ain't Worried" where the title is generic ("I Ain't Worried")
+    // and doesn't contain the artist name in the title, but the text snippet says:
+    // "...is a song by American pop rock band OneRepublic..."
+    let snippet_has_artist = snippet_lower.contains(&artist_lower);
+
+    if title_has_artist || title_has_album || snippet_has_artist {
+        tracing::info!("[MEDIA] Match CONFIRMED (Source: {}). Using Wiki.", 
+            if title_has_artist { "Title+Artist" } 
+            else if title_has_album { "Title+Album" } 
+            else { "Snippet+Artist" }
+        );
+        true
+    } else {
+        tracing::warn!(
+            "[MEDIA] Heuristic FAIL: Candidate '{}' rejected. Artist '{}' not found in title or snippet.", 
+            wiki_title, artist
+        );
+        false
+    }
 }
 
 /// Attempts to find a Wikipedia article URL for the given track.
@@ -117,48 +178,12 @@ pub fn fetch_wikipedia_url(artist: &str, title: &str, album: &str) -> String {
                     if let Some(wiki_title) = wiki_title_opt {
                         tracing::info!("[MEDIA] Wiki Candidate Found: '{}'", wiki_title);
                         
-                        // 4. --- HEURISTIC CHECK ---
-                        // Wikipedia search is fuzzy. Searching for "One" (Metallica) might return "One (U2 song)"
-                        // or just the number "1". We need to verify the result is actually related to our artist.
-                        let title_lower = wiki_title.to_lowercase();
-                        let artist_lower = artist.to_lowercase();
-                        let album_lower = album.to_lowercase();
+                        let wiki_snippet = wiki_snippet_opt.unwrap_or("");
                         
-                        // Clean snippet (it often contains HTML like <span class="searchmatch">)
-                        // We just lowercase it; 'contains' will ignore the tags around the words.
-                        let snippet_lower = wiki_snippet_opt.unwrap_or("").to_lowercase();
-
-                        tracing::info!("[MEDIA] Checking Heuristic: does Title OR Snippet contain '{}'?", artist_lower);
-
-                        // Condition A: Title contains Artist
-                        // Example: Search "Metallica One" -> Result "One (Metallica song)" -> Match!
-                        let title_has_artist = title_lower.contains(&artist_lower);
-                        
-                        // Condition B: Title contains Album (if album is valid)
-                        // Example: Search "Pink Floyd Dark Side" -> Result "The Dark Side of the Moon" -> Match!
-                        // (Even if artist name isn't in the title, the album name confirms it)
-                        let title_has_album = !album.is_empty() && title_lower.contains(&album_lower);
-
-                        // Condition C: Snippet contains Artist (New!)
-                        // This fixes cases like "I Ain't Worried" where the title is generic ("I Ain't Worried")
-                        // and doesn't contain the artist name in the title, but the text snippet says:
-                        // "...is a song by American pop rock band OneRepublic..."
-                        let snippet_has_artist = snippet_lower.contains(&artist_lower);
-
-                        if title_has_artist || title_has_album || snippet_has_artist {
-                            tracing::info!("[MEDIA] Match CONFIRMED (Source: {}). Using Wiki.", 
-                                if title_has_artist { "Title+Artist" } 
-                                else if title_has_album { "Title+Album" } 
-                                else { "Snippet+Artist" }
-                            );
-
-                            let url_slug = url_encode(wiki_title).replace("+", "_");
-                            return format!("https://en.wikipedia.org/wiki/{}", url_slug);
-                        } else {
-                            tracing::warn!(
-                                "[MEDIA] Heuristic FAIL: Candidate '{}' rejected. Artist '{}' not found in title or snippet.", 
-                                wiki_title, artist
-                            );
+                        // 4. Verify the candidate using our helper
+                        if verify_wiki_match(artist, title, album, wiki_title, wiki_snippet) {
+                             let url_slug = url_encode(wiki_title).replace("+", "_");
+                             return format!("https://en.wikipedia.org/wiki/{}", url_slug);
                         }
                     }
                 } else {
@@ -242,5 +267,77 @@ mod tests {
         // Expect: AC%2FDC+-+Who+Made+Who%3F
         // / -> %2F, space -> +, ? -> %3F
         assert_eq!(url_encode(messy), "AC%2FDC+-+Who+Made+Who%3F");
+    }
+
+    #[test]
+    fn test_sanitize_title() {
+        // 1. Standard Case
+        assert_eq!(sanitize_title("Hello World"), "Hello World");
+
+        // 2. Garbage Removal
+        assert_eq!(sanitize_title("Song Name (Official Video)"), "Song Name");
+        assert_eq!(sanitize_title("Another One [Official Audio]"), "Another One");
+        assert_eq!(sanitize_title("Taylor Swift - Anti-Hero (Official Music Video)"), "Taylor Swift - Anti-Hero");
+
+        // 3. Case Insensitive
+        assert_eq!(sanitize_title("My Song (official video)"), "My Song");
+
+        // 4. Features
+        assert_eq!(sanitize_title("Cool Track ft. Snoop Dogg"), "Cool Track");
+        assert_eq!(sanitize_title("Pop Hit featuring Someone"), "Pop Hit");
+        
+        // 5. Trimming
+        assert_eq!(sanitize_title("  Spaces  (Official Video)  "), "Spaces");
+    }
+
+    #[test]
+    fn test_wiki_verification_match() {
+        // Scenario A: Exact Match in Title
+        assert!(verify_wiki_match(
+            "Metallica", 
+            "One", 
+            "And Justice for All", 
+            "One (Metallica song)", 
+            "A song by the American heavy metal band Metallica..."
+        ));
+
+        // Scenario B: Album Match (Artist not in title)
+        assert!(verify_wiki_match(
+            "Pink Floyd", 
+            "Time", 
+            "The Dark Side of the Moon", 
+            "The Dark Side of the Moon", 
+            "The eighth studio album by Pink Floyd..." 
+        ));
+
+        // Scenario C: Snippet Match (Artist not in title)
+        assert!(verify_wiki_match(
+            "OneRepublic", 
+            "I Ain't Worried", 
+            "Topic Soundtrack", 
+            "I Ain't Worried", 
+            "I Ain't Worried is a song by American pop rock band OneRepublic..."
+        ));
+    }
+
+    #[test]
+    fn test_wiki_verification_mismatch() {
+        // Scenario: Ambiguous Title (Wrong Artist)
+        assert!(!verify_wiki_match(
+            "U2", 
+            "One", 
+            "Achtung Baby", 
+            "One (Metallica song)", 
+            "One is a song by heavy metal band Metallica..."
+        ));
+
+         // Scenario: Completely Wrong Result
+         assert!(!verify_wiki_match(
+            "The Beatles", 
+            "Hey Jude", 
+            "", 
+            "Jude Law", 
+            "David Jude Heyworth Law is an English actor..."
+        ));
     }
 }
