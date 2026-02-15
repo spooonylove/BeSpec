@@ -4,7 +4,7 @@ use std::time::Duration;
 use std::fs;
 use std::path::PathBuf;
 use std::io::Read;
-use super::{MediaController, MediaMonitor, MediaTrackInfo};
+use super::{MediaController, MediaMonitor, MediaTrackInfo, sanitize_title};
 use mpris::{PlayerFinder, PlaybackStatus};
 
 pub struct LinuxMediaManager;
@@ -122,7 +122,7 @@ impl MediaMonitor for LinuxMediaManager {
                         let is_playing = player.get_playback_status().ok() == Some(PlaybackStatus::Playing);
 
                         if let Ok(meta) = player.get_metadata() {
-                            let title = meta.title().unwrap_or("Unknown Title").to_string();
+                            let title = sanitize_title(meta.title().unwrap_or("Unknown Title"));
                             let artist = meta.artists().map(|a| a.join(", ")).unwrap_or("Unknown Artist".to_string());
                             let album = meta.album_name().unwrap_or_default().to_string();
                             

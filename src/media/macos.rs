@@ -2,7 +2,7 @@ use crossbeam_channel::Sender;
 use std::time::Duration;
 use std::process::Command;
 use std::io::Read; 
-use super::{MediaController, MediaMonitor, MediaTrackInfo};
+use super::{MediaController, MediaMonitor, MediaTrackInfo, sanitize_title};
 
 use base64::{Engine as _, engine::general_purpose};
 
@@ -174,7 +174,7 @@ fn get_macos_media_info(known_title: &str, known_artist: &str) -> Option<RawTrac
 
     match serde_json::from_str::<serde_json::Value>(&json_str) {
         Ok(v) => {
-            let title = v["title"].as_str().unwrap_or("").to_string();
+            let title = sanitize_title(v["title"].as_str().unwrap_or(""));
             let artist = v["artist"].as_str().unwrap_or("").to_string();
             
             // Check for cache hit

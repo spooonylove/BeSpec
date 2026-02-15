@@ -1,7 +1,7 @@
 use crossbeam_channel::Sender;
 use windows::Storage::Streams::DataReader;
 use std::time::Duration;
-use super::{MediaController, MediaMonitor, MediaTrackInfo};
+use super::{MediaController, MediaMonitor, MediaTrackInfo, sanitize_title};
 
 // We use the `windows-media` crate for media control and monitoring
 use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
@@ -128,7 +128,7 @@ impl MediaMonitor for WindowsMediaManager {
                         // Metadata
                         if let Ok(op) = session.TryGetMediaPropertiesAsync() {
                             if let Ok(props) = op.await {
-                                let title = props.Title().ok().map(|h| h.to_string()).unwrap_or_default();
+                                let title = sanitize_title(&props.Title().ok().map(|h| h.to_string()).unwrap_or_default());
                                 let artist = props.Artist().ok().map(|h| h.to_string()).unwrap_or_default();
                                 let album = props.AlbumTitle().ok().map(|h| h.to_string()).unwrap_or_default();
                                 
