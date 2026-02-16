@@ -71,7 +71,7 @@ By default, Linux apps try to record from your **Microphone**. To visualize musi
 5.  Click the drop-down menu next to it (it usually says "Built-in Audio Analog Stereo").
 6.  Select **"Monitor of Built-in Audio Analog Stereo"** (or "Monitor of [Your Headphones]").
 
-<img src="images/linux_pavucontrol_monitor.png" width="600" alt="PulseAudio Volume Control showing BeSpec recording from Monitor source">
+<img src="images/linux_install_pavu_setup.png" width="600" alt="PulseAudio Volume Control showing BeSpec recording from Monitor source">
 
 *Note: If you are using **PipeWire**, this setting is usually remembered for next time.*
 
