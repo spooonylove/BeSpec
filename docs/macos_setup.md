@@ -1,69 +1,100 @@
-# macOS Audio Setup Guide
+# macOS Setup Guide
 
-Unlike Windows or Linux, macOS does not inherently allow applications to "hear" the system audio output (loopback) due to security restrictions.
+Unlike Windows or Linux, macOS requires two distinct steps to get a spectrum analyzer working:
+1. **Installation:** Installing the unsigned application.
+2. **Audio Routing:** Setting up a "loopback" so the app can hear your system audio.
 
-To use **BeSpec** with your system audio (e.g., music from Spotify, YouTube, or Apple Music), you need to set up a virtual loopback driver. We recommend **BlackHole**, which is free, open-source, and low-latency.
+---
 
-## Step 1: Install BlackHole
+## Phase 1: Installation
 
-You need the **2-channel** version of BlackHole.
-
-**Option A: Via Homebrew (Recommended)**
-Open your Terminal and run:
+### Option A: Homebrew (Recommended)
+If you already use Homebrew, this is the easiest way. It handles the download and can often bypass the security warnings automatically.
 
 ```bash
-brew install blackhole-2ch
+# 1. Add the BeSpec tap
+brew tap bespec-dev/tap
+
+# 2. Install the app (removes quarantine automatically)
+brew install --cask bespec --no-quarantine
 ```
 
-**Option B: Manual Download**
-Download the installer from [existential.audio](https://existential.audio/blackhole/) and follow the install prompts.
+### Option B: Manual Download (.dmg)
+1.  Go to the [Releases Page](https://github.com/bespec-dev/bespec/releases).
+2.  Download the correct file for your Mac:
+    * **Apple Silicon (M1/M2/M3/M4):** Download `macos-silicon.dmg`
+    * **Intel Macs:** Download `macos-intel.dmg`
+3.  Open the `.dmg` file and drag **BeSpec.app** into your **Applications** folder.
 
-## Step 2: Create a Multi-Output Device
+### ⚠️ Handling Security Permissions
+Because BeSpec is free and open-source, it is not signed with a paid Apple Developer certificate. macOS may try to block it.
 
+* **The "Right-Click" Trick:** On the very first launch, **Right-Click** (or Control+Click) the app icon and select **Open**. This gives you an "Open" button in the warning dialog.
+* **Microphone Access:** When prompted, click **Allow** for Microphone access. (macOS considers all audio input, even internal loopbacks, to be a "Microphone").
+
+---
+
+## Phase 2: Audio Routing Setup
+
+To visualize music from audio sources on your MacOS device, you need to create a virtual link between your speakers and BeSpec. We recommend using **BlackHole**.
+
+### Step 1: Install BlackHole
+You need the **2-channel** version.
+
+* **Via Homebrew:** `brew install blackhole-2ch`
+* **Manual:** Download from [existential.audio](https://existential.audio/blackhole/)
+
+### Step 2: Create a Multi-Output Device
 This step creates a virtual "splitter" that sends audio to your speakers AND to BeSpec simultaneously.
 
-1. Open **Audio MIDI Setup** (Cmd+Space, type "Audio MIDI Setup").
+1.  Open **Audio MIDI Setup** (Cmd+Space, type "Audio MIDI Setup").
+2.  Click the **+** (plus) icon in the bottom-left corner and select **Create Multi-Output Device**.
+3.  In the list on the right, check the boxes for:
+    * **Built-in Output** (or your Headphones/External DAC).
+    * **BlackHole 2ch**.
+4.  **Drift Correction:** Check the box next to **BlackHole 2ch**. This ensures your audio stays in sync with your speakers.
 
-2. Click the **+** (plus) icon in the bottom-left corner.
+![Screenshot: Audio MIDI Setup showing Multi-Output Device configuration]
 
-3. Select **Create Multi-Output Device**.
+### Step 3: Route System Audio
+1.  Open **System Settings** > **Sound**.
+2.  Under the **Output** tab, select the **Multi-Output Device** you just created.
 
-4. In the list on the right, check the boxes for:
+> **Note:** When using a Multi-Output device, macOS disables the volume keys on your keyboard. You must control volume via your physical speaker buttons or inside the specific music app.
 
-   * **Built-in Output** (or your Headphones/External DAC).
+![Screenshot: macOS System Settings Sound Output tab]
 
-   * **BlackHole 2ch**.
+---
 
-5. **Critical Settings:**
+## Phase 3: App Configuration
 
-   * **Master Device:** Set this to your physical speakers (e.g., "Built-in Output"). This ensures your audio clock matches your hardware.
+This is the most common mistake! You must send audio to one place, but listen from another.
 
-   * **Drift Correction:** Check the box next to **BlackHole 2ch**. This tells macOS to keep BlackHole in sync with your speakers.
+1.  Open **BeSpec**.
+2.  In the audio device dropdown, select: **BlackHole 2ch**.
 
-## Step 3: Route System Audio
+**⚠️ DO NOT select "Multi-Output Device" inside BeSpec.**
+The Multi-Output device is for *output only*. If you select it as an input, you will see a flat line. You must listen to the *destination* (BlackHole) that the Multi-Output device is feeding.
 
-1. Open **System Settings** > **Sound**.
+![Screenshot: BeSpec application with BlackHole 2ch selected in the dropdown]
 
-2. Under the **Output** tab, select the **Multi-Output Device** you just created.
+---
 
-> **Note:** When using a Multi-Output device, macOS disables the volume keys on your keyboard. You must control volume directly via your physical speaker buttons or inside the specific music app.
+## Troubleshooting
 
-## Troubleshooting: "App is damaged and can't be opened"
+**"App is damaged and can't be opened"**
+If the app refuses to launch, run this command in your Terminal to remove the Apple quarantine flag:
+```bash
+xattr -cr /Applications/BeSpec.app
+```
 
-If you receive an error stating that **"BeSpec.app is damaged and can't be opened"** when trying to run the application, this is a standard macOS security message for apps that are not signed with an Apple Developer ID.
+**No Audio / Flat Spectrum**
+1.  Check that **System Output** is set to "Multi-Output Device".
+2.  Check that **BeSpec Input** is set to "BlackHole 2ch".
+3.  Go to **System Settings > Privacy & Security > Microphone** and ensure BeSpec is toggled **ON**.
 
-To fix this, you need to remove the "quarantine" attribute from the downloaded file:
-
-1. Move the **BeSpec** app to your `/Applications` folder (or wherever you prefer).
-
-2. Open your **Terminal**.
-
-3. Run the following command:
-
-   ```bash
-   xattr -cr /Applications/BeSpec.app
-   ```
-
-   *(Note: If you placed the app somewhere else, replace the path accordingly. You can also type `xattr -cr ` and drag the app icon into the terminal window to auto-fill the path.)*
-
-4. Launch the app again. It should now open normally.
+**Resetting Permissions**
+If you accidentally clicked "Don't Allow" for the microphone, force a reset by running this command:
+```bash
+tccutil reset Microphone com.bespec-dev.bespec
+```
