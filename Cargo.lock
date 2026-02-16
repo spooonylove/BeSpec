@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "BeSpec"
-version = "1.6.3-rc1"
+version = "1.6.3"
 dependencies = [
  "base64",
  "cpal",

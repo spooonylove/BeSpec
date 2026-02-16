@@ -5,7 +5,7 @@
 [![CI](https://github.com/BeSpec-Dev/bespec/actions/workflows/ci.yaml/badge.svg)](https://github.com/BeSpec-Dev/bespec/actions/workflows/ci.yaml)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)]()
 
-A high-performance, cross-platform, real-time audio spectrum visualizer written in **Rust**.
+**A high-performance, cross-platform, real-time audio spectrum visualizer written in Rust**.
 
 BeSpec captures system audio loopback and renders a customizable frequency spectrum overlay. It is architected for low latency, minimal resource footprint, and visual precision.
 
@@ -52,30 +52,45 @@ BeSpec is designed for audio analysis. See how it uncovers hidden artifacts in p
 
 | Platform | Support Status | Media Capabilities |
 | :--- | :--- | :--- |
-| **Windows** | ✅ Fully Supported | Metadata, Album Art, & Transport Controls. |
-| **Linux** | ✅ Fully Supported | Metadata, Album Art, & Transport (MPRIS). |
-| **macOS** | ⚠️ Beta / RC | Metadata & Album Art only. |
+| **Windows** | ✅ Native| Metadata, Album Art, & Transport Controls |
+| **Linux** | ✅ Native | Metadata, Album Art, & Transport (MPRIS) |
+| **macOS** | ⚠️ Requires Setup | Metadata & Album Art only* |
+> Note: macOS requires [BlackHole](https://existential.audio/blackhole/) for audio capture. Media controls are not currently supported on macOS.
 
 ## Installation & Usage
 
-### Pre-built Binaries
-1. Visit the [Releases Page](../../releases/latest).
-2. Download the binary for your architecture (Windows `.exe`, macOS Silicon/Intel, or Linux).
-3. Linux/macOS users: `chmod +x bespec` before running.
+### macOS
+We provide a native `.dmg` installer and a Homebrew tap.
 
-*Note: macOS and Linux users require loopback configuration. See the [macOS Setup Guide](docs/macos_setup.md) or [Linux Setup Guide](docs/linux_setup.md).*
+* **Option A (Homebrew):**
+  ```bash
+  brew tap bespec-dev/tap
+  brew install --cask bespec --no-quarantine
+  ```
 
-### Build from Source
-Requires the [Rust toolchain](https://www.rust-lang.org/tools/install).
+* **Option B (Manual):**
+  Download the `.dmg` (Intel or Silicon) from [Releases](https://github.com/bespec-dev/bespec/releases).
 
-```bash
-git clone https://github.com/BeSpec-Dev/bespec.git
-cd bespec
-# Ubuntu/Debian dependencies: libasound2-dev libudev-dev pkg-config
-cargo run --release
-```
+> **Important:** macOS requires audio routing setup (BlackHole) to hear system audio.
+> 👉 **[Read the macOS Setup Guide](docs/macos_setup.md)**
 
-### Architecture
+### Linux
+We provide a universal installer script that handles dependencies, icons, and menu shortcuts.
+
+1. Download the `linux.tar.gz` from [Releases](https://github.com/bespec-dev/bespec/releases).
+2. Extract the archive.
+3. Run `./install.sh` from the terminal.
+
+> **Important:** You must select the "Monitor" source in PulseAudio/PipeWire.
+> 👉 **[Read the Linux Setup Guide](docs/linux_setup.md)**
+
+### Windows
+1. Download the `windows.zip` from [Releases](https://github.com/bespec-dev/bespec/releases).
+2. Extract and run `bespec.exe`.
+
+---
+
+## Architecture
 BeSpec utilizes a concurrent model to ensure the UI remains responsive at 60+ FPS:
 
 - **Audio Thread**: Stream capture and format normalization (I16/U16/F32).
