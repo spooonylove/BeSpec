@@ -39,7 +39,7 @@ Because BeSpec is free and open-source, it is not signed with a paid Apple Devel
 To visualize music from audio sources on your MacOS device, you need to create a virtual link between your speakers and BeSpec. We recommend using **BlackHole**.
 
 ### Step 1: Install BlackHole
-You need the **2-channel** version.
+Download the **2-channel** version. (higher channel versions work, too)
 
 * **Via Homebrew:** `brew install blackhole-2ch`
 * **Manual:** Download from [existential.audio](https://existential.audio/blackhole/)
@@ -54,7 +54,7 @@ This step creates a virtual "splitter" that sends audio to your speakers AND to 
     * **BlackHole 2ch**.
 4.  **Drift Correction:** Check the box next to **BlackHole 2ch**. This ensures your audio stays in sync with your speakers.
 
-![Screenshot: Audio MIDI Setup showing Multi-Output Device configuration]
+<img src="images/MacOS_install_audio_midi_setup.png" width="800" alt="Screenshot: Audio MIDI Setup showing Multi-Output Device configuration">
 
 ### Step 3: Route System Audio
 1.  Open **System Settings** > **Sound**.
@@ -62,7 +62,7 @@ This step creates a virtual "splitter" that sends audio to your speakers AND to 
 
 > **Note:** When using a Multi-Output device, macOS disables the volume keys on your keyboard. You must control volume via your physical speaker buttons or inside the specific music app.
 
-![Screenshot: macOS System Settings Sound Output tab]
+<img src="images/MacOS_install_sound_settings.png" width="700" alt="Screenshot: MacOS Sound Settings Tab">
 
 ---
 
@@ -76,7 +76,7 @@ This is the most common mistake! You must send audio to one place, but listen fr
 **⚠️ DO NOT select "Multi-Output Device" inside BeSpec.**
 The Multi-Output device is for *output only*. If you select it as an input, you will see a flat line. You must listen to the *destination* (BlackHole) that the Multi-Output device is feeding.
 
-![Screenshot: BeSpec application with BlackHole 2ch selected in the dropdown]
+<img src="images/MacOS_install_bespec_audio_settings.png" width="400" alt="Screenshot: BeSpec application with BlackHole 2ch selected in the dropdown">
 
 ---
 
