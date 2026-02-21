@@ -98,6 +98,21 @@ BeSpec utilizes a concurrent model to ensure the UI remains responsive at 60+ FP
 - **GUI Thread**: Immediate-mode rendering via egui + wgpu.
 - **Synchronization**: `crossbeam_channel` for high-frequency data and `Arc<Mutex<SharedState>>` for configuration.
 
+## Configuration & Logs
+
+BeSpec saves its settings, user-created presets, and diagnostic logs to the standard application data directories for your operating system. 
+
+| OS | Config File (`config.json`) | Data & Logs Directory (`presets/`, `logs/`) |
+| :--- | :--- | :--- |
+| **Windows** | `%APPDATA%\BeSpec\config.json` | `%APPDATA%\BeSpec\` |
+| **Linux** | `~/.config/BeSpec/config.json` | `~/.local/share/BeSpec/` |
+| **macOS** | `~/Library/Application Support/BeSpec/config.json` | `~/Library/Application Support/BeSpec/` |
+
+### How to Use These Files
+* **`config.json`**: This file contains all of your active settings. You can back this up to save your setup, or manually edit it if you need to fine-tune exact window coordinates.
+* **`presets/` folder**: Whenever you save a custom Color or Visual profile in the app, it is stored here as a standard `.json` file. You can easily copy these files to share your custom themes with other users!
+* **`logs/` folder**: Contains daily rolling log files (e.g., `BeSpec.log`). These are incredibly useful for troubleshooting audio device detection issues, reviewing FFT performance statistics, or attaching to bug reports. 
+
 ## Privacy & Network Activity
 
 BeSpec is architected to be a privacy-first tool. All audio processing occurs locally in real-time. To support its feature set, the application performs the following minimal network requests:
@@ -106,7 +121,7 @@ BeSpec is architected to be a privacy-first tool. All audio processing occurs lo
 * **Album Art Fetching:** If your media player provides a web URL for artwork (typical for Spotify or streaming services), BeSpec downloads the image file to display it in the overlay.
 * **Wikipedia Integration:** When you click the album art, BeSpec sends the current Artist and Album metadata to the Wikipedia Search API (`en.wikipedia.org`) to locate the relevant article. This only occurs upon a user click.
 
-**Privacy Promise:** No audio data, personal identifiers, or telemetry is ever recorded, stored, or transmitted to any third party.
+**Privacy Promise:** No audio data, personal identifiers, or telemetry is ever recorded, stored, or transmitted to any third party. Media listening history is never logged unless explicitly enabled by the user in the app settings.
 
 **Why does my OS say the "Microphone" is on?** Operating systems (*Linux and MacOS*) classify any audio input stream (including loopback) as "Microphone Usage." BeSpec processes all audio data locally in real-time. No audio is recorded, stored, or transmitted over the network.
 
