@@ -688,16 +688,36 @@ fn main (){
         .with_transparent(true)
         .with_decorations(initial_decorations);
 
+    tracing::info!("[Main] Loaded from config -> Size: {:?}, Pos: {:?}", initial_size, initial_pos);
+
     // Apply icon if loaded
     if let Some(icon) = app_icon {
         viewport_builder = viewport_builder.with_icon(icon);
     }
 
-    // Apply position if saved
-    if let Some(pos) = initial_pos {
-        viewport_builder = viewport_builder.with_position([pos[0], pos[1]]);
+    // Unconditionally log the display server environment on Linux
+    #[cfg(target_os = "linux")]
+    if crate::shared_state::is_wayland() {
+        tracing::info!("[Main] Wayland detected: Yielding window positioning to compositor.");
     }
 
+    // Apply position if saved, yielding to the compositor on Linux Wayland
+    if let Some(pos) = initial_pos {
+        #[cfg(target_os = "linux")]
+        {
+            if !crate::shared_state::is_wayland() {
+                tracing::info!("[Main] Requesting position {:?} from X11", pos);
+                viewport_builder = viewport_builder.with_position([pos[0], pos[1]]);
+            } else {
+                tracing::info!("[Main] Wayland detected. Skipping position request.");
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            tracing::info!("[Main] Requesting position {:?} from OS", pos);
+            viewport_builder = viewport_builder.with_position([pos[0], pos[1]]);
+        }
+    }
     // Conditionally apply 'always on top' setting
     if initial_on_top {
         viewport_builder = viewport_builder.with_always_on_top();

@@ -69,6 +69,11 @@ impl SpectrumApp {
         media_rx: Receiver<crate::media::MediaTrackInfo>,
         media_controller: Arc<PlatformMedia>,
     ) -> Self {
+
+        let initial_size = {
+            let state = shared_state.lock().unwrap();
+            egui::Vec2::new(state.config.window_size[0], state.config.window_size[1])
+        };
         Self {
             shared_state,
             media_rx,
@@ -80,7 +85,7 @@ impl SpectrumApp {
             active_tab: SettingsTab::Visual,
             last_frame_time: Instant::now(),
             frame_times: Vec::with_capacity(60),
-            last_window_size: None,
+            last_window_size: Some(initial_size),
             last_window_pos: None,
             last_passthrough_state: false,
             was_focused: true,
@@ -111,6 +116,21 @@ impl eframe::App for SpectrumApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         
+    // Log the exact coordinates the OS is reporting for the first 5 frames
+        if self.frame_times.len() < 5 {
+            let inner = ctx.input(|i| i.viewport().inner_rect);
+            let outer = ctx.input(|i| i.viewport().outer_rect);
+            let screen = ctx.screen_rect(); // This one is guaranteed to exist
+            
+            tracing::info!(
+                "[GUI/Trace] Frame {}: Inner: {:?}, Outer: {:?}, Screen: {:?}", 
+                self.frame_times.len(), 
+                inner.map(|r| r.size()), 
+                outer.map(|r| r.min),
+                screen.size()
+            );
+        }
+
         let minimize_key = self.shared_state.lock().unwrap().config.minimize_key;
         let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, minimize_key);
 
@@ -168,32 +188,50 @@ impl eframe::App for SpectrumApp {
                 
                 self.last_window_pos = Some(current_pos);
 
-                // Save to config
-                if let Ok(mut state) = self.shared_state.lock() {
-                    state.config.window_position = Some([current_pos.x, current_pos.y]);
+                // COMBINED LOGIC: Only save position if NOT on Wayland
+                let should_save_pos = {
+                    #[cfg(target_os = "linux")]
+                    { !crate::shared_state::is_wayland() }
+                    #[cfg(not(target_os = "linux"))]
+                    { true }
+                };
+
+                if should_save_pos {
+                    tracing::info!("[GUI/Trace] Saving new position to config: {:?}", current_pos);
+                    if let Ok(mut state) = self.shared_state.lock() {
+                        state.config.window_position = Some([current_pos.x, current_pos.y]);
+                    }
+                } else {
+                    tracing::info!("[GUI/Trace] Window moved, but Wayland detected. Skipping config position overwrite.");
                 }
             }
         }
 
-        // --- Window Size tracking (Keep separate to avoid growth bug) ---
-        if let Some(rect) = ctx.input(|i| i.viewport().inner_rect) {
-            let size = rect.size();
-            let size_changed = self.last_window_size.map_or(true, |ls| (ls - size).length() > 1.0);
-             
-            // ADD THIS: Check maximized state
-            let is_maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-
-            if size_changed {
-                if let Ok(mut state) = self.shared_state.lock() {
-                    // FIX: Only save if "Normal".
-                    // If we are collapsed or maximized, the current size is temporary/OS-controlled.
-                    // We MUST NOT save it to config, or we lose the user's preferred window size.
-                    if !state.config.beos_window_collapsed && !is_maximized {
-                        state.config.window_size = [size.x, size.y];
-                    }
-                }
-                self.last_window_size = Some(size);
+        // --- Enforce Initial Size on Wayland ---
+        // If the OS forced a size that doesn't match our config, try to command a resize.
+        // We use screen_rect() because Wayland blinds viewport().inner_rect
+        let current_size = ctx.screen_rect().size();
+        if let Some(saved_size) = self.last_window_size {
+            // Only enforce on the first few frames if they are vastly different
+            if self.frame_times.len() < 5 && (current_size - saved_size).length() > 2.0 {
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(saved_size));
             }
+        }
+
+        // --- Window Size tracking (Keep separate to avoid growth bug) ---
+        let is_maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+        let size_changed = self.last_window_size.map_or(true, |ls| (ls - current_size).length() > 1.0);
+
+        if size_changed {
+            tracing::info!("[GUI/Trace] Saving new size to config: {:?}", current_size);
+            
+            if let Ok(mut state) = self.shared_state.lock() {
+                // FIX: Only save if "Normal".
+                if !state.config.beos_window_collapsed && !is_maximized {
+                    state.config.window_size = [current_size.x, current_size.y];
+                }
+            }
+            self.last_window_size = Some(current_size);
         }
         
         // === Performance Stats (FPS) ===

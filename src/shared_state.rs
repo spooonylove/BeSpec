@@ -598,6 +598,11 @@ impl Color32 {
     }
 }
 
+/// Helper to detect if the applicaction is running under Wayland on Linux
+pub fn is_wayland() -> bool {
+    std::env::var("WAYLAND_DISPLAY").is_ok()
+}
+
 // === Tests ====
 #[cfg(test)]
 mod tests {
