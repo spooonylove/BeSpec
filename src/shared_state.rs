@@ -312,6 +312,8 @@ pub struct AppConfig {
 
     pub inspector_enabled: bool,
 
+    pub log_media_metadata: bool,
+
     /// Name of selected input device (default: "Default")
     pub selected_device: String,
 
@@ -341,6 +343,7 @@ impl Default for AppConfig {
             window_decorations: false,
             minimize_key: egui::Key::H,
             inspector_enabled: true,
+            log_media_metadata: false,
             show_stats: false,
             selected_device: "Default".to_string(),
             noise_floor_db: -60.0,

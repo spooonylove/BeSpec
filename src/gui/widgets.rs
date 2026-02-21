@@ -975,6 +975,14 @@ pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
                             });
                     });
                     ui.end_row();
+
+                    // --- Row: Privacy Metadata Mode --- 
+                    ui.label("Privacy");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.checkbox(&mut state.config.log_media_metadata, "Log Media Metadata")
+                            .on_hover_text("When enabled, song titles and artists are written to the daily log files.\nKeep this off to prevent tracking your listening history.");
+                    });
+                    ui.end_row();
                 });
         });
         ui.add_space(10.0); // Bottom padding

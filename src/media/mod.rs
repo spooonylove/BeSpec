@@ -93,7 +93,7 @@ pub fn verify_wiki_match(
     // We just lowercase it; 'contains' will ignore the tags around the words.
     let snippet_lower = wiki_snippet.to_lowercase();
 
-    tracing::info!("[MEDIA] Checking Heuristic: does Title OR Snippet contain '{}'?", artist_lower);
+    tracing::debug!("[MEDIA] Checking Heuristic: does Title OR Snippet contain '{}'?", artist_lower);
 
     // Condition A: Title contains Artist
     // Example: Search "Metallica One" -> Result "One (Metallica song)" -> Match!
@@ -111,7 +111,7 @@ pub fn verify_wiki_match(
     let snippet_has_artist = snippet_lower.contains(&artist_lower);
 
     if title_has_artist || title_has_album || snippet_has_artist {
-        tracing::info!("[MEDIA] Match CONFIRMED (Source: {}). Using Wiki.", 
+        tracing::debug!("[MEDIA] Match CONFIRMED (Source: {}). Using Wiki.", 
             if title_has_artist { "Title+Artist" } 
             else if title_has_album { "Title+Album" } 
             else { "Snippet+Artist" }
@@ -137,7 +137,7 @@ pub fn fetch_wikipedia_url(artist: &str, title: &str, album: &str) -> String {
     let clean_title = sanitize_title(title);
     
     // DEBUG: Log the inputs
-    tracing::info!("[MEDIA] Lookup Start: Artist='{}', Title='{}' (Clean='{}'), Album='{}'", artist, title, clean_title, album);
+    tracing::debug!("[MEDIA] Lookup Start: Artist='{}', Title='{}' (Clean='{}'), Album='{}'", artist, title, clean_title, album);
 
     // 1. Construct the Search Query
     // We prioritize "Artist Album" for better context, falling back to "Artist Title".
@@ -148,7 +148,7 @@ pub fn fetch_wikipedia_url(artist: &str, title: &str, album: &str) -> String {
     };
 
     // DEBUG: Log the raw query we are about to send
-    tracing::info!("[MEDIA] Wiki Query: '{}'", raw_query);
+    tracing::debug!("[MEDIA] Wiki Query: '{}'", raw_query);
 
 
     let api_url = "https://en.wikipedia.org/w/api.php";
@@ -176,7 +176,7 @@ pub fn fetch_wikipedia_url(artist: &str, title: &str, album: &str) -> String {
                     let wiki_snippet_opt = first_result.get("snippet").and_then(|t| t.as_str());
 
                     if let Some(wiki_title) = wiki_title_opt {
-                        tracing::info!("[MEDIA] Wiki Candidate Found: '{}'", wiki_title);
+                        tracing::debug!("[MEDIA] Wiki Candidate Found: '{}'", wiki_title);
                         
                         let wiki_snippet = wiki_snippet_opt.unwrap_or("");
                         

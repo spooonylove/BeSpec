@@ -131,6 +131,13 @@ impl eframe::App for SpectrumApp {
 
         if let Some(track) = new_track {
             if let Ok(mut state) = self.shared_state.lock() {
+                // Explicitly check the user's preference before logging metadata
+                if state.config.log_media_metadata {
+                    tracing::info!("[GUI] New Track: {} - {}", track.artist, track.title);
+                } else {
+                    tracing::info!("[GUI] New Track received (Metadata logging disabled by user)");
+                }
+                
                 state.media_info = Some(track.clone());
                 state.last_media_update = Some(Instant::now());
             }

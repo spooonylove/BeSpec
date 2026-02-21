@@ -109,7 +109,7 @@ impl MediaMonitor for LinuxMediaManager {
             let mut cached_art_url: Option<String> = None;
             let mut cached_art_bytes: Option<Vec<u8>> = None;
 
-            tracing::info!("[Media/Linux] Monitor thread started");
+            tracing::debug!("[Media/Linux] Monitor thread started");
 
             loop {
                 // Find active player or fallback to first available
@@ -153,7 +153,7 @@ impl MediaMonitor for LinuxMediaManager {
                             };
                             
                             if last_sent_info.as_ref() != Some(&current_info) {
-                                tracing::info!("[Media/Linux] Update: {} - {} (Art: {})", 
+                                tracing::debug!("[Media/Linux] Update: {} - {} (Art: {})", 
                                     current_info.artist, 
                                     current_info.title,
                                     if current_info.album_art.is_some() { "Yes" } else { "No" }
