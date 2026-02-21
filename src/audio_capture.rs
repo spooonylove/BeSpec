@@ -576,7 +576,7 @@ mod tests {
             Ok(devices) => {
                 tracing::info!("Found {} audio devices:", devices.len());
                 for device in devices {
-                    tracing::info!("{}", device);
+                    tracing::debug!("{}", device);
                 }
             }
             Err(e) => {

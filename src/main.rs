@@ -57,7 +57,7 @@ fn start_audio_capture(
 
             tracing::info!("[Capture] Found {} audio devices", state.audio_devices.len());
             for (i, name) in state.audio_devices.iter().enumerate() {
-                tracing::info!("[Capture]    {}: {}", i, name);
+                tracing::debug!("[Capture]    {}: {}", i, name);
             }
         } else {
             tracing::error!("[Capture] Failed to enumerate initial audio devices");
@@ -706,15 +706,15 @@ fn main (){
         #[cfg(target_os = "linux")]
         {
             if !crate::shared_state::is_wayland() {
-                tracing::info!("[Main] Requesting position {:?} from X11", pos);
+                tracing::debug!("[Main] Requesting position {:?} from X11", pos);
                 viewport_builder = viewport_builder.with_position([pos[0], pos[1]]);
             } else {
-                tracing::info!("[Main] Wayland detected. Skipping position request.");
+                tracing::debug!("[Main] Wayland detected. Skipping position request.");
             }
         }
         #[cfg(not(target_os = "linux"))]
         {
-            tracing::info!("[Main] Requesting position {:?} from OS", pos);
+            tracing::debug!("[Main] Requesting position {:?} from OS", pos);
             viewport_builder = viewport_builder.with_position([pos[0], pos[1]]);
         }
     }
@@ -754,7 +754,7 @@ fn main (){
     thread::sleep(Duration::from_millis(500));
 
 
-    tracing::info!("[Main] ✓ Shutdown complete");
+    tracing::info!("[Main] ✓ Shutdown complete\n\n");
 
 }
 

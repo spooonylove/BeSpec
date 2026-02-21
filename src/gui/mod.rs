@@ -116,21 +116,6 @@ impl eframe::App for SpectrumApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         
-    // Log the exact coordinates the OS is reporting for the first 5 frames
-        if self.frame_times.len() < 5 {
-            let inner = ctx.input(|i| i.viewport().inner_rect);
-            let outer = ctx.input(|i| i.viewport().outer_rect);
-            let screen = ctx.screen_rect(); // This one is guaranteed to exist
-            
-            tracing::info!(
-                "[GUI/Trace] Frame {}: Inner: {:?}, Outer: {:?}, Screen: {:?}", 
-                self.frame_times.len(), 
-                inner.map(|r| r.size()), 
-                outer.map(|r| r.min),
-                screen.size()
-            );
-        }
-
         let minimize_key = self.shared_state.lock().unwrap().config.minimize_key;
         let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, minimize_key);
 
@@ -197,12 +182,12 @@ impl eframe::App for SpectrumApp {
                 };
 
                 if should_save_pos {
-                    tracing::info!("[GUI/Trace] Saving new position to config: {:?}", current_pos);
+                    tracing::debug!("[GUI/Trace] Saving new position to config: {:?}", current_pos);
                     if let Ok(mut state) = self.shared_state.lock() {
                         state.config.window_position = Some([current_pos.x, current_pos.y]);
                     }
                 } else {
-                    tracing::info!("[GUI/Trace] Window moved, but Wayland detected. Skipping config position overwrite.");
+                    tracing::debug!("[GUI/Trace] Window moved, but Wayland detected. Skipping config position overwrite.");
                 }
             }
         }
@@ -223,7 +208,7 @@ impl eframe::App for SpectrumApp {
         let size_changed = self.last_window_size.map_or(true, |ls| (ls - current_size).length() > 1.0);
 
         if size_changed {
-            tracing::info!("[GUI/Trace] Saving new size to config: {:?}", current_size);
+            tracing::debug!("[GUI/Trace] Saving new size to config: {:?}", current_size);
             
             if let Ok(mut state) = self.shared_state.lock() {
                 // FIX: Only save if "Normal".
