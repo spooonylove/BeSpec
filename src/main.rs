@@ -10,7 +10,6 @@ mod media;
 mod presets;
 mod update_check;
 
-use core::panic;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
@@ -35,9 +34,22 @@ use crate::fft_config::{FFTConfigManager, FIXED_FFT_SIZE};
 use crate::media::{PlatformMedia, MediaMonitor};
 
 // ========================================================================
+// CONSTANTS
+// ========================================================================
+
+/// Timeout for receiving audio packets in the capture thread
+const CAPTURE_RECV_TIMEOUT: Duration = Duration::from_millis(100);
+/// Target frame time for 60fps decay rendering
+const FRAME_TARGET_MS: Duration = Duration::from_millis(16);
+/// Small epsilon to handle float comparison imprecision near silence floor
+const SILENCE_EPSILON: f32 = 0.1;
+/// Grace period for threads to clean up during shutdown
+const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_millis(500);
+
+// ========================================================================
 // AUDIO CAPTURE THREAD
 // ========================================================================
-//    Uses AudioCaptureManager for defvice enumeration and auto-detection
+//    Uses AudioCaptureManager for device enumeration and auto-detection
 
 fn start_audio_capture(
     shutdown: Arc<AtomicBool>,
@@ -152,7 +164,7 @@ fn start_audio_capture(
             }
             
             // === PROCESS AUDIO ===
-            match capture.receiver().recv_timeout(Duration::from_millis(100)) {
+            match capture.receiver().recv_timeout(CAPTURE_RECV_TIMEOUT) {
                 Ok(packet) => {
                     // Forward to FFT thread
                     let _ = tx.try_send(packet);
@@ -209,7 +221,7 @@ fn start_fft_processing(
                 break;
             }
             // Timeout set for smooth 60fps decay
-            match rx.recv_timeout(Duration::from_millis(16)) {
+            match rx.recv_timeout(FRAME_TARGET_MS) {
                 Ok(packet) => {
                     frame_count += 1;
                     is_decaying = true;
@@ -467,7 +479,7 @@ fn start_fft_processing(
                             let max_peak = peaks.iter().fold(SILENCE_DB, |a, &b| a.max(b));
 
                             // Add a small epsilon (0.1) to handle float imprecision
-                            if max_val <= SILENCE_DB + 0.1 &&  max_peak <= SILENCE_DB + 0.1 {
+                            if max_val <= SILENCE_DB + SILENCE_EPSILON &&  max_peak <= SILENCE_DB + SILENCE_EPSILON {
                                 is_decaying = false;
                                 tracing::debug!("[FFT] Visual decay complete.");
                             }
@@ -481,23 +493,7 @@ fn start_fft_processing(
                         }
                     }
 
-                    /* 
-                    // if we haven't received audio for 100ms, the stream is likely 
-                    // stopped, switching, or silent. Reset bars to silence
-                    if let Ok(mut state) = shared_state.lock() {
-                        // Optimization: check frist bar to see if we are already silent
-                        let current_silence = shared_state::SILENCE_DB;
-                        let needs_clear = state.visualization.bars.first()
-                            .map_or(true, |&v| v > current_silence);
-                        if needs_clear {
-                            // fill with silence
-                            state.visualization.bars.fill(current_silence);
-                            state.visualization.peaks.fill(current_silence);
-                            state.visualization.timestamp = Instant::now();
-                        }
-                    }
-                    continue;
-                    */
+
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
                     tracing::error!("[FFT] Audio stream disconnected!");
@@ -516,8 +512,8 @@ fn start_fft_processing(
             tracing::info!("[FFT]    Max time:       {:?}", max_process_time);
             tracing::info!("[FFT]    FPS Potential:  {:.1}", 1000.0 / avg_time.as_micros() as f64 * 1000.0 );
 
-            // Calculate what % of frame budge we're using
-            let target_frame_time = Duration::from_millis(16);  // 60 FPS = 16.67ms
+            // Calculate what % of frame budget we're using
+            let target_frame_time = FRAME_TARGET_MS;
             let usage_pct = 
                 (avg_time.as_micros() as f64 / target_frame_time.as_micros() as f64) * 100.0;
             tracing::info!("[FFT]     CPU usage:     {:.1}% of 60fps budget", usage_pct);
@@ -750,8 +746,8 @@ fn main (){
     tracing::info!("[Main] Shutting down audio threads...");
     shutdown.store(true, Ordering::Relaxed);
 
-    // Give threadss time to clean up
-    thread::sleep(Duration::from_millis(500));
+    // Give threads time to clean up
+    thread::sleep(SHUTDOWN_GRACE_PERIOD);
 
 
     tracing::info!("[Main] ✓ Shutdown complete\n\n");
