@@ -48,7 +48,7 @@ pub fn sanitize_title(title: &str) -> String {
 /// reserved characters (like '&', '=', '?'), we ensure that user input—such as
 /// a song title containing these symbols—cannot break out of its data context
 /// and alter the structure of the query string.
-pub fn url_encode(input: &str) -> String {
+pub(crate) fn url_encode(input: &str) -> String {
     // We use a strict allow-list approach (RFC 3986) to guarantee safety without external dependencies.
     // Any character not explicitly whitelisted as "unreserved" is percent-encoded.
     // This neutralizes control characters that could otherwise be interpreted by the server.
@@ -75,7 +75,7 @@ pub fn url_encode(input: &str) -> String {
 /// name by a different artist).
 ///
 /// Returns `true` if it's a confirmed match.
-pub fn verify_wiki_match(
+pub(crate) fn verify_wiki_match(
     artist: &str,
     _title: &str, // Unused in logic but kept for interface consistency if needed later
     album: &str,

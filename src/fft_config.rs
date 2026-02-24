@@ -7,28 +7,28 @@
 /// - At 48kHz: 42.7ms latency, 23.4 Hz/bin resolution
 /// - At 44.1kHz: 46.4ms latency, 21.5 Hz/bin resolution
 /// - At 96kHz: 21.3ms latency, 46.9 Hz/bin resolution
-pub const FIXED_FFT_SIZE: usize = 2048;
+pub(crate) const FIXED_FFT_SIZE: usize = 2048;
 
 /// Public result of FFT configuration
 /// Everything you need to know about current state
 #[derive(Debug, Clone, Default)]
-pub struct FFTInfo {
-    pub sample_rate: u32,
-    pub fft_size: usize,
-    pub latency_ms: f32,
-    pub frequency_resolution: f32,
+pub(crate) struct FFTInfo {
+    pub(crate) sample_rate: u32,
+    pub(crate) fft_size: usize,
+    pub(crate) latency_ms: f32,
+    pub(crate) frequency_resolution: f32,
 }
 
 /// Manages FFT configuration based on detected device sample rate
 /// Also handles user override of FFT size for viusalization preferences
-pub struct FFTConfigManager {
+pub(crate) struct FFTConfigManager {
     current_sample_rate: u32,
     frequency_resolution: f32,
 }
 
 impl FFTConfigManager {
     /// Create a new FFT config manager with default sample rate
-    pub fn new(sample_rate: u32) -> Self {
+    pub(crate) fn new(sample_rate: u32) -> Self {
         Self {
             current_sample_rate: sample_rate,
             frequency_resolution: Self::calc_resolution(sample_rate),
@@ -37,7 +37,7 @@ impl FFTConfigManager {
 
     /// Update to a new sample rate 
     /// Returns true if FFT processor rebuild needed
-    pub fn update_sample_rate(&mut self, new_sample_rate: u32) -> bool {
+    pub(crate) fn update_sample_rate(&mut self, new_sample_rate: u32) -> bool {
         if new_sample_rate == self.current_sample_rate {
             return false;
         }
@@ -53,7 +53,7 @@ impl FFTConfigManager {
     }
      
     // ======= Query Methods ========
-    pub fn info(&self) -> FFTInfo {
+    pub(crate) fn info(&self) -> FFTInfo {
         FFTInfo {
             sample_rate: self.current_sample_rate,
             fft_size: FIXED_FFT_SIZE,
@@ -63,7 +63,7 @@ impl FFTConfigManager {
     }
 
     /// Get current sample rate
-    pub fn get_sample_rate(&self) -> u32 {
+    pub(crate) fn get_sample_rate(&self) -> u32 {
         self.current_sample_rate
     }
 

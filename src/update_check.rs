@@ -3,12 +3,12 @@ use std::error::Error;
 use semver::Version;
 
 #[derive(Deserialize, Debug)]
-pub struct GitHubRelease {
-    pub tag_name: String,
-    pub html_url: String, // Link to the release page
+pub(crate) struct GitHubRelease {
+    pub(crate) tag_name: String,
+    pub(crate) html_url: String, // Link to the release page
 }
 
-pub fn check_for_updates() -> Result<Option<String>, Box<dyn Error>> {
+pub(crate) fn check_for_updates() -> Result<Option<String>, Box<dyn Error>> {
     let current_version_str = env!("CARGO_PKG_VERSION");
     
     let local_version = Version::parse(current_version_str)
