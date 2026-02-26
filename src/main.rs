@@ -64,20 +64,25 @@ fn start_audio_capture(
         // 1. Initial Device List Population
         tracing::info!("[Capture] Initializing audio device list...");
         if let Ok(devices) = AudioCaptureManager::list_devices() {
-            let mut state = shared_state.lock().unwrap();
-            state.audio_devices = devices.iter().map(|d| d.name.clone()).collect();
+            if let Ok(mut state) = shared_state.lock() {
+                state.audio_devices = devices.iter().map(|d| d.name.clone()).collect();
 
-            tracing::info!("[Capture] Found {} audio devices", state.audio_devices.len());
-            for (i, name) in state.audio_devices.iter().enumerate() {
-                tracing::debug!("[Capture]    {}: {}", i, name);
+                tracing::info!("[Capture] Found {} audio devices", state.audio_devices.len());
+                for (i, name) in state.audio_devices.iter().enumerate() {
+                    tracing::debug!("[Capture]    {}: {}", i, name);
+                }
+            } else {
+                tracing::error!("[Capture] Failed to lock shared state for audio devices");
             }
         } else {
             tracing::error!("[Capture] Failed to enumerate initial audio devices");
         }
 
         // 2. Initial Device Selection
-        let initial_device = {
-            shared_state.lock().unwrap().config.selected_device.clone()
+        let initial_device = if let Ok(state) = shared_state.lock() {
+            state.config.selected_device.clone()
+        } else {
+            "Default".to_string()
         };
         tracing::info!("[Capture] Target device: {}", initial_device);
 
@@ -85,12 +90,16 @@ fn start_audio_capture(
         let mut capture = if initial_device == "Default" {
             AudioCaptureManager::new().unwrap_or_else(|e|{
                 tracing::error!("[Capture] Critical: Failed to create default audio device: {}", e);
-                panic!("Audio init failed");
+                // Return a dummy/empty manager that does nothing rather than panicking
+                std::process::exit(1); 
             })
         } else {
             AudioCaptureManager::with_device_id(&initial_device).unwrap_or_else(|_|{
                 tracing::info!("[Capture] Saved device not found, falling back to System Default ");
-                AudioCaptureManager::new().expect("Failed to init default device")
+                AudioCaptureManager::new().unwrap_or_else(|e|{
+                    tracing::error!("[Capture] Critical: Failed to init fallback default device: {}", e);
+                    std::process::exit(1);
+                })
             })
         };
 
@@ -238,8 +247,7 @@ fn start_fft_processing(
                         let new_fft_config = FFTConfigManager::new(packet.sample_rate);
 
                         // Get initial settings from shared state
-                        let config: FFTConfig = {
-                            let state = shared_state.lock().unwrap();
+                        let config: FFTConfig = if let Ok(state) = shared_state.lock() {
                             FFTConfig {
                                 fft_size: FIXED_FFT_SIZE,
                                 sample_rate: packet.sample_rate,
@@ -250,6 +258,19 @@ fn start_fft_processing(
                                 peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
                                 peak_release_time_ms: state.config.profile.peak_release_time_ms,
                                 use_peak_aggregation: state.config.profile.use_peak_aggregation,
+                            }
+                        } else {
+                            // Provide safe fallback defaults if mutex is poisoned
+                            FFTConfig {
+                                fft_size: FIXED_FFT_SIZE,
+                                sample_rate: packet.sample_rate,
+                                num_bars: 64,
+                                sensitivity: 1.0,
+                                attack_time_ms: 10.0,
+                                release_time_ms: 100.0,
+                                peak_hold_time_ms: 50.0,
+                                peak_release_time_ms: 200.0,
+                                use_peak_aggregation: false,
                             }
                         };
 
@@ -298,8 +319,7 @@ fn start_fft_processing(
                             info.sample_rate, info.latency_ms
                         );
 
-                        let new_config = {
-                            let state = shared_state.lock().unwrap();
+                        let new_config = if let Ok(state) = shared_state.lock() {
                             FFTConfig {
                                 fft_size: FIXED_FFT_SIZE, 
                                 sample_rate: info.sample_rate,
@@ -311,6 +331,13 @@ fn start_fft_processing(
                                 peak_release_time_ms: state.config.profile.peak_release_time_ms,
                                 use_peak_aggregation: state.config.profile.use_peak_aggregation,
                             }
+                        } else {
+                             // Safe fallback
+                             let current = processor.get_config();
+                             FFTConfig {
+                                 sample_rate: info.sample_rate,
+                                 ..current.clone()
+                             }
                         };
 
                         *processor = FFTProcessor::new(new_config);
@@ -321,16 +348,21 @@ fn start_fft_processing(
                     //let mono = packet.to_mono();
                     packet.to_mono_with_buffer(&mut mono_buffer);
                     
-                    let mode  = { shared_state.lock().unwrap().config.profile.visual_mode };
+                    let mode = if let Ok(state) = shared_state.lock() {
+                        state.config.profile.visual_mode
+                    } else {
+                        VisualMode::SolidBars
+                    };
 
                     match mode {
                         VisualMode::Oscilloscope => {
                             // === SCOPE MODE: BYPASS FFT ===
                             // Just normalize/copy raw samples directly to visualization
                             // We might want to decimate or window here if the packet is huge.
-                            let mut state = shared_state.lock().unwrap();
-                            state.visualization.waveform = mono_buffer.clone();
-                            state.visualization.bars.fill(SILENCE_DB);
+                            if let Ok(mut state) = shared_state.lock() {
+                                state.visualization.waveform = mono_buffer.clone();
+                                state.visualization.bars.fill(SILENCE_DB);
+                            }
                         }
                         _ => {
                             // A. Start the timer!
@@ -348,70 +380,42 @@ fn start_fft_processing(
                             max_process_time = max_process_time.max(process_time);
 
                             // E. Update shared state
-                            // Update shared state
                             let pending_config_update = {
-                                let mut state = shared_state.lock().unwrap();
-                                // Update  visualization  data
-                                state.visualization.bars = bars;
-                                state.visualization.peaks = peaks;
-                                state.visualization.timestamp = Instant::now();
+                                if let Ok(mut state) = shared_state.lock() {
+                                    // Update  visualization  data
+                                    state.visualization.bars = bars;
+                                    state.visualization.peaks = peaks;
+                                    state.visualization.timestamp = Instant::now();
 
-                                // Update performance stats
-                                state.performance.frame_count = frame_count;
-                                state.performance.fft_ave_time = total_process_time / frame_count as u32;
-                                state.performance.fft_min_time = min_process_time;
-                                state.performance.fft_max_time = max_process_time;
-                                state.performance.fft_info = fft_config.info();
+                                    // Update performance stats
+                                    state.performance.frame_count = frame_count;
+                                    state.performance.fft_ave_time = total_process_time / frame_count as u32;
+                                    state.performance.fft_min_time = min_process_time;
+                                    state.performance.fft_max_time = max_process_time;
+                                    state.performance.fft_info = fft_config.info();
 
-                                // Check if any config parameters changed
-                                // 1. Check for changes that require a rebuild
-                                let needs_update = state.config.profile.num_bars != state.visualization.bars.len();
+                                    // Check if any config parameters changed
+                                    // 1. Check for changes that require a rebuild
+                                    let needs_update = state.config.profile.num_bars != state.visualization.bars.len();
 
-                                let config_differs = |current: &FFTConfig| -> bool {
-                                    state.config.profile.sensitivity != current.sensitivity ||
-                                    state.config.profile.attack_time_ms != current.attack_time_ms ||
-                                    state.config.profile.release_time_ms != current.release_time_ms ||
-                                    state.config.profile.peak_hold_time_ms != current.peak_hold_time_ms ||
-                                    state.config.profile.peak_release_time_ms != current.peak_release_time_ms ||
-                                    state.config.profile.use_peak_aggregation != current.use_peak_aggregation
-                                };
-                                                    
-                                
-                                if needs_update {
-                                    //Major change - needs FFT rebuild
-                                    tracing::debug!(
-                                        "[FFT] Config change requires rebuild (bar count: {} → {})",
-                                        state.visualization.bars.len(),
-                                        state.config.profile.num_bars
-                                    );
-                                
-                                    Some(FFTConfig {
-                                        fft_size: FIXED_FFT_SIZE,
-                                        sample_rate: fft_config.get_sample_rate(),
-                                        num_bars: state.config.profile.num_bars,
-                                        sensitivity: state.config.profile.sensitivity,
-                                        attack_time_ms: state.config.profile.attack_time_ms,
-                                        release_time_ms: state.config.profile.release_time_ms,
-                                        peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
-                                        peak_release_time_ms: state.config.profile.peak_release_time_ms,
-                                        use_peak_aggregation: state.config.profile.use_peak_aggregation,
-                                    })
-                                } else {
-                                    // Check for minor config changes that don't require a rebuild
-
-                                    let current = processor.get_config();
-
-                                    if config_differs(&current) {
-                                        // Log specific changes for debugging
-                                        if state.config.profile.use_peak_aggregation != current.use_peak_aggregation {
-                                            tracing::info!{
-                                                "[FFT] Aggregation mode changed: {} → {}",
-                                                if current.use_peak_aggregation { "Peak" } else { "Average" },
-                                                if state.config.profile.use_peak_aggregation { "Peak" } else { "Average" }
-                                            };
-                                        }
+                                    let config_differs = |current: &FFTConfig| -> bool {
+                                        state.config.profile.sensitivity != current.sensitivity ||
+                                        state.config.profile.attack_time_ms != current.attack_time_ms ||
+                                        state.config.profile.release_time_ms != current.release_time_ms ||
+                                        state.config.profile.peak_hold_time_ms != current.peak_hold_time_ms ||
+                                        state.config.profile.peak_release_time_ms != current.peak_release_time_ms ||
+                                        state.config.profile.use_peak_aggregation != current.use_peak_aggregation
+                                    };
+                                                        
                                     
-
+                                    if needs_update {
+                                        //Major change - needs FFT rebuild
+                                        tracing::debug!(
+                                            "[FFT] Config change requires rebuild (bar count: {} → {})",
+                                            state.visualization.bars.len(),
+                                            state.config.profile.num_bars
+                                        );
+                                    
                                         Some(FFTConfig {
                                             fft_size: FIXED_FFT_SIZE,
                                             sample_rate: fft_config.get_sample_rate(),
@@ -424,8 +428,38 @@ fn start_fft_processing(
                                             use_peak_aggregation: state.config.profile.use_peak_aggregation,
                                         })
                                     } else {
-                                        None
+                                        // Check for minor config changes that don't require a rebuild
+
+                                        let current = processor.get_config();
+
+                                        if config_differs(&current) {
+                                            // Log specific changes for debugging
+                                            if state.config.profile.use_peak_aggregation != current.use_peak_aggregation {
+                                                tracing::info!{
+                                                    "[FFT] Aggregation mode changed: {} → {}",
+                                                    if current.use_peak_aggregation { "Peak" } else { "Average" },
+                                                    if state.config.profile.use_peak_aggregation { "Peak" } else { "Average" }
+                                                };
+                                            }
+                                        
+
+                                            Some(FFTConfig {
+                                                fft_size: FIXED_FFT_SIZE,
+                                                sample_rate: fft_config.get_sample_rate(),
+                                                num_bars: state.config.profile.num_bars,
+                                                sensitivity: state.config.profile.sensitivity,
+                                                attack_time_ms: state.config.profile.attack_time_ms,
+                                                release_time_ms: state.config.profile.release_time_ms,
+                                                peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
+                                                peak_release_time_ms: state.config.profile.peak_release_time_ms,
+                                                use_peak_aggregation: state.config.profile.use_peak_aggregation,
+                                            })
+                                        } else {
+                                            None
+                                        }
                                     }
+                                } else {
+                                    None // Lock failed, no config update
                                 }
                             };
                             // Apply confiig update if needed
@@ -615,15 +649,18 @@ fn main (){
     // create shared state
     let shared_state = Arc::new(Mutex::new(SharedState::new()));
 
-    // Get initial window settinghs from default config
     let (initial_decorations, initial_on_top, initial_size, initial_pos) = {
-        let state = shared_state.lock().unwrap();
-        (
-            state.config.window_decorations, 
-            state.config.always_on_top,
-            state.config.window_size,
-            state.config.window_position
-        )
+        if let Ok(state) = shared_state.lock() {
+            (
+                state.config.window_decorations, 
+                state.config.always_on_top,
+                state.config.window_size,
+                state.config.window_position
+            )
+        } else {
+            // Safe fallback if lock is poisoned during init
+            (true, false, [800.0, 600.0], None)
+        }
     };
 
     // Shutdown signal for audio threads

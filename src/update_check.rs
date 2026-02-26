@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::error::Error;
+use anyhow::{Context, Result};
 use semver::Version;
 
 #[derive(Deserialize, Debug)]
@@ -9,18 +9,19 @@ pub(crate) struct GitHubRelease {
 }
 
 #[must_use = "update check result should be handled"]
-pub(crate) fn check_for_updates() -> Result<Option<String>, Box<dyn Error>> {
+pub(crate) fn check_for_updates() -> Result<Option<String>> {
     let current_version_str = env!("CARGO_PKG_VERSION");
     
     let local_version = Version::parse(current_version_str)
-        .map_err(|e| format!("Critical: Local version '{}' is not SemVer compliant: {}", current_version_str, e))?;
+        .map_err(|e| anyhow::anyhow!("Critical: Local version '{}' is not SemVer compliant: {}", current_version_str, e))?;
     
     // User-Agent is REQUIRED by GitHub API
     let resp = ureq::get("https://api.github.com/repos/BeSpec-Dev/bespec/releases/latest")
         .set("User-Agent", "bespec-client")
-        .call()?;
+        .call()
+        .context("Failed to fetch latest release from GitHub API")?;
 
-    let release: GitHubRelease = resp.into_json()?;
+    let release: GitHubRelease = resp.into_json().context("Failed to parse GitHub release JSON")?;
 
     // handle 'v' prefix (v1.5.1 vs 1.5.1)
     let clean_tag = release.tag_name.trim_start_matches('v');

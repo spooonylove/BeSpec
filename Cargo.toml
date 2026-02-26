@@ -44,6 +44,8 @@ open = "5.0"
 
 # Update Check / Version Control
 semver = "1.0"
+anyhow = "1.0.102"
+thiserror = "2.0.18"
 
 # Windows: Uses the official Microsoft crate
 [target.'cfg(target_os = "windows")'.dependencies]

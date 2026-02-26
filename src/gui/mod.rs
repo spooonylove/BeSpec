@@ -73,7 +73,7 @@ impl SpectrumApp {
     ) -> Self {
 
         let initial_size = {
-            let state = shared_state.lock().unwrap();
+            let state = shared_state.lock().expect("failed to lock shared state");
             egui::Vec2::new(state.config.window_size[0], state.config.window_size[1])
         };
         Self {
@@ -118,7 +118,7 @@ impl eframe::App for SpectrumApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         
-        let minimize_key = self.shared_state.lock().unwrap().config.minimize_key;
+        let minimize_key = self.shared_state.lock().expect("failed to lock shared state").config.minimize_key;
         let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, minimize_key);
 
         if ctx.input_mut(|i| i.consume_shortcut(&shortcut)) {
@@ -342,7 +342,7 @@ impl eframe::App for SpectrumApp {
                 // If Enabled, draw BeOS Decorations & calculate layout
                 // We need to lock the state mutably briefly to update dragging offsets
                 let chrome_layout = {
-                    let mut state= self.shared_state.lock().unwrap();
+                    let mut state= self.shared_state.lock().expect("failed to lock shared state (decorations)");
                     let layout = crate::gui::decorations::draw_beos_window_frame(
                         ui,
                         ctx,
@@ -376,7 +376,7 @@ impl eframe::App for SpectrumApp {
                     let state_arc = self.shared_state.clone();
 
                     // 2. Lock the Clone. Now 'self' isn't borrowed
-                    let state = state_arc.lock().unwrap();
+                    let state = state_arc.lock().expect("failed to lock shared state for media opacity");
 
                     // 3. Safely call a mutable method on self                    
                     self.calculate_media_opacity(ui, &state);
@@ -398,7 +398,7 @@ impl eframe::App for SpectrumApp {
                 //Scope management for State Lock!!!
                 {
                     // Visualization (requres Read-only Lock)
-                    let state = self.shared_state.lock().unwrap(); //lock once!
+                    let state = self.shared_state.lock().expect("failed to lock shared state for viz render"); //lock once!
                     let mut final_viz_rect = viz_rect;
 
                     // ======= Update Notification Banner =========
@@ -521,7 +521,7 @@ impl eframe::App for SpectrumApp {
         
         //  === SETTINGS WINDOW (Separate Viewport) ===
         if self.settings_open {
-            let mut state = self.shared_state.lock().unwrap();
+            let mut state = self.shared_state.lock().expect("failed to lock shared state for settings");
 
             ctx.show_viewport_immediate(
                 egui::ViewportId::from_hash_of("settings_viewport"),

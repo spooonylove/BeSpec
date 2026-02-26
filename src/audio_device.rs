@@ -40,37 +40,24 @@ impl fmt::Display for AudioDeviceInfo {
 }
 
 /// Error types for audio device operations
-#[derive(Debug, Clone)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum AudioDeviceError {
     /// No audio output devices were found on the system.
+    #[error("No audio devices found")]
     NoDevicesFound,
     /// A specific device was requested but could not be located.
+    #[error("Device not found: {0}")]
     DeviceNotFound(String),
     /// The device uses an unsupported sample format.
+    #[error("Unsupported sample format")]
     UnsupportedFormat,
     /// Failed to create an audio stream on the device.
+    #[error("Stream creation failed: {0}")]
     StreamCreationFailed(String),
     /// Failed to query or apply device configuration.
+    #[error("Configuration error: {0}")]
     ConfigurationError(String),
 }
-
-impl fmt::Display for AudioDeviceError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AudioDeviceError::NoDevicesFound => write!(f, "No audio devices found"),
-            AudioDeviceError::DeviceNotFound(id) => write!(f, "Device not found: {}", id),
-            AudioDeviceError::UnsupportedFormat => write!(f, "Unsupported sample format"),
-            AudioDeviceError::StreamCreationFailed(msg) => {
-                write!(f, "Stream creation failed: {}", msg)
-            }
-            AudioDeviceError::ConfigurationError(msg) => {
-                write!(f, "Configuration error: {}", msg)
-            }
-        }
-    }
-}
-
-impl std::error::Error for AudioDeviceError {}
 
 /// Enumerates all available audio output devices and their capabilities
 pub struct AudioDeviceEnumerator;
