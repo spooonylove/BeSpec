@@ -8,6 +8,7 @@ pub(crate) struct GitHubRelease {
     pub(crate) html_url: String, // Link to the release page
 }
 
+#[must_use = "update check result should be handled"]
 pub(crate) fn check_for_updates() -> Result<Option<String>, Box<dyn Error>> {
     let current_version_str = env!("CARGO_PKG_VERSION");
     

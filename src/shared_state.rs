@@ -13,35 +13,47 @@ pub const SILENCE_DB: f32 = -140.0;
 ///  - FFT thread (writes visualization data, reads config)
 ///  - GUI thread (reads visualization data, writes config)
 
+/// Available visualization rendering modes.
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
 pub enum VisualMode {
+    /// Solid filled bars from bottom to magnitude.
     SolidBars,
+    /// Bars split into discrete LED-style segments.
     SegmentedBars,
+    /// Smooth curve connecting magnitude points.
     LineSpectrum,
+    /// Time-domain waveform display.
     Oscilloscope,
 }
 
 
+/// Controls how the "Now Playing" media overlay behaves.
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
 pub enum MediaDisplayMode {
-    FadeOnUpdate,   // Fade for N seconds the fade
-    AlwaysOn,       // Always visible
-    Off,            // Hidden
+    /// Show on track change, then fade after a configurable duration.
+    FadeOnUpdate,
+    /// Always visible.
+    AlwaysOn,
+    /// Never shown.
+    Off,
 }
 
+/// Font size options for overlay text.
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
-pub enum ThemeFont{
+pub enum ThemeFont {
     Mini,
     Small,
     Medium,
     Large,
-    Monospace,      // Retro / Code-style 
+    /// Retro / code-style monospaced font.
+    Monospace,
 }
 
 // =====================================================================================
 // Color Profile Architecture
 // =====================================================================================
 
+/// A complete color scheme defining every color used in the application.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct ColorProfile {
     pub name: String, 
@@ -51,7 +63,7 @@ pub struct ColorProfile {
     pub high: Color32, 
     pub peak: Color32,
     
-    // Window Enviornment
+    // Window Environment
     pub background: Color32,
 
     // Text Color for Overlays
@@ -85,23 +97,27 @@ impl ColorProfile {
         crate::presets::built_in_colors()
     }
 
-    /// Try to find a built-in prfile by name
+    /// Try to find a built-in profile by name.
+    #[must_use]
     pub fn find_by_name(name: &str) -> Option<Self> {
         Self::built_in().into_iter().find(|p| p.name == name)
     }
 }
 
-/// A Link to a color profile
+/// Reference to a color profile — either a named preset or a custom definition.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub enum ColorRef {
-    Preset(String),         // Name of built-in preset
-    Custom(ColorProfile),   // User-defined custom profile
+    /// Name of a built-in or user-saved preset.
+    Preset(String),
+    /// Inline custom color profile.
+    Custom(ColorProfile),
 }
 
 // =====================================================================================
 // Visual Profile (Windowing, Bars, and Visualization Colors)
 // =====================================================================================
 
+/// A complete visual profile controlling bar layout, dynamics, and color link.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct VisualProfile {
     pub name: String,
@@ -131,7 +147,7 @@ pub struct VisualProfile {
     // === Color Link ===
     pub color_link: ColorRef,
 
-    // === Window Decoratoin ===
+    // === Window Decoration ===
     pub beos_enabled: bool,
 
     // MAY REMOVE THIS LATER?
@@ -180,9 +196,12 @@ impl VisualProfile {
 // Main State & Config 
 // ====================================================================================
 
-// ==== Main Shared State ====
-pub struct SharedState{
-    /// Current visualization datda (bars, peaks)
+/// Central application state shared between threads via `Arc<Mutex<SharedState>>`.
+///
+/// Written by: FFT thread (visualization data), GUI thread (config changes).
+/// Read by: GUI thread (rendering), audio capture thread (device config).
+pub struct SharedState {
+    /// Current visualization data (bars, peaks, waveform).
     pub visualization: VisualizationData,
 
     /// Performance metrics (FFT timing, frame counts)
@@ -197,11 +216,11 @@ pub struct SharedState{
     /// Flag: GUI requested a device switch (handled by main thread)
     pub device_changed: bool,
 
-    /// Flag: GUI requests a hardware scan (handled by main thread
+    /// Flag: GUI requests a hardware scan (handled by main thread).
     pub refresh_devices_requested: bool,
 
     // === Media Player State ===
-    /// Curreently playing track info
+    /// Currently playing track info.
     pub media_info: Option<crate::media::MediaTrackInfo>,
     /// When the track info was last updated
     pub last_media_update: Option<Instant>,
@@ -218,6 +237,7 @@ pub struct SharedState{
 }
 
 impl SharedState {
+    /// Create a new `SharedState` with loaded (or default) config.
     pub fn new() -> Self {
         let config = AppConfig::load();
 
@@ -244,6 +264,7 @@ impl SharedState {
 }
 // === Data Structures ====
 
+/// Live visualization data updated by the FFT thread each frame.
 #[derive(Clone)]
 pub struct VisualizationData {
     /// Bar heights in dB ( typically -80 to +40 range)
@@ -252,7 +273,7 @@ pub struct VisualizationData {
     /// Peak indicator heights in dB
     pub peaks: Vec<f32>,
 
-    /// Raw Audio wavefor for oscilloscope mode 
+    /// Raw audio waveform buffer for oscilloscope mode.
     // We keep a small buffer for drawing
     pub waveform: Vec<f32>,
 
@@ -261,6 +282,7 @@ pub struct VisualizationData {
 }
 
 impl VisualizationData {
+    /// Create new visualization data initialized to silence.
     pub fn new(num_bars: usize) -> Self {
         Self {
             bars: vec![SILENCE_DB; num_bars],
@@ -271,7 +293,7 @@ impl VisualizationData {
     }
 }
 
-/// Performance statistics (updated by both threads, yo)
+/// Performance statistics updated by the FFT and GUI threads.
 #[derive(Clone, Default)]
 pub struct PerformanceStats {
     pub frame_count: u64,
@@ -285,6 +307,7 @@ pub struct PerformanceStats {
 
 // ==== Configuration ====
 
+/// Persistent application configuration, serialized to/from JSON.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub profile: VisualProfile,
@@ -302,7 +325,7 @@ pub struct AppConfig {
     ///  "Ghost Mode": Window is click-through until focused with alt-tab
     pub window_locked: bool,
 
-    /// Shop window title bar and borders
+    /// Show window title bar and borders.
     pub window_decorations: bool,
 
     /// User-definable Hide shortcut key
@@ -376,6 +399,7 @@ impl AppConfig {
         PathBuf::from("BeSpec_config.json")
     }
 
+    /// Load application config from disk, falling back to defaults.
     pub fn load() -> Self {
         let path = Self::get_config_path();
 
@@ -386,7 +410,7 @@ impl AppConfig {
                         tracing::info!("[Config] Loading config from {:?}", path);
                         return config;
                     },
-                    Err(e) => tracing::error!("[Config] Parse eror: {}", e),
+                    Err(e) => tracing::error!("[Config] Parse error: {}", e),
                 },
                 Err(e) => tracing::error!("[Config] Read error: {}", e),
             }
@@ -395,6 +419,7 @@ impl AppConfig {
         Self::default()
     }
 
+    /// Save current configuration to disk.
     pub fn save(&self) {
         let path = Self::get_config_path();
         match serde_json::to_string_pretty(self) {
@@ -410,6 +435,8 @@ impl AppConfig {
     }
 
        
+    /// Resolve the active color profile by checking user presets first,
+    /// then falling back to built-in presets. Applies background override if set.
     pub fn resolve_colors(&self, user_presets: &[ColorProfile]) -> ColorProfile {
         match &self.profile.color_link {
             ColorRef::Custom(colors) => {

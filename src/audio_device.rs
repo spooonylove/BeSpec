@@ -1,6 +1,5 @@
-/// Audio device enumeration and stream management
-/// Hanldes device discovery, sample rate detectino, and dynmaic device switching
-/// 
+/// Audio device enumeration and stream management.
+/// Handles device discovery, sample rate detection, and dynamic device switching.
 
 use cpal::traits::{DeviceTrait, HostTrait};
 use cpal::Device;
@@ -40,13 +39,18 @@ impl fmt::Display for AudioDeviceInfo {
     }
 }
 
-/// Error types for audio device operateions
+/// Error types for audio device operations
 #[derive(Debug, Clone)]
 pub enum AudioDeviceError {
+    /// No audio output devices were found on the system.
     NoDevicesFound,
+    /// A specific device was requested but could not be located.
     DeviceNotFound(String),
+    /// The device uses an unsupported sample format.
     UnsupportedFormat,
+    /// Failed to create an audio stream on the device.
     StreamCreationFailed(String),
+    /// Failed to query or apply device configuration.
     ConfigurationError(String),
 }
 
@@ -72,7 +76,8 @@ impl std::error::Error for AudioDeviceError {}
 pub struct AudioDeviceEnumerator;
 
 impl AudioDeviceEnumerator {
-    /// get all available audio output devices
+    /// Get all available audio output devices.
+    #[must_use = "device list should be checked for errors"]
     pub fn enumerate_devices() -> Result<Vec<AudioDeviceInfo>, AudioDeviceError> {
         let host = cpal::default_host();
         let default_device = host.default_output_device();
@@ -210,7 +215,8 @@ impl AudioDeviceEnumerator {
         Ok(supported_rates)
     }
 
-    /// Get a specific device by ID
+    /// Get a specific device by its unique ID.
+    #[must_use = "device lookup should be checked for errors"]
     pub fn get_device_by_id(device_id: &str) -> Result<Device, AudioDeviceError> {
         let host = cpal::default_host();
         let devices = host
@@ -228,7 +234,8 @@ impl AudioDeviceEnumerator {
         Err(AudioDeviceError::DeviceNotFound(device_id.to_string()))
     }
 
-    /// Get the default output device
+    /// Get the default output device and its metadata.
+    #[must_use = "device lookup should be checked for errors"]
     pub fn get_default_device() -> Result<(Device, AudioDeviceInfo), AudioDeviceError> {
         let host  = cpal::default_host();
         let device = host

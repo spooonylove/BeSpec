@@ -1,6 +1,5 @@
-/// Enhanced audio capture with dynamic sample rate detection
-/// Manages audio streams and adjusts FFT configuriation based on actual device capabilities
-/// 
+/// Enhanced audio capture with dynamic sample rate detection.
+/// Manages audio streams and adjusts FFT configuration based on actual device capabilities.
 
 use cpal::traits::{DeviceTrait, StreamTrait};
 use crossbeam_channel::{bounded, Receiver, Sender};

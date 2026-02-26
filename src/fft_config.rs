@@ -20,7 +20,7 @@ pub(crate) struct FFTInfo {
 }
 
 /// Manages FFT configuration based on detected device sample rate
-/// Also handles user override of FFT size for viusalization preferences
+/// Also handles user override of FFT size for visualization preferences
 pub(crate) struct FFTConfigManager {
     current_sample_rate: u32,
     frequency_resolution: f32,
@@ -35,8 +35,9 @@ impl FFTConfigManager {
         }
     }
 
-    /// Update to a new sample rate 
-    /// Returns true if FFT processor rebuild needed
+    /// Update to a new sample rate
+    /// Returns `true` if the FFT processor needs to be rebuilt.
+    #[must_use = "true means FFT processor rebuild is needed"]
     pub(crate) fn update_sample_rate(&mut self, new_sample_rate: u32) -> bool {
         if new_sample_rate == self.current_sample_rate {
             return false;
@@ -52,7 +53,8 @@ impl FFTConfigManager {
         true
     }
      
-    // ======= Query Methods ========
+    /// Returns a snapshot of the current FFT configuration state.
+    #[must_use]
     pub(crate) fn info(&self) -> FFTInfo {
         FFTInfo {
             sample_rate: self.current_sample_rate,

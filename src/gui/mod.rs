@@ -19,7 +19,9 @@ use crate::gui::widgets::{SaveTarget, SettingsTab};
 
 
 
-// Main Application GUI - handles rendering and user interaction
+/// Main application GUI — handles rendering, user interaction, and media display.
+///
+/// Bridges the shared state from audio/FFT threads to the `egui` rendering loop.
 pub struct SpectrumApp {
     /// shared state between FFT and GUI threads
     shared_state: Arc<Mutex<SharedState>>,

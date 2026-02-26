@@ -287,8 +287,8 @@ fn start_fft_processing(
                             packet.sample_rate
                         );
 
-                        //Update FFT config 
-                        fft_config.update_sample_rate(packet.sample_rate);
+                        // Update FFT config (rebuild always follows in this branch)
+                        let _ = fft_config.update_sample_rate(packet.sample_rate);
 
                         
                         // Rebuild FFT processor with new FFT size
