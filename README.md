@@ -125,6 +125,9 @@ BeSpec is architected to be a privacy-first tool. All audio processing occurs lo
 
 **Why does my OS say the "Microphone" is on?** Operating systems (*Linux and MacOS*) classify any audio input stream (including loopback) as "Microphone Usage." BeSpec processes all audio data locally in real-time. No audio is recorded, stored, or transmitted over the network.
 
+## Disclosure
+LLM tools were utilized during the development of this project to accelerate learning Rust
+
 ---
-Support
+### Support
 If you find this tool useful, consider [Buying Me a Coffee](https://buymeacoffee.com/bespec) to support continued development.
