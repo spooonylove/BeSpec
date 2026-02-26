@@ -40,8 +40,3 @@ This artifact is effectively inaudible to the human ear in the context of the fu
 
 ![Screenshot of Ringing Note](./images/qotsa_ringing_15khz.gif)
 *Figure 2: The persistent 15.75 kHz spike visible during the quiet fade-out.*
-
-## Conclusion
-This case study demonstrates BeSpec's utility beyond aesthetic visualization. It serves as a competent diagnostic tool for audio mastering, capable of revealing:
-1.  **Transient Dynamics:** Fast-moving synth sweeps.
-2.  **Static Artifacts:** Low-level noise pollution (CRT whine) that survives the mastering process.
