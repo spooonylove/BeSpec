@@ -213,15 +213,30 @@ pub fn draw_solid_bars(
     }    
 }
 
-/// Draw segmented bars helper function
+/// Draws the "Segmented" (LED-style) audio visualizer mode.
 ///
-/// Renders the spectrum as a series of discrete blocks (LED style).
-/// Handles:
-/// - Gradient coloring based on height
-/// - Inverted/Standard orientation
-/// - Peak indicators
-/// - "Fill to Peak" warning mode
-///(painter, rect, profile, colors, data, bar_width, bar_slot_width, hovered_bar_index, config.noise_floor_db);
+/// Renders the frequency spectrum as a series of discrete blocks, mimicking
+/// vintage hardware LED VU meters.
+///
+/// # Rendering Optimizations
+/// This function is heavily optimized to maintain 60 FPS under extreme conditions:
+/// * **Batched Master Mesh:** Bypasses standard `egui` shape allocation by calculating 
+///   raw vertices and triangles, submitting them to the GPU in a single draw call.
+/// * **LOD Dynamic Scaling:** Automatically caps the maximum number of segments per bar 
+///   (e.g., to 150) by dynamically scaling segment height/gap to prevent CPU geometry overload on 4K/high-res displays.
+/// * **Physical Pixel Snapping:** Forces scaled segment corners to align perfectly with the 
+///   physical pixel grid of the monitor, preventing sub-pixel rendering (Moiré aliasing).
+///
+/// # Arguments
+/// * `painter` - The active `egui::Painter` to submit the master mesh to.
+/// * `rect` - The bounding box allocated for this visualizer.
+/// * `profile` - Current user settings (colors, segment heights, peak toggles).
+/// * `colors` - The active color theme mapping (low, high, peak).
+/// * `data` - The processed FFT visualization data (bar heights and peak data).
+/// * `bar_width` - The physical width of the solid portion of a bar.
+/// * `bar_slot_width` - The physical width of a bar plus its horizontal gap.
+/// * `_hovered_index` - Optional index of a bar currently hovered by the user (unused in this mode).
+/// * `noise_floor_db` - The absolute minimum dB value to map to 0 pixels high.
 pub fn draw_segmented_bars(
     painter: &egui::Painter, 
     rect: egui::Rect,
@@ -240,9 +255,58 @@ pub fn draw_segmented_bars(
 
     // 2. Calculate Segment Geometry
     // Ensure we don't get stuck in infinite loops with 0 height
-    let seg_h = profile.segment_height_px.max(1.0);
-    let seg_gap = profile.segment_gap_px.max(0.0);
+    let mut seg_h = profile.segment_height_px.max(1.0);
+    let mut seg_gap = profile.segment_gap_px.max(0.0);
+
+    // --- LOD Dynamic Scaling Governor
+    let max_segments_allowed = 150.0;
+    let requested_segments  = rect.height() / (seg_h + seg_gap);
+    
+    if requested_segments > max_segments_allowed {
+        let scale_factor = requested_segments / max_segments_allowed;
+        seg_h *= scale_factor;
+        seg_gap *= scale_factor;
+    }
+
+    //  --- Aliasing Fix: Physical Pixel Snapping 
+    // The above scale factor and user input settings can prompt this routine to draw
+    // non-integer (read: fractional pixel) rectangle sizes, resulting in aliasing in the display
+    // Snapping the sizes to a physical pixel size results in prettier boxes!
+    let ppp = painter.ctx().pixels_per_point();
+    let snap = |p: f32| (p * ppp).round() / ppp;
+
+    // Force heights and gaps to be exact whole physical pixels
+    seg_h = (seg_h * ppp).round().max(1.0) / ppp;
+    seg_gap = (seg_gap * ppp).round().max(0.0) / ppp;
+
     let total_seg_h = seg_h + seg_gap;
+
+    // --- Initialize the mesh ---
+    let mut master_mesh = egui::Mesh::default();
+
+    // Pre-allocate memory to prevent mid-loop reallocation overhead
+    let max_segs_per_bar = (rect.height() / total_seg_h).ceil() as usize;
+    let estimated_total = data.bars.len() * max_segs_per_bar;
+    master_mesh.reserve_vertices(estimated_total * 4);
+    master_mesh.reserve_triangles(estimated_total * 2);
+
+    // Helper closure to push a rectangle into the mesh
+    let push_rect = |mesh: &mut egui::Mesh, r: egui::Rect, color: egui::Color32| {
+        let min_x = snap(r.min.x);
+        let min_y = snap(r.min.y);
+        let max_x = snap(r.max.x);
+        let max_y = snap(r.max.y);
+        
+        
+        let idx = mesh.vertices.len() as u32;
+        mesh.vertices.push(egui::epaint::Vertex {pos: egui::pos2(min_x, min_y), uv: egui::Pos2::ZERO, color});
+        mesh.vertices.push(egui::epaint::Vertex {pos: egui::pos2(max_x, min_y), uv: egui::Pos2::ZERO, color});
+        mesh.vertices.push(egui::epaint::Vertex {pos: egui::pos2(max_x, max_y), uv: egui::Pos2::ZERO, color});
+        mesh.vertices.push(egui::epaint::Vertex {pos: egui::pos2(min_x, max_y), uv: egui::Pos2::ZERO, color});
+        mesh.add_triangle(idx, idx + 1 , idx + 2);
+        mesh.add_triangle(idx, idx + 2 , idx + 3);
+    };
+    
 
     // 3. Render Each Bar
     for (i, &db) in data.bars.iter().enumerate() {
@@ -277,7 +341,7 @@ pub fn draw_segmented_bars(
                         egui::vec2(bar_width, seg_h)
                     )
                 };
-                painter.rect_filled(seg_rect, 1.0, color);
+                push_rect(&mut master_mesh, seg_rect, color);
             }
 
             // --- Draw Peak Indicators ---
@@ -294,7 +358,7 @@ pub fn draw_segmented_bars(
                     egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - y_offset - seg_h), egui::vec2(bar_width, seg_h))
                 };
                 
-                painter.rect_filled(peak_rect, 1.0, peak_color);
+                push_rect(&mut master_mesh, peak_rect, peak_color);
 
                 // --- Fill Gap to Peak (Warning Mode) ---
                 // If enabled, fills the empty space between the current bar level and the peak
@@ -311,12 +375,15 @@ pub fn draw_segmented_bars(
                             } else {
                                 egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - gap_y - seg_h), egui::vec2(bar_width, seg_h))
                             };
-                            painter.rect_filled(gap_rect, 1.0, fill_color);
+                            push_rect(&mut master_mesh, gap_rect, fill_color);
                         }
                     }
                 }
             }
         }
+
+    // 4. Submit the massive batch to the GPU for ONE draw call
+    painter.add(egui::Shape::mesh(master_mesh));
 }
 
 /// Draw line representation of spetrum data
