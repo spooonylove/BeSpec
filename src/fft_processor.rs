@@ -1,4 +1,6 @@
+use libc::confstr;
 use realfft::{RealFftPlanner, RealToComplex};
+use core::f64;
 use std::sync::Arc;
 use crate::{fft_config::FIXED_FFT_SIZE, shared_state::SILENCE_DB};
 
@@ -42,7 +44,13 @@ impl Default for FFTConfig {
 }
 
 /// Maps visual bars to FFT bin ranges (start_bin, end_bin)
-type BarToBinMap = Vec<f64>;
+#[derive(Clone, Debug)]
+pub struct BarToBinMap {
+    pub start_bin: usize,
+    pub end_bin: usize,
+    pub exact_bin: f32,
+}
+
 
 /// Main FFT processor - handles windowing, FFT, and bar mapping
 pub struct FFTProcessor{
@@ -58,7 +66,7 @@ pub struct FFTProcessor{
     hann_window: Vec<f32>,
 
     // Bar mapping (linear + log hybrid)
-    bar_to_bin_map: BarToBinMap,
+    mapping: Vec<BarToBinMap>,
 
     // Smoothing state (persists between frames)
     last_bar_heights: Vec<f32>,
@@ -84,8 +92,8 @@ impl FFTProcessor {
         // Precompute Hann Window
         let hann_window = Self::compute_hann_window(config.fft_size);
 
-        // Initialize bar mapping
-        let bar_to_bin_map = Self::compute_bar_mapping(&config);
+        // Initialize bar mapping with range-based logic
+        let mapping = Self::compute_bar_mapping(config.num_bars, config.sample_rate, config.fft_size);
 
         // Initialize smoothing state
         let last_bar_heights = vec![SILENCE_DB; config.num_bars];
@@ -99,7 +107,7 @@ impl FFTProcessor {
             output_buffer,
             scratch_buffer,
             hann_window,
-            bar_to_bin_map,
+            mapping,
             last_bar_heights,
             peak_levels,
             peak_hold_timers,
@@ -149,7 +157,7 @@ impl FFTProcessor {
             self.peak_hold_timers.resize(config.num_bars, 0.0);
             
             // Recomput the mapping
-            self.bar_to_bin_map = Self::compute_bar_mapping(&config);
+            self.mapping = Self::compute_bar_mapping(config.num_bars, config.sample_rate, config.fft_size);
         }
 
         self.config = config;
@@ -272,69 +280,106 @@ impl FFTProcessor {
     }
 
     /// Perform a linear-log hybrid mapping of the FFT data to visualization bars
-    fn compute_bar_mapping(config: &FFTConfig) -> BarToBinMap {
-        let mut map = Vec::with_capacity(config.num_bars);
+    fn compute_bar_mapping(num_bars: usize, sample_rate: u32, fft_size: usize) -> Vec<BarToBinMap> {
+        let mut mapping = Vec::with_capacity(num_bars);
+        let frequency_resolution = sample_rate as f64 / fft_size as f64;
+        let max_bin_idx = fft_size / 2;
+                
+        let linear_bar_count = (num_bars as f64 * MAPPING_LINEAR_PROPORTION).round() as usize;
+        let log_bar_count = num_bars - linear_bar_count;
+        let min_log_bars = MAPPING_KNEE_FREQ.max(frequency_resolution);
 
-        let frequency_resolution = config.sample_rate as f64 / config.fft_size as f64;
-        
-        let linear_bar_count = (config.num_bars as f64 * MAPPING_LINEAR_PROPORTION).round() as usize;
-        let log_bar_count = config.num_bars - linear_bar_count;
+        // 1. Build an array of target frequencies
+        let mut exact_freqs = Vec::with_capacity(num_bars);
 
-        // === LINEAR SECTION (0 Hz to ) ===
+        // === LINEAR SECTION (0 Hz to Knee) ===
         for i in 0..linear_bar_count {
             let freq_target = (i + 1) as f64 / linear_bar_count as f64 * MAPPING_KNEE_FREQ;
-            let bin_pos = freq_target / frequency_resolution;
-            map.push(bin_pos);
+            exact_freqs.push(freq_target);
         }
     
         // === LOGARITHMIC SECTION ===
-        let min_log_bars = MAPPING_KNEE_FREQ.max(frequency_resolution);
-
         for i in 0..log_bar_count {
             let t = (i + 1) as f64 / log_bar_count as f64;
             // True Logarithmic Interpolation
             let freq_target = min_log_bars * (MAPPING_MAX_FREQ / min_log_bars).powf(t);
-            let bin_pos = freq_target / frequency_resolution;
-            map.push(bin_pos);
-        
+            exact_freqs.push(freq_target);
         }
 
-        map
-    }
+        // 2. Build BarToBinMap ranges with midpoints between exact frequencies
+        for i in 0..num_bars {
+            let current_freq = exact_freqs[i];
+            let prev_freq = if i == 0 { 0.0 }  else { exact_freqs[i - 1] };
+            let next_freq = if i == num_bars - 1 { MAPPING_MAX_FREQ } else {exact_freqs[i + 1]};
 
-    fn interpolate_hermite(y0: f32, y1: f32, y2: f32, y3: f32, t: f32) -> f32 {
-        let c0 = y1;
-        let c1 = 0.5 * (y2 - y0);
-        let c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
-        let c3 = 0.5 * (y3 - y0 + 3.0 * (y1 - y2)); 
-        
-        ((c3 * t + c2) * t + c1) * t + c0
+            let freq_start = (prev_freq + current_freq) / 2.0;
+            let freq_end = (current_freq + next_freq) / 2.0;
+            
+            let exact_bin = (current_freq / frequency_resolution) as f32;
+            let start_bin = (freq_start / frequency_resolution).floor() as usize;
+            let mut end_bin = (freq_end / frequency_resolution).floor() as usize;
+
+            // Ensure the range is valid (start <= end)
+            if end_bin < start_bin {
+                end_bin = start_bin;
+            }
+
+             mapping.push(BarToBinMap {
+                start_bin: start_bin.min(max_bin_idx),
+                end_bin: end_bin.min(max_bin_idx),
+                exact_bin,
+             });
+        }
+
+        mapping
+
     }
 
     // Group FFT bin data into visualization bars
     fn group_bins(&self, magnitudes: &[f32]) -> Vec<f32> {
-        let max_bin_idx = magnitudes.len().saturating_sub(1);
+        let mut bars = Vec::with_capacity(self.mapping.len());
 
-        self.bar_to_bin_map
-            .iter()
-            .map(|&bin_pos| {
-                if bin_pos < 0.0 || bin_pos >= max_bin_idx as f64 {
-                    return SILENCE_DB;
-                }
-
-                let idx = bin_pos.floor() as usize;
-                let t = (bin_pos - idx as f64) as f32;
-
-                // Get surrounding bins for interpolation
-                let y1 = magnitudes[idx];
-                let y2 = if idx + 1 <= max_bin_idx { magnitudes[idx + 1] } else { y1 };
-                let y0 = if idx > 0 { magnitudes[idx -1] } else { y1 };
-                let y3 = if idx + 2 <= max_bin_idx { magnitudes[idx + 2] } else { y2 };
+        for map in &self.mapping {
+            if map.start_bin == map.end_bin {
+                // BASS / LOW END: The bar covers less than a single bin.
+                // We MUST use the fractional `exact_bin` to interpolate smoothly,
+                // otherwise the hybrid lin/log bass mapping gets blocky and crushed.
+                let idx = map.exact_bin.floor() as usize;
+                let t = map.exact_bin - idx as f32;
+                
+                // Cubic Hermite Interpoloation for that buttery smooth low-end
+                let y0 = magnitudes.get(idx.saturating_sub(1)).copied().unwrap_or(SILENCE_DB);
+                let y1 = magnitudes.get(idx).copied().unwrap_or(SILENCE_DB);
+                let y2 = magnitudes.get(idx + 1).copied().unwrap_or(SILENCE_DB);
+                let y3 = magnitudes.get(idx + 2).copied().unwrap_or(SILENCE_DB);
 
                 // Hermite interpolation
-                Self::interpolate_hermite(y0, y1, y2, y3, t)
-            })
-            .collect()
+                let val  = interpolate_hermite(y0, y1, y2, y3, t);
+
+                // max(0.0) prevents negative volume dips from the cubic overshoot
+                bars.push(val.max(SILENCE_DB));
+
+            } else {
+                //TREBLE / HIGH END: The bar covers multiple bins.
+                // Extract the slice of bins that fall inside this bar
+                let slice_start = map.start_bin;
+                // Add 1 to inlude the end_bin, clamp to array length to prevent panics
+                let slice_end = (map.end_bin + 1).min(magnitudes.len());
+                let bin_slice = &magnitudes[slice_start..slice_end];
+
+                if self.config.use_peak_aggregation {
+                    let peak = bin_slice.iter().copied().fold(f32::MIN, f32::max);
+                    bars.push(peak);
+                } else {
+                    // Average Aggregation: Sum and divide for total band energy
+                    let sum: f32 = bin_slice.iter().copied().sum();
+                    let count = bin_slice.len() as f32;
+                    bars.push(sum / count);
+
+                }
+            }
+        }
+        bars
     }
 
     // Apply attack/releaser smoothing
@@ -391,6 +436,18 @@ impl FFTProcessor {
     }
 }
 
+/// Helper function for smooth low-frequency interpolation.
+/// 
+/// Defined at the module level so it can be called directly by name.
+#[inline]
+fn interpolate_hermite(y0: f32, y1: f32, y2: f32, y3: f32, t: f32) -> f32 {
+    let c0 = y1;
+    let c1 = 0.5 * (y2 - y0);
+    let c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
+    let c3 = 0.5 * (y3 - y0 + 3.0 * (y1 - y2)); 
+    
+    ((c3 * t + c2) * t + c1) * t + c0
+}
 // ===========  Tests ===============
 #[cfg(test)]
 mod tests {
@@ -507,7 +564,7 @@ mod tests {
     fn test_hermite_interpolation() {
         // Simple linear ramp: 0.0, 1.0, 2.0, 3.0
         // At t=0.5 between 1.0 and 2.0, result should be 1.5
-        let result = FFTProcessor::interpolate_hermite(0.0, 1.0, 2.0, 3.0, 0.5);
+        let result = interpolate_hermite(0.0, 1.0, 2.0, 3.0, 0.5);
         assert!((result - 1.5).abs() < 1e-5);
     }
 
@@ -541,6 +598,22 @@ mod tests {
         assert!((smoothed_bars[0] - -70.0).abs() < 0.1, "Decay math is incorrect, expected ~ -70.0");
     }   
 
+    #[test]
+    fn test_smoothing_decay() {
+        let mut config = FFTConfig::default();
+        config.num_bars = 1;
+        config.attack_time_ms = 10.0;
+        config.release_time_ms = 100.0;
+        let mut processor = FFTProcessor::new(config);
+        
+        processor.last_bar_heights[0] = 0.0; // Start at max
+        let raw = vec![SILENCE_DB];
+        let smoothed = processor.apply_smoothing(&raw, 50.0); // 50ms elapsed
+        
+        // Expected linear interpolation in dB space:
+        // 0.0 + (SILENCE_DB - 0.0) * (50/100) = SILENCE_DB / 2.0
+        assert!((smoothed[0] - (SILENCE_DB / 2.0)).abs() < 1.0);
+    }
     
     #[test]
     fn test_fft_frequency_accuracy() {
@@ -596,6 +669,52 @@ mod tests {
         
         // 6. Assert Amplitude (Sine wave of amplitude 1.0 should be close to 0 dBfs)
         assert!(max_db > -3.0, "Signal was attenuated too much. Measured: {:.1} dB", max_db);
+    }
+
+    #[test]
+    fn test_mapping_contiguity() {
+        let config = FFTConfig { num_bars: 64, ..Default::default() };
+        let processor = FFTProcessor::new(config);
+        
+        // Ensure every bar's start_bin is <= its end_bin
+        // and that they are roughly sequential
+        let mut last_end: usize = 0;
+        for map in &processor.mapping {
+            assert!(map.start_bin <= map.end_bin);
+            assert!(map.start_bin >= last_end.saturating_sub(1)); // Allow 1 bin overlap for midpoints
+            last_end = map.end_bin;
+        }
+    }
+
+    #[test]
+    fn test_group_bins_aggregation() {
+        let mut config = FFTConfig::default();
+        config.num_bars = 10;
+        config.use_peak_aggregation = true;
+        let processor = FFTProcessor::new(config);
+
+        // Mock magnitudes with a huge spike in the treble range
+        // Find a treble bar index (likely 9)
+        let treble_map = &processor.mapping[9];
+        let mut magnitudes = vec![SILENCE_DB; 1025];
+        
+        let spike_idx = (treble_map.start_bin + treble_map.end_bin) / 2;
+        magnitudes[spike_idx] = 0.0; // Max volume spike
+
+        let bars = processor.group_bins(&magnitudes);
+        
+        // Peak aggregation should catch the 0.0 spike
+        assert_eq!(bars[9], 0.0);
+
+        // Switch to average
+        let mut avg_config = FFTConfig::default();
+        avg_config.num_bars = 10;
+        avg_config.use_peak_aggregation = false;
+        let avg_processor = FFTProcessor::new(avg_config);
+        
+        let avg_bars = avg_processor.group_bins(&magnitudes);
+        // Average should be much lower than 0.0 since only 1 bin in a large slice is loud
+        assert!(avg_bars[9] < -10.0);
     }
 }
 
