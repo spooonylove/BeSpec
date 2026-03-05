@@ -222,8 +222,10 @@ pub fn draw_solid_bars(
 /// This function is heavily optimized to maintain 60 FPS under extreme conditions:
 /// * **Batched Master Mesh:** Bypasses standard `egui` shape allocation by calculating 
 ///   raw vertices and triangles, submitting them to the GPU in a single draw call.
-/// * **LOD Dynamic Scaling:** Automatically caps the maximum number of segments per bar 
-///   (e.g., to 150) by dynamically scaling segment height/gap to prevent CPU geometry overload on 4K/high-res displays.
+/// * **Vertical LOD Dynamic Scaling:** Automatically caps the maximum number of segments per bar 
+///   (e.g., to 150) by dynamically scaling segment height/gap to prevent CPU geometry overload.
+/// * **Horizontal LOD Aggregator:** Prevents geometry overdraw when the window is too narrow by 
+///   looking ahead and aggregating frequencies that would occupy the same physical pixel column.
 /// * **Physical Pixel Snapping:** Forces scaled segment corners to align perfectly with the 
 ///   physical pixel grid of the monitor, preventing sub-pixel rendering (Moiré aliasing).
 ///
@@ -258,7 +260,7 @@ pub fn draw_segmented_bars(
     let mut seg_h = profile.segment_height_px.max(1.0);
     let mut seg_gap = profile.segment_gap_px.max(0.0);
 
-    // --- LOD Dynamic Scaling Governor
+    // --- Vertical LOD Dynamic Scaling Governor
     let max_segments_allowed = 150.0;
     let requested_segments  = rect.height() / (seg_h + seg_gap);
     
