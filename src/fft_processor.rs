@@ -1,4 +1,3 @@
-use libc::confstr;
 use realfft::{RealFftPlanner, RealToComplex};
 use core::f64;
 use std::sync::Arc;
