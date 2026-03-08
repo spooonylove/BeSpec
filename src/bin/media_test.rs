@@ -17,9 +17,12 @@ fn print_track_info(info: &MediaTrackInfo) {
     println!("   Artist: {}", info.artist);
     println!("   Album:  {}", info.album);
 
-    // Check for album art
+    // unpack the tuple to get both the pixel data and dimensions
     match &info.album_art {
-        Some(bytes) => println!("   Art:    [Image data Found: {} bytes]", bytes.len()),
+        Some((pixels, dims)) => 
+            println!("   Art:    [Image data Found: {} bytes, Resolution: {}x{}]",
+                pixels.len(), dims[0], dims[1]
+            ),
         None => println!("   Art:    [No Image Data]"),
     }
 

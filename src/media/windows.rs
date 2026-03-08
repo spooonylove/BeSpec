@@ -85,7 +85,7 @@ impl MediaMonitor for WindowsMediaManager {
             let mut last_sent_info: Option<MediaTrackInfo> = None;
             
             // --- LAZY LOADING STATE ---
-            let mut cached_art: Option<Vec<u8>> = None;
+            let mut cached_art: Option<(Vec<u8>, [usize; 2])> = None;
             // We use (Title, Artist) as a composite key to detect track changes
             let mut cached_key: Option<(String, String)> = None;
 
@@ -153,7 +153,7 @@ impl MediaMonitor for WindowsMediaManager {
                                                             if load_op.await.is_ok() {
                                                                 let mut bytes = vec![0u8; size as usize];
                                                                 if reader.ReadBytes(&mut bytes).is_ok() {
-                                                                    album_art_data = Some(bytes);
+                                                                    album_art_data = super::decode_image_to_rgba(&bytes);
                                                                 }
                                                             }
                                                         }

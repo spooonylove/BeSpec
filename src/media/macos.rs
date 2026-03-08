@@ -24,7 +24,7 @@ impl MediaMonitor for MacMediaManager {
             let mut last_sent_info: Option<MediaTrackInfo> = None;
             
             // --- CACHE STATE ---
-            let mut cached_art: Option<Vec<u8>> = None;
+            let mut cached_art: Option<(Vec<u8>, [usize; 2])> = None;
             let mut cached_key: (String, String) = (String::new(), String::new());
 
             tracing::info!("[Media/MacOS] Monitor started (Smart Mode: Priority Scan)");
@@ -83,7 +83,7 @@ struct RawTrackInfo {
     album: String,
     source_app: String,
     is_playing: bool,
-    album_art: Option<Vec<u8>>,
+    album_art: Option<(Vec<u8>, [usize; 2])>,
 }
 
 // === UPDATED JXA SCRIPT ===
@@ -195,7 +195,7 @@ fn get_macos_media_info(known_title: &str, known_artist: &str) -> Option<RawTrac
             if let Some(b64) = v["art_base64"].as_str() {
                 if !b64.is_empty() {
                     match general_purpose::STANDARD.decode(b64) {
-                        Ok(bytes) => final_art = Some(bytes),
+                        Ok(bytes) => final_art = super::decode_image_to_rgba(&bytes),
                         Err(_) => tracing::warn!("[Media/MacOS] Failed to decode Base64 art"),
                     }
                 }
@@ -225,7 +225,7 @@ fn get_macos_media_info(known_title: &str, known_artist: &str) -> Option<RawTrac
     }
 }
 
-fn download_art(url: &str) -> Option<Vec<u8>> {
+fn download_art(url: &str) -> Option<(Vec<u8>, [usize; 2])> {
     let agent = ureq::AgentBuilder::new()
         .timeout_read(Duration::from_secs(2))
         .timeout_write(Duration::from_secs(2))
@@ -236,7 +236,7 @@ fn download_art(url: &str) -> Option<Vec<u8>> {
             let mut reader = response.into_reader();
             let mut bytes = Vec::new();
             if reader.read_to_end(&mut bytes).is_ok() {
-                return Some(bytes);
+                return super::decode_image_to_rgba(&bytes);
             }
         },
         Err(e) => tracing::warn!("[Media/MacOS] Art download failed: {}", e),

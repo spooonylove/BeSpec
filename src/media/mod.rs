@@ -8,8 +8,24 @@ pub struct MediaTrackInfo {
     pub album: String, 
     pub is_playing: bool,
     pub source_app: String,
-    pub album_art: Option<Vec<u8>>,
+    pub album_art: Option<(Vec<u8>, [usize; 2])>,
 }
+
+/// Shared cross-platform helper to decode images on background threads
+pub fn decode_image_to_rgba(bytes: &[u8]) -> Option<(Vec<u8>, [usize; 2])> {
+    match image::load_from_memory(bytes) {
+        Ok(img) => {
+            let rgba = img.into_rgba8();
+            let dimensions = [rgba.width() as usize, rgba.height() as usize];
+            Some((rgba.into_raw(), dimensions))
+        }
+        Err(e) => {
+            tracing::warn!("[Media] Failed to decode album art: {}", e);
+            None
+        }
+    }
+}
+
 
 /// Cleans up track titles by removing common "garbage" suffixes often found in
 /// metadata from sources like YouTube or streaming services (e.g., "(Official Video)").

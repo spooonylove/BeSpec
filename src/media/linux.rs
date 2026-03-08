@@ -14,7 +14,8 @@ impl LinuxMediaManager {
 }
 
 /// Helper function to load album art from a file:// URL
-fn load_art_from_url(art_url: &str) -> Option<Vec<u8>> {
+fn load_art_from_url(art_url: &str) -> Option<(Vec<u8>, [usize; 2])> {
+    // 
     // 1. Handle Local Files
     if art_url.starts_with("file://") {
         let path_str = art_url.trim_start_matches("file://");
@@ -23,7 +24,7 @@ fn load_art_from_url(art_url: &str) -> Option<Vec<u8>> {
 
         if path.exists() {
             match fs::read(&path) {
-                Ok(bytes) => return Some(bytes),
+                Ok(bytes) => return super::decode_image_to_rgba(&bytes),
                 Err(e) => tracing::warn!("[Media/Linux] Failed to read art file {:?}: {}", path, e),
             }
         }
@@ -40,7 +41,7 @@ fn load_art_from_url(art_url: &str) -> Option<Vec<u8>> {
                 let mut reader = response.into_reader();
                 let mut bytes = Vec::new();
                 if let Ok(_) = reader.read_to_end(&mut bytes) {
-                    return Some(bytes);
+                    return super::decode_image_to_rgba(&bytes);
                 }
             },
             Err(e) => tracing::warn!("[Media/Linux] Failed to download art: {}", e),
@@ -107,7 +108,7 @@ impl MediaMonitor for LinuxMediaManager {
             
             // --- CACHE STATE ---
             let mut cached_art_url: Option<String> = None;
-            let mut cached_art_bytes: Option<Vec<u8>> = None;
+            let mut cached_art_bytes: Option<(Vec<u8>, [usize; 2])> = None;
 
             tracing::debug!("[Media/Linux] Monitor thread started");
 

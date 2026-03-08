@@ -5,7 +5,8 @@ pub mod decorations;
 pub mod widgets;
 
 use crate::gui::theme::*;
-use crate::gui::visualizers as viz; // Alias for cleaner calls
+use crate::gui::visualizers as viz;
+//use crate::shared_state::ColorRef; // Alias for cleaner calls
 
 use crossbeam_channel::Receiver;
 use eframe:: egui;
@@ -145,25 +146,17 @@ impl eframe::App for SpectrumApp {
             }
 
             // Process album art
-            if let Some(bytes) = &track.album_art {
-                if let Ok(image) = image::load_from_memory(bytes) {
-                    let size = [image.width() as _, image.height() as _];
-                    let image_buffer = image.into_rgba8();
-                    let pixels = image_buffer.as_flat_samples();
-                    let color_image = egui::ColorImage::from_rgba_unmultiplied(
-                        size,
-                        pixels.as_slice(),
-                    );
+            if let Some((pixels, size)) = &track.album_art {
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                    *size,
+                    pixels.as_slice(),
+                );
 
-                    // load into GPU
-                    self.album_art_texture  = Some(ctx.load_texture(
-                        "album_art", 
-                        color_image,
-                        egui::TextureOptions::LINEAR,
-                    ));
-                } else {
-                    self.album_art_texture = None;
-                }
+                self.album_art_texture = Some(ctx.load_texture(
+                    "album_art",
+                    color_image,
+                    egui::TextureOptions::LINEAR
+                ));
             } else {
                 self.album_art_texture = None;
             }
