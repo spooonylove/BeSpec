@@ -627,8 +627,8 @@ pub fn settings_tab_visual(
         ui.group(|ui| {
             ui.label("Aggregation Mode:");
             ui.horizontal(|ui| {
-                ui.radio_value(&mut state.config.profile.use_peak_aggregation, true, "Peak (Dramatic)");
-                ui.radio_value(&mut state.config.profile.use_peak_aggregation, false, "Average (Smooth)");
+                ui.radio_value(&mut state.config.profile.aggregation_mode, crate::shared_state::AggregationMode::Peak, "Peak");
+                ui.radio_value(&mut state.config.profile.aggregation_mode, crate::shared_state::AggregationMode::Average, "Average");
             });
 
             ui.add_space(5.0);

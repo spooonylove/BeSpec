@@ -23,7 +23,7 @@ pub struct FFTConfig{
     pub release_time_ms: f32,           // bar fall speed
     pub peak_hold_time_ms: f32,         // duration of peak hold
     pub peak_release_time_ms: f32,      // peak fall speed
-    pub use_peak_aggregation: bool,     // bar aggregation peak vs average
+    pub aggregation_mode: crate::shared_state::AggregationMode,     // bar aggregation peak vs average
 }
 
 impl Default for FFTConfig {
@@ -37,7 +37,7 @@ impl Default for FFTConfig {
             release_time_ms: 200.0,
             peak_hold_time_ms: 1500.0,
             peak_release_time_ms: 1500.0,
-            use_peak_aggregation: true,
+            aggregation_mode: crate::shared_state::AggregationMode::Peak,
         }
      }
 }
@@ -366,7 +366,8 @@ impl FFTProcessor {
                 let slice_end = (map.end_bin + 1).min(magnitudes.len());
                 let bin_slice = &magnitudes[slice_start..slice_end];
 
-                if self.config.use_peak_aggregation {
+                if self.config.aggregation_mode == crate::shared_state::AggregationMode::Peak {
+                    // Peak Aggregation
                     let peak = bin_slice.iter().copied().fold(f32::MIN, f32::max);
                     bars.push(peak);
                 } else {
@@ -689,7 +690,7 @@ mod tests {
     fn test_group_bins_aggregation() {
         let mut config = FFTConfig::default();
         config.num_bars = 10;
-        config.use_peak_aggregation = true;
+        config.aggregation_mode= crate::shared_state::AggregationMode::Peak;
         let processor = FFTProcessor::new(config);
 
         // Mock magnitudes with a huge spike in the treble range
@@ -708,7 +709,7 @@ mod tests {
         // Switch to average
         let mut avg_config = FFTConfig::default();
         avg_config.num_bars = 10;
-        avg_config.use_peak_aggregation = false;
+        avg_config.aggregation_mode = crate::shared_state::AggregationMode::Average;
         let avg_processor = FFTProcessor::new(avg_config);
         
         let avg_bars = avg_processor.group_bins(&magnitudes);

@@ -257,7 +257,7 @@ fn start_fft_processing(
                                 release_time_ms: state.config.profile.release_time_ms,
                                 peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
                                 peak_release_time_ms: state.config.profile.peak_release_time_ms,
-                                use_peak_aggregation: state.config.profile.use_peak_aggregation,
+                                aggregation_mode: state.config.profile.aggregation_mode,
                             }
                         } else {
                             // Provide safe fallback defaults if mutex is poisoned
@@ -270,7 +270,7 @@ fn start_fft_processing(
                                 release_time_ms: 100.0,
                                 peak_hold_time_ms: 50.0,
                                 peak_release_time_ms: 200.0,
-                                use_peak_aggregation: false,
+                                aggregation_mode: crate::shared_state::AggregationMode::Average,
                             }
                         };
 
@@ -278,9 +278,11 @@ fn start_fft_processing(
                         
                         let info = new_fft_config.info();
                         tracing::info!(
-                            "[FFT] Initialized: {} Hz, FFT size: {}, latency: {:.2}ms, mode: {}",
-                                info.sample_rate, info.fft_size, info.latency_ms,
-                                if new_processor.get_config().use_peak_aggregation { "Peak" } else { "Average" }
+                            "[FFT] Initialized: {} Hz, FFT size: {}, latency: {:.2}ms, mode: {:?}",
+                            info.sample_rate, 
+                            info.fft_size, 
+                            info.latency_ms,
+                            new_processor.get_config().aggregation_mode
                         );
                     
                         processor = Some(new_processor);
@@ -329,7 +331,7 @@ fn start_fft_processing(
                                 release_time_ms: state.config.profile.release_time_ms,
                                 peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
                                 peak_release_time_ms: state.config.profile.peak_release_time_ms,
-                                use_peak_aggregation: state.config.profile.use_peak_aggregation,
+                                aggregation_mode: state.config.profile.aggregation_mode,
                             }
                         } else {
                              // Safe fallback
@@ -404,7 +406,7 @@ fn start_fft_processing(
                                         state.config.profile.release_time_ms != current.release_time_ms ||
                                         state.config.profile.peak_hold_time_ms != current.peak_hold_time_ms ||
                                         state.config.profile.peak_release_time_ms != current.peak_release_time_ms ||
-                                        state.config.profile.use_peak_aggregation != current.use_peak_aggregation
+                                        state.config.profile.aggregation_mode != current.aggregation_mode
                                     };
                                                         
                                     
@@ -425,7 +427,7 @@ fn start_fft_processing(
                                             release_time_ms: state.config.profile.release_time_ms,
                                             peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
                                             peak_release_time_ms: state.config.profile.peak_release_time_ms,
-                                            use_peak_aggregation: state.config.profile.use_peak_aggregation,
+                                            aggregation_mode: state.config.profile.aggregation_mode,
                                         })
                                     } else {
                                         // Check for minor config changes that don't require a rebuild
@@ -434,11 +436,11 @@ fn start_fft_processing(
 
                                         if config_differs(&current) {
                                             // Log specific changes for debugging
-                                            if state.config.profile.use_peak_aggregation != current.use_peak_aggregation {
+                                            if state.config.profile.aggregation_mode != current.aggregation_mode {
                                                 tracing::info!{
-                                                    "[FFT] Aggregation mode changed: {} → {}",
-                                                    if current.use_peak_aggregation { "Peak" } else { "Average" },
-                                                    if state.config.profile.use_peak_aggregation { "Peak" } else { "Average" }
+                                                    "[FFT] Aggregation mode changed: {:?} → {:?}",
+                                                    current.aggregation_mode,
+                                                    state.config.profile.aggregation_mode
                                                 };
                                             }
                                         
@@ -452,7 +454,7 @@ fn start_fft_processing(
                                                 release_time_ms: state.config.profile.release_time_ms,
                                                 peak_hold_time_ms: state.config.profile.peak_hold_time_ms,
                                                 peak_release_time_ms: state.config.profile.peak_release_time_ms,
-                                                use_peak_aggregation: state.config.profile.use_peak_aggregation,
+                                                aggregation_mode: state.config.profile.aggregation_mode,
                                             })
                                         } else {
                                             None

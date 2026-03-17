@@ -38,6 +38,21 @@ pub enum MediaDisplayMode {
     Off,
 }
 
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
+pub enum AggregationMode {
+    /// Uses the highest peak in the frequency range
+    Peak,
+    /// Uses the average energy of the range
+    Average,
+}
+
+impl Default for AggregationMode {
+    fn default() -> Self {
+        Self::Peak
+    }
+}
+
+
 /// Font size options for overlay text.
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
 pub enum ThemeFont {
@@ -142,7 +157,7 @@ pub struct VisualProfile {
     pub release_time_ms: f32,
     pub peak_hold_time_ms: f32,
     pub peak_release_time_ms: f32,
-    pub use_peak_aggregation: bool,
+    pub aggregation_mode: AggregationMode,
 
     // === Color Link ===
     pub color_link: ColorRef,
@@ -174,7 +189,7 @@ impl Default for VisualProfile {
             release_time_ms: 200.0,
             peak_hold_time_ms: 1000.0,
             peak_release_time_ms: 1500.0,
-            use_peak_aggregation: true,
+            aggregation_mode: AggregationMode::Peak,
 
             color_link: ColorRef::Preset("Default".to_string()),
 
