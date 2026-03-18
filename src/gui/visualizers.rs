@@ -963,3 +963,35 @@ fn draw_scrolling_label(
 
 
 }
+
+/// Translates logical (u, v) coordinates into physical (x, y) coordinate based on orientation
+/// 
+/// * 'rect': The bounding box of the visualizer area.
+/// * 'u': The logical position along the baseline (0.0 to baseline_length).
+/// * 'v': The logical magnitude extending from the baseline (0.0 to max_magnitude).
+/// * 'orientation': The cardinal direction the baseline is mounted to.
+#[inline]
+fn map_uv_to_xy(
+    rect: egui::Rect,
+    u: f32, v: f32,
+    orientation: crate::shared_state::Orientation
+) -> egui::Pos2{
+    match orientation {
+        crate::shared_state::Orientation::BottomUp => {
+            // Baseline is Bottom edge, growing up (-Y)
+            egui::pos2(rect.left() + u, rect.bottom() - v)
+        }
+        crate::shared_state::Orientation::TopDown => {
+            // Baseline is Top edge, growing down (+Y)
+            egui::pos2(rect.left() + u, rect.top() + v)
+        }
+        crate::shared_state::Orientation::LeftRight => {
+            // Baseline is Left edge, growing right (+X)
+            egui::pos2(rect.left() + v, rect.top() + u)
+        }
+        crate::shared_state::Orientation::RightLeft => {
+            // Baseline is Right edge, growing left (-X)
+            egui::pos2(rect.right() - v, rect.top() + u)
+        }
+    }
+}

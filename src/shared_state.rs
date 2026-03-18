@@ -26,6 +26,24 @@ pub enum VisualMode {
     Oscilloscope,
 }
 
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
+pub enum Orientation {
+    /// Bars originate at the bottom and grow upward (Default)
+    BottomUp,
+    /// Bars originate at the top and grow downward
+    TopDown,
+    /// Bars originate at the leeft and grow rightware
+    LeftRight,
+    /// Bars originate at the right and grow leftward
+    RightLeft,
+}
+
+impl Default for Orientation {
+    fn default() -> Self {
+        Self::BottomUp
+    }
+}
+
 
 /// Controls how the "Now Playing" media overlay behaves.
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
@@ -139,12 +157,12 @@ pub struct VisualProfile {
 
     // === Visual Structure ===
     pub visual_mode: VisualMode,
+    pub orientation: Orientation,
     pub num_bars: usize,
     pub bar_gap_px: u32,
     pub bar_opacity: f32,
     pub segment_height_px: f32,
     pub segment_gap_px: f32,
-    pub inverted_spectrum: bool,
     pub fill_peaks: bool,
     pub show_peaks: bool,
 
@@ -174,12 +192,12 @@ impl Default for VisualProfile {
         Self {
             name: "Default".to_string(),
             visual_mode: VisualMode::SolidBars,
+            orientation: Orientation::BottomUp,
             num_bars: 150,
             bar_gap_px: 2,
             bar_opacity: 1.0,
             segment_height_px: 4.0,
             segment_gap_px: 2.0,
-            inverted_spectrum: false,
             fill_peaks: false,
             show_peaks: true,
             overlay_font: ThemeFont::Medium,
