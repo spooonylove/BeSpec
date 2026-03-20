@@ -6,6 +6,9 @@ use crate::gui::theme::{to_egui_color, db_to_px, lerp_color};
 use crate::gui::widgets::draw_transport_controls;
 use crate::fft_processor::FFTProcessor;
 
+/// The physical thickness (in points) of the peak indicator blocks
+const PEAK_THICKNESS: f32 = 2.0;
+
 pub fn draw_main_visualizer(
     painter: &Painter,
     rect: Rect, 
@@ -17,6 +20,19 @@ pub fn draw_main_visualizer(
 ){
     let profile = &config.profile;
     let num_bars = data.bars.len();
+
+    // 1. Calculate Common Layout Helpers (Axis-Aware)
+    let (max_u, max_v) = match profile.orientation {
+        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown =>{
+            (rect.width(), rect.height())
+        }
+        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft =>{
+            (rect.height(), rect.width())
+        }
+    };
+
+    let bar_slot_width = max_u / num_bars.max(1) as f32;
+    let bar_width = (bar_slot_width - profile.bar_gap_px as f32).max(1.0);
 
     // Early exit if no data (unless in Oscope mode)
     if num_bars == 0 && profile.visual_mode != VisualMode::Oscilloscope {
@@ -143,71 +159,59 @@ pub fn draw_solid_bars(
     let high = to_egui_color(colors.high).gamma_multiply(profile.bar_opacity);
     let peak = to_egui_color(colors.peak).gamma_multiply(profile.bar_opacity);
 
+    // Determine the maximum magnitude dimension for db_to_px scaling
+    let max_v = match profile.orientation {
+        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => rect.height(),
+        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => rect.width(),
+    };
+
     for (i, &db) in data.bars.iter().enumerate() {
-        let x = rect.left() + (i as f32 * bar_slot_width);
-        
+        let u = i as f32 * bar_slot_width;
 
-        let bar_height = db_to_px(db, noise_floor_db, rect.height());
+        let bar_v = db_to_px(db, noise_floor_db, max_v);
+        let norm_height = (bar_v / max_v).clamp(0.0, 1.0);
         
-        
-        // Safe clamp for gradient
-        let norm_height = (bar_height / rect.height()).clamp(0.0, 1.0);
-
         // Gradient Base Color
         let mut bar_color = lerp_color(low, high, norm_height);
         if Some(i) == hovered_index {
             bar_color = lerp_color(bar_color, egui::Color32::WHITE, 0.5);
         }
 
-        use egui::epaint::Vertex;
-        let bar_rect;
-        let mesh_base;
-        let mesh_tip;
+        // --- Logical to Physical Mapping
+        // Base vertices (magnitude = 0.0)
+        let p_base_left = map_uv_to_xy(rect, u, 0.0, profile.orientation);
+        let p_base_right = map_uv_to_xy(rect, u + bar_width, 0.0, profile.orientation);
 
-        if profile.inverted_spectrum {
-            bar_rect = egui::Rect::from_min_max(
-                egui::pos2(x, rect.top()),
-                egui::pos2(x + bar_width, rect.top() + bar_height ),
-            );
-            mesh_base = low;
-            mesh_tip = bar_color;
-        } else {
-            bar_rect = egui::Rect::from_min_max(
-                egui::pos2(x, rect.bottom() - bar_height),
-                egui::pos2(x + bar_width, rect.bottom()),
-            );
-            mesh_base = low;
-            mesh_tip = bar_color;
-        }
+        // Tip vertices (magnitude = bar_v)
+        let p_tip_right = map_uv_to_xy(rect, u + bar_width, bar_v, profile.orientation);
+        let p_tip_left = map_uv_to_xy(rect, u, bar_v, profile.orientation);
 
         // Draw Mesh
+        use egui::epaint::Vertex;
         let mut mesh = egui::Mesh::default();
-        if profile.inverted_spectrum {
-            mesh.vertices.push(Vertex {pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_base});
-            mesh.vertices.push(Vertex {pos: bar_rect.right_top(),uv: egui::Pos2::ZERO, color: mesh_base});
-            mesh.vertices.push(Vertex {pos: bar_rect.right_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip});
-            mesh.vertices.push(Vertex {pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_tip});
-        } else {
-            mesh.vertices.push(Vertex {pos: bar_rect.left_bottom(), uv: egui::Pos2::ZERO, color: mesh_base});
-            mesh.vertices.push(Vertex {pos: bar_rect.right_bottom(),uv: egui::Pos2::ZERO, color: mesh_base});
-            mesh.vertices.push(Vertex {pos: bar_rect.right_top(), uv: egui::Pos2::ZERO, color: mesh_tip});
-            mesh.vertices.push(Vertex {pos: bar_rect.left_top(), uv: egui::Pos2::ZERO, color: mesh_tip});
-        }
-        mesh.add_triangle(0, 1, 2);
-        mesh.add_triangle(0, 2, 3);
+
+        let v_idx = mesh.vertices.len() as u32;
+        mesh.vertices.push(Vertex { pos: p_base_left, uv: egui::Pos2::ZERO, color: low });
+        mesh.vertices.push(Vertex { pos: p_base_right, uv: egui::Pos2::ZERO, color: low });
+        mesh.vertices.push(Vertex { pos: p_tip_right, uv: egui::Pos2::ZERO, color: bar_color });
+        mesh.vertices.push(Vertex { pos: p_tip_left, uv: egui::Pos2::ZERO, color: bar_color });
+        
+        mesh.add_triangle(v_idx, v_idx + 1, v_idx + 2);
+        mesh.add_triangle(v_idx, v_idx + 2, v_idx + 3);
         painter.add(egui::Shape::mesh(mesh));
 
         // Peaks
         if profile.show_peaks && i < data.peaks.len() {
-            let peak_h = db_to_px(data.peaks[i], noise_floor_db, rect.height());
+            let peak_v = db_to_px(data.peaks[i], noise_floor_db, max_v);
+            let peak_thickness = PEAK_THICKNESS;
             
-            let peak_rect = if profile.inverted_spectrum {
-                let y = rect.top() + peak_h;
-                egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(bar_width, 2.0))
-            } else {
-                let y = rect.bottom() - peak_h;
-                egui::Rect::from_min_size(egui::pos2(x, y - 2.0), egui::vec2(bar_width, 2.0))
-            };
+            // Just grab the two opposing logical corners
+            let p1 = map_uv_to_xy(rect, u, peak_v, profile.orientation);
+            let p2 = map_uv_to_xy(rect, u + bar_width, peak_v + peak_thickness, profile.orientation);
+
+            // from_two_pos automatically handles sorting the coordinates, 
+            // no matter which cardinal direction they were mapped to!
+            let peak_rect = egui::Rect::from_two_pos(p1, p2);
             painter.rect_filled(peak_rect, 0.0, peak);
         }
     }    
