@@ -1,5 +1,3 @@
-use std::cmp::max;
-
 use egui::{Painter, Rect, Stroke};
 use crate::media::MediaController;
 use crate::shared_state::{AppConfig, ColorProfile, PerformanceStats, VisualMode, 
@@ -70,9 +68,12 @@ pub fn draw_main_visualizer(
             if rect.contains(pos) {
                 // Determine logical 'u' position based on orientation
                 let u_pos = match profile.orientation {
-                    crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => pos.x - rect.left(),
-                    crate::shared_state::Orientation::LeftRight => pos.y - rect.top(),
-                    crate::shared_state::Orientation::RightLeft => rect.bottom() - pos.y, //flips direction
+                    crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown =>{
+                        pos.x - rect.left()
+                    }
+                    crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => {
+                        rect.bottom() - pos.y
+                    } 
                 };
 
                 let index = (u_pos / bar_slot_width).floor() as usize;
@@ -1017,11 +1018,11 @@ fn map_uv_to_xy(
         }
         crate::shared_state::Orientation::LeftRight => {
             // Baseline is Left edge, growing right (+X)
-            egui::pos2(rect.left() + v, rect.top() + u)
+            egui::pos2(rect.left() + v, rect.bottom() - u)
         }
         crate::shared_state::Orientation::RightLeft => {
             // Baseline is Right edge, growing left (-X)
-            egui::pos2(rect.right() - v, rect.top() + u)
+            egui::pos2(rect.right() - v, rect.bottom() - u)
         }
     }
 }
