@@ -175,7 +175,8 @@ pub fn draw_lock_button(
 
         // 1. Set up geometry and state
         let is_locked = state.config.window_locked;
-        let is_inverted = state.config.profile.inverted_spectrum;
+        //REFACTOR PATCH
+        let is_inverted = false;
         let size = 24.0;
         let padding = 8.0;
 
@@ -633,7 +634,15 @@ pub fn settings_tab_visual(
 
             ui.add_space(5.0);
             ui.label("Orientation:");
-            ui.checkbox(&mut state.config.profile.inverted_spectrum, "Inverted (Top-Down)");
+            //REFACTOR PATCH
+            //ui.checkbox(&mut state.config.profile.inverted_spectrum, "Inverted (Top-Down)");
+            ui.horizontal(|ui| {
+                ui.label("DEBUG Orientation:");
+                ui.radio_value(&mut state.config.profile.orientation, crate::shared_state::Orientation::BottomUp, "Up");
+                ui.radio_value(&mut state.config.profile.orientation, crate::shared_state::Orientation::TopDown, "Down");
+                ui.radio_value(&mut state.config.profile.orientation, crate::shared_state::Orientation::LeftRight, "Right");
+                ui.radio_value(&mut state.config.profile.orientation, crate::shared_state::Orientation::RightLeft, "Left");
+            });
         });
 }
 

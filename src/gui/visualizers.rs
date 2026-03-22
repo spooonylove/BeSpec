@@ -1,3 +1,5 @@
+use std::cmp::max;
+
 use egui::{Painter, Rect, Stroke};
 use crate::media::MediaController;
 use crate::shared_state::{AppConfig, ColorProfile, PerformanceStats, VisualMode, 
@@ -31,8 +33,7 @@ pub fn draw_main_visualizer(
         }
     };
 
-    let bar_slot_width = max_u / num_bars.max(1) as f32;
-    let bar_width = (bar_slot_width - profile.bar_gap_px as f32).max(1.0);
+
 
     // Early exit if no data (unless in Oscope mode)
     if num_bars == 0 && profile.visual_mode != VisualMode::Oscilloscope {
@@ -50,6 +51,10 @@ pub fn draw_main_visualizer(
         return;
     }
 
+    // 1. Calculate Common Layout Helpers
+    let bar_slot_width = max_u / num_bars.max(1) as f32;
+    let bar_width = (bar_slot_width - profile.bar_gap_px as f32).max(1.0);
+
     // DEBUG
     // [NEW] 1.5. Draw Background Plate
     // This ensures the window has a "body" even if the bars are 0 height.
@@ -57,19 +62,21 @@ pub fn draw_main_visualizer(
     let bg_plate = to_egui_color(colors.background).linear_multiply(0.5);
     painter.rect_filled(rect, 4.0, bg_plate);
 
-    // 1. Calculate Common Layout Helpers
-    // Ensure we don't divide by zero even if bars are missing
-    let bar_slot_width = rect.width() / num_bars.max(1) as f32;
-    let bar_width = (bar_slot_width - profile.bar_gap_px as f32).max(1.0);
 
     // 2. Handle mouse interactions (for frequency modes)
     // Calculate hovered index using the passed-in mouse_pos
     let hovered_bar_index = if config.inspector_enabled && profile.visual_mode != VisualMode::Oscilloscope {
         mouse_pos.and_then(|pos| {
             if rect.contains(pos) {
-                let relative_x = pos.x - rect.left();
-                let index = (relative_x / bar_slot_width).floor() as usize;
-                if index < num_bars {Some(index)} else { None }
+                // Determine logical 'u' position based on orientation
+                let u_pos = match profile.orientation {
+                    crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => pos.x - rect.left(),
+                    crate::shared_state::Orientation::LeftRight => pos.y - rect.top(),
+                    crate::shared_state::Orientation::RightLeft => rect.bottom() - pos.y, //flips direction
+                };
+
+                let index = (u_pos / bar_slot_width).floor() as usize;
+                if index < num_bars { Some(index)} else { None }
             }else { None }
         })
     } else { None };
@@ -126,6 +133,7 @@ pub fn draw_main_visualizer(
             draw_inspector_overlay(
                 &painter,
                 rect,
+                profile,
                 &colors,
                 data,
                 perf,
@@ -259,6 +267,12 @@ pub fn draw_segmented_bars(
     let high = to_egui_color(colors.high).linear_multiply(profile.bar_opacity);
     let peak_color = to_egui_color(colors.peak).linear_multiply(profile.bar_opacity);
 
+    // Determine the maximum magnitude dimension for LOD and scalling
+    let max_v = match profile.orientation {
+        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => rect.height(),
+        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => rect.width(),
+    };
+
     // 2. Calculate Segment Geometry
     // Ensure we don't get stuck in infinite loops with 0 height
     let mut seg_h = profile.segment_height_px.max(1.0);
@@ -316,55 +330,42 @@ pub fn draw_segmented_bars(
 
     // 3. Render Each Bar
     for (i, &db) in data.bars.iter().enumerate() {
-            let x = rect.left() + (i as f32 * bar_slot_width);
+            let u = i as f32 * bar_slot_width;
             
-            // Convert dB to pixel height
-            let total_h = db_to_px(db, noise_floor_db, rect.height());
+            // Convert dB to logical v-axis magnitude
+            let total_v = db_to_px(db, noise_floor_db, max_v);
             
             // Determine how many segments fit in this height
-            let num_segments = (total_h / total_seg_h).floor() as i32;
+            let num_segments = (total_v / total_seg_h).floor() as i32;
             
             // --- Draw Active Segments ---
             for s in 0..num_segments {
                 let segment_idx = s as f32;
-                let y_offset = segment_idx * total_seg_h;
+                let v_offset = segment_idx * total_seg_h;
                 
                 // Calculate gradient color based on vertical position
-                let norm_h = (y_offset / rect.height()).clamp(0.0, 1.0);
+                let norm_h = (v_offset / max_v).clamp(0.0, 1.0);
                 let color = lerp_color(low, high, norm_h);
 
-                // Calculate rect based on orientation
-                let seg_rect = if profile.inverted_spectrum {
-                    // Top-Down
-                    egui::Rect::from_min_size(
-                        egui::pos2(x, rect.top() + y_offset),
-                        egui::vec2(bar_width, seg_h)
-                    )
-                } else {
-                    // Bottom-Up
-                    egui::Rect::from_min_size(
-                        egui::pos2(x, rect.bottom() - y_offset - seg_h),
-                        egui::vec2(bar_width, seg_h)
-                    )
-                };
-                push_rect(&mut master_mesh, seg_rect, color);
+                // Map logical bounds to physical rect
+                let p1 = map_uv_to_xy(rect, u, v_offset, profile.orientation);
+                let p2 = map_uv_to_xy(rect, u + bar_width, v_offset + seg_h, profile.orientation);
+                
+                push_rect(&mut master_mesh, egui::Rect::from_two_pos(p1, p2), color);
             }
 
             // --- Draw Peak Indicators ---
             if profile.show_peaks && i < data.peaks.len() {
-                let peak_h = db_to_px(data.peaks[i], noise_floor_db, rect.height());
+                let peak_v = db_to_px(data.peaks[i], noise_floor_db, max_v);
                 
                 // Snap peak to the nearest segment grid position
-                let peak_seg_idx = (peak_h / total_seg_h).floor();
-                let y_offset = peak_seg_idx * total_seg_h;
+                let peak_seg_idx = (peak_v / total_seg_h).floor();
+                let v_offset = peak_seg_idx * total_seg_h;
                 
-                let peak_rect = if profile.inverted_spectrum {
-                    egui::Rect::from_min_size(egui::pos2(x, rect.top() + y_offset), egui::vec2(bar_width, seg_h))
-                } else {
-                    egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - y_offset - seg_h), egui::vec2(bar_width, seg_h))
-                };
+                let p1  = map_uv_to_xy(rect, u, v_offset, profile.orientation);
+                let p2 = map_uv_to_xy(rect, u + bar_width, v_offset + seg_h, profile.orientation);
                 
-                push_rect(&mut master_mesh, peak_rect, peak_color);
+                push_rect(&mut master_mesh, egui::Rect::from_two_pos(p1, p2), peak_color);
 
                 // --- Fill Gap to Peak (Warning Mode) ---
                 // If enabled, fills the empty space between the current bar level and the peak
@@ -375,13 +376,11 @@ pub fn draw_segmented_bars(
                         let fill_color = peak_color.linear_multiply(0.3);
                         for g in 0..gap_segments {
                             // Offset from the top of the current bar
-                            let gap_y = (num_segments + g) as f32 * total_seg_h;
-                            let gap_rect = if profile.inverted_spectrum {
-                                egui::Rect::from_min_size(egui::pos2(x, rect.top() + gap_y), egui::vec2(bar_width, seg_h))
-                            } else {
-                                egui::Rect::from_min_size(egui::pos2(x, rect.bottom() - gap_y - seg_h), egui::vec2(bar_width, seg_h))
-                            };
-                            push_rect(&mut master_mesh, gap_rect, fill_color);
+                            let gap_v = (num_segments + g) as f32 * total_seg_h;
+                            let gp1 = map_uv_to_xy(rect, u, gap_v, profile.orientation);
+                            let gp2 = map_uv_to_xy(rect, u + bar_width, gap_v + seg_h, profile.orientation);
+
+                            push_rect(&mut master_mesh, egui::Rect::from_two_pos(gp1, gp2), fill_color);
                         }
                     }
                 }
@@ -407,18 +406,26 @@ pub fn draw_line_spectrum(
     // Use Profile colors
     let high = to_egui_color(colors.high).gamma_multiply(profile.bar_opacity);
 
-    // Pre-calculate points 
-    let points: Vec<egui::Pos2> = data.bars.iter().enumerate().map(|(i, &db)| {
-        let x = rect.left() + (i as f32 / data.bars.len() as f32) * rect.width();
-        let height = db_to_px(db, noise_floor_db, rect.height());
-    
-        let y = if profile.inverted_spectrum {
-            rect.top() + height
-        } else {
-            rect.bottom() - height
-        };
+    // Determine the maximum logical dimensions based on orientation
+    let (max_u, max_v) = match profile.orientation {
+        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => {
+            (rect.width(), rect.height())
+        }
+        crate::shared_state::Orientation::LeftRight |  crate::shared_state::Orientation::RightLeft => {
+            (rect.height(), rect.width())
+        }
+    };
 
-        egui::pos2(x, y)
+    // Pre-calculate points using logical (u,v) mapping
+    let points: Vec<egui::Pos2> = data.bars.iter().enumerate().map(|(i, &db)| {
+        // Logical position along the baseline
+        let u = (i as f32 / data.bars.len() as f32) * max_u;
+
+        // Logical magnitude extending from the baseline
+        let v = db_to_px(db, noise_floor_db, max_v);
+
+        // Lthe helper function figure out the physical screen coordinates
+        map_uv_to_xy(rect, u, v, profile.orientation)
     }).collect();
 
     // Draw Glow (thick transparent line) - Restored!
@@ -463,18 +470,35 @@ pub fn draw_oscilloscope(
 
     let line_color = to_egui_color(colors.high).gamma_multiply(profile.bar_opacity);
 
+    // 1. Determine maximum logical dimensions based on orientation
+    let (max_u, max_v) = match profile.orientation {
+        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => {
+            (rect.width(), rect.height())
+        }
+        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => {
+            (rect.height(), rect.width())
+        }
+    };
+
     let samples = &data.waveform;
     let len = samples.len();
-    let middle_y = rect.center().y;
-    let height_scale = rect.height() * 0.45; // Leave some cushion for the pushing
+
+    // Shift our logical "0" to the middle of the magnitdue axis
+    let middle_v = max_v / 2.0;
+    let v_scale = max_v * 0.45; // Leave some cushion for the pushing
 
     let points: Vec<egui::Pos2> = samples
         .iter()
         .enumerate()
         .map(|(i, &sample)|{
-            let x = rect.left() + (i as f32 / len as f32) *  rect.width();
-            let y = middle_y - (sample * height_scale);
-            egui::pos2(x,y)
+            // u progresses steadily across the available baseline
+            let u = (i as f32 / len as f32) * max_u;
+
+            // v oscillates around the middle point
+            let v = middle_v + (sample * v_scale);
+            
+            //Translate to physical screen coordinates
+            map_uv_to_xy(rect, u, v, profile.orientation)
         })
         .collect();
 
@@ -489,6 +513,7 @@ pub fn draw_oscilloscope(
 pub fn draw_inspector_overlay( 
     painter: &egui::Painter, 
     rect: egui::Rect, 
+    profile: &VisualProfile,
     colors: &ColorProfile,
     data: &crate::shared_state::VisualizationData,
     perf: &crate::shared_state::PerformanceStats,
@@ -547,26 +572,33 @@ pub fn draw_inspector_overlay(
     let galley = painter.layout_job(job);
 
     // === 3. Position the Tooltip ===
-    let bar_center_x = rect.left() + (hovered_index as f32 * bar_slot_width) + (bar_slot_width / 2.0);
-    
+  
     // Position: Above the click position, centered horizontally
     // Add some padding around the text
     let padding = egui::vec2(8.0, 6.0);
     let tooltip_size = galley.size() + (padding * 2.0);
-    
-    let mut tooltip_pos = egui::pos2(
-        bar_center_x - (tooltip_size.x / 2.0),
-        rect.top() + 30.0 // Push it down a bit from the top edge
-    );
 
-    // Clamp to window bounds (don't let it clip off right edge)
-    if tooltip_pos.x + tooltip_size.x > rect.right() {
-        tooltip_pos.x = rect.right() - tooltip_size.x - 5.0;
-    }
-    // Clamp to left edge
-    if tooltip_pos.x < rect.left() {
-        tooltip_pos.x = rect.left() + 5.0;
-    }
+    // Determine maximum logical dimensions
+    let max_v = match profile.orientation {
+        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => rect.height(),
+        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => rect.width(),
+    };
+
+    // Calculate logical center of the hovered bar
+    let u_center= (hovered_index as f32 * bar_slot_width) + (bar_slot_width / 2.0);
+
+    // Calculate the physical position for the target dot (10 logical pixels away)
+    let dot_pos = map_uv_to_xy(rect, u_center, 10.0, profile.orientation);
+
+    // Calculate physical anchor point for the tooltip (30 logical pixels away);
+    let anchor_pos = map_uv_to_xy(rect, u_center, max_v - 30.0, profile.orientation);
+    
+    let mut tooltip_pos = anchor_pos - (tooltip_size / 2.0);
+
+    // Ensure the physical x,y, bounds never leave the window, regardless of orientation
+    tooltip_pos.x = tooltip_pos.x.clamp(rect.left() + 5.0, rect.right() - tooltip_size.x - 5.0);
+    tooltip_pos.y = tooltip_pos.y.clamp(rect.top() + 5.0, rect.bottom() - tooltip_size.y - 5.0);
+    
 
     let tooltip_rect = Rect::from_min_size(tooltip_pos, tooltip_size);
 
@@ -586,14 +618,8 @@ pub fn draw_inspector_overlay(
     // === 5. Draw Text ===
     painter.galley(tooltip_pos + padding, galley, egui::Color32::WHITE);
 
-    // === 6. Draw Target Dot (Optional) ===
-    // Helps user see exactly which bar they are probing
-    let dot_y = rect.bottom() - 10.0;
-    painter.circle_filled(
-        egui::pos2(bar_center_x, dot_y),
-        2.5,
-        text_color.linear_multiply(0.8)
-    );
+    // === 6. Draw Target Dot ===
+    painter.circle_filled(dot_pos, 2.5, text_color.linear_multiply(0.8));
 }
 
 /// Render performance statistics overlay

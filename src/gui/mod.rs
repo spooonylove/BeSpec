@@ -493,8 +493,9 @@ impl eframe::App for SpectrumApp {
                 // === WINDOW CONTROLS ====
                 // 1. Resize Grip (Needs Context + Window Rect)
                 // We check the inverted state first (read-only lock)
+                //REFACTOR PATCH
                 let (is_inverted, is_collapsed) = if let Ok(s) = self.shared_state.lock() {
-                    (s.config.profile.inverted_spectrum, s.config.beos_window_collapsed)
+                    (false, s.config.beos_window_collapsed)
                 } else {
                     (false, false)
                 };
