@@ -1021,7 +1021,7 @@ fn map_uv_to_xy(
         }
         crate::shared_state::Orientation::LeftRight => {
             // Baseline is Left edge, growing right (+X)
-            egui::pos2(rect.left() + v, rect.bottom() - u)
+            egui::pos2(rect.left() + v, rect.top() + u)
         }
         crate::shared_state::Orientation::RightLeft => {
             // Baseline is Right edge, growing left (-X)
