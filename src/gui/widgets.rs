@@ -69,6 +69,7 @@ pub fn handle_window_interaction(
     // 4. Right-Click
     // Works now because Sense::click() allows the secondary click to register.
     interaction.context_menu(|ui| {
+        ui.set_min_width(100.0);
         if ui.button("⚙ Settings").clicked() {
             *settings_open = true;
             ctx.send_viewport_cmd_to(
