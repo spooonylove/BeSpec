@@ -23,7 +23,7 @@ pub fn draw_main_visualizer(
 ){
 
     // 1. Calculate (Axis-Aware) raw dimensions
-    let max_u_raw = match profile.orientation {
+    let max_u= match profile.orientation {
         crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown =>rect.width(),
         crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft =>rect.height(),
     };
@@ -33,10 +33,13 @@ pub fn draw_main_visualizer(
     //  - What physically fits (the recommended safe_bar_count based on available window size)
     let display_bars = safe_bar_count.min(data.bars.len());
 
-    // 2. Apply Pixel-Perfect Abstraction
-    let (bar_slot_width, margin) = calculate_pixel_perfect_layout(max_u_raw, display_bars);
+    // EXACT floating-point width. No flooring, no margins
+    let bar_slot_width = max_u / display_bars as f32;
+
+    // 2. Calculate bar dimensions, forcing it to at least 1px
+    //   Pixel-corrected bar width is calculate inside the drawing functions
     let bar_width = (bar_slot_width - profile.bar_gap_px as f32).max(1.0);
-    
+    /* 
     // 3. Snap the Bounding Box to the Grid
     let total_used_u = bar_slot_width * display_bars as f32;
     let mut perfect_rect = rect;
@@ -55,6 +58,8 @@ pub fn draw_main_visualizer(
 
     // Update max_u for hover math and line spectrums
     let max_u = total_used_u;
+
+    */
 
 
     /* 
@@ -92,7 +97,7 @@ pub fn draw_main_visualizer(
             VisualMode::SolidBars => {
                 draw_solid_bars(
                     painter,
-                    perfect_rect,
+                    rect,
                     profile,
                     colors,                 
                     data,                    
@@ -137,10 +142,10 @@ pub fn draw_main_visualizer(
         // 7. Draw Overlays
         if let Some(index) = hovered_bar_index {
             draw_inspector_overlay(
-                &painter,
+                painter,
                 rect,
                 profile,
-                &colors,
+                colors,
                 data,
                 perf,
                 index,
@@ -150,9 +155,9 @@ pub fn draw_main_visualizer(
 
         if config.show_stats {
             draw_stats_overlay(
-                &painter,
+                painter,
                 rect,
-                &colors,
+                colors,
                 perf);
         }
 }
@@ -180,7 +185,16 @@ pub fn draw_solid_bars(
     };
 
     for (i, &db) in data.bars.iter().enumerate() {
-        let u = i as f32 * bar_slot_width;
+        // --- Pixel Snappage ---
+        let exact_start = i as f32 * bar_slot_width;
+        let exact_end = (i + 1) as f32 * bar_slot_width;
+
+        let snapped_start = exact_start.round();
+        let snapped_end = exact_end.round();
+
+        let actual_width = (snapped_end - snapped_start - profile.bar_gap_px as f32).max(1.0);
+        let u = snapped_start;
+        // ----------------------
 
         let bar_v = db_to_px(db, noise_floor_db, max_v);
         let norm_height = (bar_v / max_v).clamp(0.0, 1.0);
@@ -194,10 +208,10 @@ pub fn draw_solid_bars(
         // --- Logical to Physical Mapping
         // Base vertices (magnitude = 0.0)
         let p_base_left = map_uv_to_xy(rect, u, 0.0, profile.orientation);
-        let p_base_right = map_uv_to_xy(rect, u + bar_width, 0.0, profile.orientation);
+        let p_base_right = map_uv_to_xy(rect, u + actual_width, 0.0, profile.orientation);
 
         // Tip vertices (magnitude = bar_v)
-        let p_tip_right = map_uv_to_xy(rect, u + bar_width, bar_v, profile.orientation);
+        let p_tip_right = map_uv_to_xy(rect, u + actual_width, bar_v, profile.orientation);
         let p_tip_left = map_uv_to_xy(rect, u, bar_v, profile.orientation);
 
         // Draw Mesh
@@ -221,7 +235,7 @@ pub fn draw_solid_bars(
             
             // Just grab the two opposing logical corners
             let p1 = map_uv_to_xy(rect, u, peak_v, profile.orientation);
-            let p2 = map_uv_to_xy(rect, u + bar_width, peak_v + peak_thickness, profile.orientation);
+            let p2 = map_uv_to_xy(rect, u + actual_width, peak_v + peak_thickness, profile.orientation);
 
             // from_two_pos automatically handles sorting the coordinates, 
             // no matter which cardinal direction they were mapped to!
