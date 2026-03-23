@@ -1,6 +1,6 @@
 use egui::{Painter, Rect, Stroke};
 use crate::media::MediaController;
-use crate::shared_state::{AppConfig, ColorProfile, PerformanceStats, VisualMode, 
+use crate::shared_state::{ColorProfile, PerformanceStats, VisualMode, 
     VisualProfile, VisualizationData, MediaDisplayMode};
 use crate::gui::theme::{to_egui_color, db_to_px, lerp_color};
 use crate::gui::widgets::draw_transport_controls;
@@ -131,7 +131,10 @@ pub fn draw_main_visualizer(
             painter,
             rect,
             colors,
-            perf);
+            perf,
+            display_bars,
+            profile.num_bars
+        );
     }
 }
 
@@ -322,7 +325,7 @@ pub fn draw_segmented_bars(
     let display_bars = (rect.width() / bar_slot_width).floor() as usize;
 
     // 3. Render Each Bar
-    for (i, &db) in data.bars.iter().enumerate() {
+    for (i, &db) in data.bars.iter().take(display_bars).enumerate() {
             // Retain pure floating-point precision for horizontal layout.
             // Vertically, the segments are strictly pixel-snapped (via the LOD governor)
             // to ensure crisp LED boxes, but horizontally we allow sub-pixel blending to 
@@ -624,18 +627,22 @@ pub fn draw_stats_overlay(
     painter: &egui::Painter,
     rect: egui::Rect,
     colors: &ColorProfile,
-    perf: &crate::shared_state::PerformanceStats
+    perf: &crate::shared_state::PerformanceStats,
+    display_bars: usize,
+    requested_bars: usize,
 ) {
     // Position in top-left (with padding)
     let pos = rect.left_top() + egui::vec2(10.0, 10.0);
     
     let text = format!(
-        "FPS: {:.0}\nFFT: {:.1}ms\nMin/Max: {:.1}/{:.1}ms\nRes: {:.1}Hz",
+        "FPS: {:.0}\nFFT: {:.1}ms\nMin/Max: {:.1}/{:.1}ms\nRes: {:.1}Hz\nBars: {} / {}",
         perf.gui_fps,
         perf.fft_ave_time.as_micros() as f32 / 1000.0,
         perf.fft_min_time.as_micros() as f32 / 1000.0,
         perf.fft_max_time.as_micros() as f32 / 1000.0,
-        perf.fft_info.frequency_resolution
+        perf.fft_info.frequency_resolution,
+        display_bars,      // <-- Actual bars drawn on screen
+        requested_bars     // <-- What the user's profile is asking for
     );
 
     // Reuse Inspector colors for consistency
@@ -1021,24 +1028,4 @@ fn map_uv_to_xy(
             egui::pos2(rect.right() - v, rect.bottom() - u)
         }
     }
-}
-
-/// Calculates integer-aligned slot widths and margins to prevent Moire artifacts
-pub fn calculate_pixel_perfect_layout(
-    max_pixels_raw: f32,
-    display_bars: usize,
-) -> (f32, f32) {
-    let display_bars_f32 = display_bars.max(1) as f32;
-
-    // Force the slot width to the nearest whole pixel, but never less than 1
-    let bar_slot_width = (max_pixels_raw / display_bars_f32).floor().max(1.0);
-
-    // Calculate how many pixels we are actually using
-    let total_used = bar_slot_width * display_bars_f32;
-
-    // Split the leftover pixels equally into a left/right (or top/bottom) margin
-    // We use .max(0.0) to prevetn negative margins if the window collapses to 0 width
-    let margin = ((max_pixels_raw - total_used) / 2.0).floor().max(0.0);
-
-    (bar_slot_width, margin)
 }
