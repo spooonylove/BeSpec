@@ -248,10 +248,11 @@ fn start_fft_processing(
 
                         // Get initial settings from shared state
                         let config: FFTConfig = if let Ok(state) = shared_state.lock() {
+                            let target_bars = state.lod_bar_limit.unwrap_or(state.config.profile.num_bars);
                             FFTConfig {
                                 fft_size: FIXED_FFT_SIZE,
                                 sample_rate: packet.sample_rate,
-                                num_bars: state.config.profile.num_bars,
+                                num_bars: target_bars,
                                 sensitivity: state.config.profile.sensitivity,
                                 attack_time_ms: state.config.profile.attack_time_ms,
                                 release_time_ms: state.config.profile.release_time_ms,
@@ -322,10 +323,11 @@ fn start_fft_processing(
                         );
 
                         let new_config = if let Ok(state) = shared_state.lock() {
+                            let target_bars = state.lod_bar_limit.unwrap_or(state.config.profile.num_bars);
                             FFTConfig {
                                 fft_size: FIXED_FFT_SIZE, 
                                 sample_rate: info.sample_rate,
-                                num_bars: state.config.profile.num_bars,
+                                num_bars: target_bars,
                                 sensitivity: state.config.profile.sensitivity,
                                 attack_time_ms: state.config.profile.attack_time_ms,
                                 release_time_ms: state.config.profile.release_time_ms,
@@ -398,7 +400,8 @@ fn start_fft_processing(
 
                                     // Check if any config parameters changed
                                     // 1. Check for changes that require a rebuild
-                                    let needs_update = state.config.profile.num_bars != state.visualization.bars.len();
+                                    let target_bars = state.lod_bar_limit.unwrap_or(state.config.profile.num_bars);
+                                    let needs_update = target_bars != state.visualization.bars.len();
 
                                     let config_differs = |current: &FFTConfig| -> bool {
                                         state.config.profile.sensitivity != current.sensitivity ||
@@ -421,7 +424,7 @@ fn start_fft_processing(
                                         Some(FFTConfig {
                                             fft_size: FIXED_FFT_SIZE,
                                             sample_rate: fft_config.get_sample_rate(),
-                                            num_bars: state.config.profile.num_bars,
+                                            num_bars: target_bars,
                                             sensitivity: state.config.profile.sensitivity,
                                             attack_time_ms: state.config.profile.attack_time_ms,
                                             release_time_ms: state.config.profile.release_time_ms,
@@ -448,7 +451,7 @@ fn start_fft_processing(
                                             Some(FFTConfig {
                                                 fft_size: FIXED_FFT_SIZE,
                                                 sample_rate: fft_config.get_sample_rate(),
-                                                num_bars: state.config.profile.num_bars,
+                                                num_bars: target_bars,
                                                 sensitivity: state.config.profile.sensitivity,
                                                 attack_time_ms: state.config.profile.attack_time_ms,
                                                 release_time_ms: state.config.profile.release_time_ms,

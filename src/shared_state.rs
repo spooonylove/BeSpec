@@ -267,6 +267,9 @@ pub struct SharedState {
     pub update_url: Option<String>,
     pub update_dismissed: bool,
 
+    // === Level of Detail Config === 
+    pub lod_bar_limit: Option<usize>,
+
 }
 
 impl SharedState {
@@ -292,6 +295,7 @@ impl SharedState {
             user_visual_presets,
             update_url: None,
             update_dismissed: false,
+            lod_bar_limit: None,
         }
     }
 }

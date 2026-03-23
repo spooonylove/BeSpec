@@ -18,7 +18,21 @@ use crate::shared_state::{Color32 as StateColor32, SharedState};
 
 use crate::gui::widgets::{SaveTarget, SettingsTab};
 
+pub struct LodDebouncer {
+    pub target_limit: usize,
+    pub last_change: std::time::Instant,
+    pub delay: std::time::Duration,
+}
 
+impl LodDebouncer {
+    pub fn new() -> Self {
+        Self {
+            target_limit: usize::MAX,
+            last_change: std::time::Instant::now(),
+            delay: std::time::Duration::from_millis(150), // 160ms wait after drag stops
+        }
+    }
+}
 
 /// Main application GUI — handles rendering, user interaction, and media display.
 ///
@@ -64,6 +78,9 @@ pub struct SpectrumApp {
     // User Preset UI State
     save_target: SaveTarget,
     new_preset_name: String,
+
+    /// Level Of Detail Debouncer
+    pub lod_debouncer: LodDebouncer,
 }
 
 impl SpectrumApp {
@@ -95,6 +112,7 @@ impl SpectrumApp {
             flash_start: Some(Instant::now()),
             save_target: SaveTarget::None,
             new_preset_name: String::new(),
+            lod_debouncer: LodDebouncer::new(),
         }
     }
 }
@@ -380,6 +398,9 @@ impl eframe::App for SpectrumApp {
                 let mut update_url_copy: Option<String> = None;
                 let mut show_banner = false;
 
+                // === LOD Debouncer Setup ===
+                let mut pending_lod_update: Option<usize> = None;
+
                 // Quick check! (small scope lock)
                 if let Ok(state) = self.shared_state.lock(){
                     if state.update_url.is_some() && !state.update_dismissed {
@@ -393,6 +414,34 @@ impl eframe::App for SpectrumApp {
                     // Visualization (requres Read-only Lock)
                     let state = self.shared_state.lock().expect("failed to lock shared state for viz render"); //lock once!
                     let mut final_viz_rect = viz_rect;
+
+                    // ======= Level of Detail Calculation =======
+                    let available_size = final_viz_rect.size();
+                    let limiting_dimension = match state.config.profile.orientation {
+                        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => available_size.x,
+                        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => available_size.y,
+                    };
+
+                    let min_slot_width = (state.config.profile.bar_gap_px as f32).max(1.0) + 2.0;
+                    let max_phys_bars = (limiting_dimension / min_slot_width).floor() as usize;
+
+                    if max_phys_bars != self.lod_debouncer.target_limit {
+                        self.lod_debouncer.target_limit = max_phys_bars;
+                        self.lod_debouncer.last_change = std::time::Instant::now();
+                    }
+
+                    let requested_bars = state.config.profile.num_bars;
+                    let effective_num_bars = requested_bars.min(self.lod_debouncer.target_limit);
+
+                    if self.lod_debouncer.last_change.elapsed() > self.lod_debouncer.delay {
+                        if state.lod_bar_limit != Some(effective_num_bars) {
+                            // Defer to mutation! We will apply this after the read-only lock drops.
+                            pending_lod_update = Some(effective_num_bars);
+                        }
+                    }
+
+                    // This is the limit we pass the drawing function for *this* frame
+                    let safe_bar_count = requested_bars.min(max_phys_bars).max(1);
 
                     // ======= Update Notification Banner =========
                     if show_banner{
@@ -450,11 +499,13 @@ impl eframe::App for SpectrumApp {
                     viz::draw_main_visualizer(
                         ui.painter(),
                         final_viz_rect,
-                        viz_data,
                         &state.config,
+                        &state.config.profile,
                         &colors,
+                        viz_data,
                         perf,
                         ui.input(|i| i.pointer.hover_pos()),
+                        safe_bar_count,
                     );
 
                     // Sonar Ping Effect
@@ -487,6 +538,14 @@ impl eframe::App for SpectrumApp {
                 if dismissed_click {
                     if let Ok(mut state) = self.shared_state.lock() {
                         state.update_dismissed = true;
+                    }
+                }
+
+                // Safely apply the LOD limit to wake up the FFT thread
+                if let Some(new_limit) = pending_lod_update {
+                    if let Ok(mut state) = self.shared_state.lock() {
+                        state.lod_bar_limit = Some(new_limit);
+                        tracing::debug!("[GUI] Debounce complete: Requested FFT rebuild for {} bars", new_limit);
                     }
                 }
 

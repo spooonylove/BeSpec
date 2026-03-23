@@ -9,57 +9,62 @@ use crate::fft_processor::FFTProcessor;
 /// The physical thickness (in points) of the peak indicator blocks
 const PEAK_THICKNESS: f32 = 2.0;
 
+
 pub fn draw_main_visualizer(
     painter: &Painter,
-    rect: Rect, 
-    data: &VisualizationData,
-    config: &AppConfig,
+    rect: Rect,
+    config: &crate::shared_state::AppConfig,
+    profile: &VisualProfile, 
     colors: &crate::shared_state::ColorProfile,
+    data: &VisualizationData,
     perf: &PerformanceStats,
     mouse_pos: Option<egui::Pos2>,
+    safe_bar_count: usize,
 ){
-    let profile = &config.profile;
-    let num_bars = data.bars.len();
 
-    // 1. Calculate Common Layout Helpers (Axis-Aware)
-    let (max_u, max_v) = match profile.orientation {
-        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown =>{
-            (rect.width(), rect.height())
-        }
-        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft =>{
-            (rect.height(), rect.width())
-        }
+    // 1. Calculate (Axis-Aware) raw dimensions
+    let max_u_raw = match profile.orientation {
+        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown =>rect.width(),
+        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft =>rect.height(),
     };
+    
+    // Cap the display bars to whichever is smaller:
+    //  - The actualy data we have (the length of the data.bar array), or
+    //  - What physically fits (the recommended safe_bar_count based on available window size)
+    let display_bars = safe_bar_count.min(data.bars.len());
 
+    // 2. Apply Pixel-Perfect Abstraction
+    let (bar_slot_width, margin) = calculate_pixel_perfect_layout(max_u_raw, display_bars);
+    let bar_width = (bar_slot_width - profile.bar_gap_px as f32).max(1.0);
+    
+    // 3. Snap the Bounding Box to the Grid
+    let total_used_u = bar_slot_width * display_bars as f32;
+    let mut perfect_rect = rect;
 
-
-    // Early exit if no data (unless in Oscope mode)
-    if num_bars == 0 && profile.visual_mode != VisualMode::Oscilloscope {
-        // Draw "Waiting..." in the center
-        let text_color = to_egui_color(colors.text).linear_multiply(0.5);
-        painter.text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "Waiting for audio...",
-            egui::FontId::proportional(20.0),
-            text_color,
-        );
-        
-        // NOW we can return, because we've drawn *something* to verify window position
-        return;
+    // Apply the margin in the appropriate orientation
+    match profile.orientation {
+        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => {
+            perfect_rect.min.x += margin;
+            perfect_rect.max.x = perfect_rect.min.x + total_used_u;
+        }
+        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => {
+            perfect_rect.min.y += margin;
+            perfect_rect.max.y = perfect_rect.min.y + total_used_u;
+        }
     }
 
-    // 1. Calculate Common Layout Helpers
-    let bar_slot_width = max_u / num_bars.max(1) as f32;
-    let bar_width = (bar_slot_width - profile.bar_gap_px as f32).max(1.0);
+    // Update max_u for hover math and line spectrums
+    let max_u = total_used_u;
 
+
+    /* 
     // DEBUG
     // [NEW] 1.5. Draw Background Plate
     // This ensures the window has a "body" even if the bars are 0 height.
     // We use a low opacity version of the background color.
     let bg_plate = to_egui_color(colors.background).linear_multiply(0.5);
     painter.rect_filled(rect, 4.0, bg_plate);
-
+`   */
 
     // 2. Handle mouse interactions (for frequency modes)
     // Calculate hovered index using the passed-in mouse_pos
@@ -77,7 +82,7 @@ pub fn draw_main_visualizer(
                 };
 
                 let index = (u_pos / bar_slot_width).floor() as usize;
-                if index < num_bars { Some(index)} else { None }
+                if index < display_bars { Some(index)} else { None }
             }else { None }
         })
     } else { None };
@@ -86,10 +91,10 @@ pub fn draw_main_visualizer(
     match profile.visual_mode {
             VisualMode::SolidBars => {
                 draw_solid_bars(
-                    &painter,
-                    rect,
+                    painter,
+                    perfect_rect,
                     profile,
-                    &colors,                 
+                    colors,                 
                     data,                    
                     bar_width,
                     bar_slot_width,
@@ -98,10 +103,10 @@ pub fn draw_main_visualizer(
             },
             VisualMode::SegmentedBars => {
                 draw_segmented_bars(
-                    &painter,
+                    painter,
                     rect,
                     profile,
-                    &colors,
+                    colors,
                     data,
                     bar_width,
                     bar_slot_width,
@@ -110,20 +115,20 @@ pub fn draw_main_visualizer(
             },
             VisualMode::LineSpectrum => {
                 draw_line_spectrum(
-                    &painter,
+                    painter,
                     rect,
                     profile,
-                    &colors,
+                    colors,
                     data,
                     hovered_bar_index,
                     config.noise_floor_db);
             },
             VisualMode::Oscilloscope => {
                 draw_oscilloscope(
-                    &painter,
+                    painter,
                     rect,
                     profile,
-                    &colors,
+                    colors,
                     data,
                 );
             },
@@ -1025,4 +1030,24 @@ fn map_uv_to_xy(
             egui::pos2(rect.right() - v, rect.bottom() - u)
         }
     }
+}
+
+/// Calculates integer-aligned slot widths and margins to prevent Moire artifacts
+pub fn calculate_pixel_perfect_layout(
+    max_pixels_raw: f32,
+    display_bars: usize,
+) -> (f32, f32) {
+    let display_bars_f32 = display_bars.max(1) as f32;
+
+    // Force the slot width to the nearest whole pixel, but never less than 1
+    let bar_slot_width = (max_pixels_raw / display_bars_f32).floor().max(1.0);
+
+    // Calculate how many pixels we are actually using
+    let total_used = bar_slot_width * display_bars_f32;
+
+    // Split the leftover pixels equally into a left/right (or top/bottom) margin
+    // We use .max(0.0) to prevetn negative margins if the window collapses to 0 width
+    let margin = ((max_pixels_raw - total_used) / 2.0).floor().max(0.0);
+
+    (bar_slot_width, margin)
 }
