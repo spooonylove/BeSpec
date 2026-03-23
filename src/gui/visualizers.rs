@@ -155,13 +155,13 @@ pub fn draw_solid_bars(
     let peak = to_egui_color(colors.peak).gamma_multiply(profile.bar_opacity);
 
     // Determine the maximum magnitude dimension for db_to_px scaling
-    let max_v = match profile.orientation {
-        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => rect.height(),
-        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => rect.width(),
+    let (max_u, max_v) = match profile.orientation {
+        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => (rect.width(), rect.height()),
+        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => (rect.height(), rect.width()),
     };
 
     // Protect against drawing phantom bars off-screen during rapid window shrink
-    let display_bars = (rect.width() / bar_slot_width).floor() as usize;
+    let display_bars = (max_u / bar_slot_width).floor() as usize;
 
     for (i, &db) in data.bars.iter().take(display_bars).enumerate() {
         // Calculate the logical baseline coordinate.
@@ -261,9 +261,9 @@ pub fn draw_segmented_bars(
     let peak_color = to_egui_color(colors.peak).linear_multiply(profile.bar_opacity);
 
     // Determine the maximum magnitude dimension for LOD and scalling
-    let max_v = match profile.orientation {
-        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => rect.height(),
-        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => rect.width(),
+    let (max_u, max_v) = match profile.orientation {
+        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => (rect.width(), rect.height()),
+        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => (rect.height(), rect.width()),
     };
 
     // 2. Calculate Segment Geometry
@@ -273,7 +273,7 @@ pub fn draw_segmented_bars(
 
     // --- Vertical LOD Dynamic Scaling Governor
     let max_segments_allowed = 150.0;
-    let requested_segments  = rect.height() / (seg_h + seg_gap);
+    let requested_segments  = max_v / (seg_h + seg_gap);
     
     if requested_segments > max_segments_allowed {
         let scale_factor = requested_segments / max_segments_allowed;
@@ -298,7 +298,7 @@ pub fn draw_segmented_bars(
     let mut master_mesh = egui::Mesh::default();
 
     // Pre-allocate memory to prevent mid-loop reallocation overhead
-    let max_segs_per_bar = (rect.height() / total_seg_h).ceil() as usize;
+    let max_segs_per_bar = (max_v / total_seg_h).ceil() as usize;
     let estimated_total = data.bars.len() * max_segs_per_bar;
     master_mesh.reserve_vertices(estimated_total * 4);
     master_mesh.reserve_triangles(estimated_total * 2);
@@ -322,7 +322,7 @@ pub fn draw_segmented_bars(
     
 
     // Protect against geometry overdraw during rapid resize events
-    let display_bars = (rect.width() / bar_slot_width).floor() as usize;
+    let display_bars = (max_u / bar_slot_width).floor() as usize;
 
     // 3. Render Each Bar
     for (i, &db) in data.bars.iter().take(display_bars).enumerate() {
