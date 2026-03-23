@@ -596,8 +596,13 @@ pub fn draw_inspector_overlay(
     let mut tooltip_pos = anchor_pos - (tooltip_size / 2.0);
 
     // Ensure the physical x,y, bounds never leave the window, regardless of orientation
-    tooltip_pos.x = tooltip_pos.x.clamp(rect.left() + 5.0, rect.right() - tooltip_size.x - 5.0);
-    tooltip_pos.y = tooltip_pos.y.clamp(rect.top() + 5.0, rect.bottom() - tooltip_size.y - 5.0);
+    let min_x = rect.left() + 5.0;
+    let max_x = (rect.right() - tooltip_size.x - 5.0).max(min_x);
+    tooltip_pos.x = tooltip_pos.x.clamp(min_x, max_x);
+
+    let min_y = rect.top() + 5.0;
+    let max_y = (rect.bottom() - tooltip_size.y - 5.0).max(min_y);
+    tooltip_pos.y = tooltip_pos.y.clamp(min_y, max_y);
     
 
     let tooltip_rect = Rect::from_min_size(tooltip_pos, tooltip_size);
