@@ -22,57 +22,30 @@ pub fn draw_main_visualizer(
     safe_bar_count: usize,
 ){
 
-    // 1. Calculate (Axis-Aware) raw dimensions
+    // Determine the primary axis length (in physical/logical points) based on orientation
     let max_u= match profile.orientation {
         crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown =>rect.width(),
         crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft =>rect.height(),
     };
     
-    // Cap the display bars to whichever is smaller:
-    //  - The actualy data we have (the length of the data.bar array), or
-    //  - What physically fits (the recommended safe_bar_count based on available window size)
-    let display_bars = safe_bar_count.min(data.bars.len());
+    // Safety clmap: Ensure we never try to draw more bars than we have data for,
+    // and never let display_bars hit 0 (which would cause a divide-by-zero panic)
+    let display_bars = safe_bar_count.min(data.bars.len()).max(1);
 
-    // EXACT floating-point width. No flooring, no margins
+    // --- ARCHITECTURAL DECISION: Pure Floating-Point Layout ---
+    // We intentionally DO NOT use .floor() or .round() here.
+    // Forcing this value to an integer causes either:
+    //   a) Massive dead-space margins at the edges of the window (if floored)
+    //   b) "Fat Bars" or uneven gaps (if we try to distribute the remainder)
+    // Instead, we calculate the sub-pixel width. We rely on the GPU's native
+    // anti-aliasing to gracefully blur the fractional pixel boundaries, resulting
+    // a smooth, edge-to-edge layout without (as much) structural banding
     let bar_slot_width = max_u / display_bars as f32;
-
-    // 2. Calculate bar dimensions, forcing it to at least 1px
-    //   Pixel-corrected bar width is calculate inside the drawing functions
     let bar_width = (bar_slot_width - profile.bar_gap_px as f32).max(1.0);
-    /* 
-    // 3. Snap the Bounding Box to the Grid
-    let total_used_u = bar_slot_width * display_bars as f32;
-    let mut perfect_rect = rect;
+  
 
-    // Apply the margin in the appropriate orientation
-    match profile.orientation {
-        crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown => {
-            perfect_rect.min.x += margin;
-            perfect_rect.max.x = perfect_rect.min.x + total_used_u;
-        }
-        crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => {
-            perfect_rect.min.y += margin;
-            perfect_rect.max.y = perfect_rect.min.y + total_used_u;
-        }
-    }
-
-    // Update max_u for hover math and line spectrums
-    let max_u = total_used_u;
-
-    */
-
-
-    /* 
-    // DEBUG
-    // [NEW] 1.5. Draw Background Plate
-    // This ensures the window has a "body" even if the bars are 0 height.
-    // We use a low opacity version of the background color.
-    let bg_plate = to_egui_color(colors.background).linear_multiply(0.5);
-    painter.rect_filled(rect, 4.0, bg_plate);
-`   */
-
-    // 2. Handle mouse interactions (for frequency modes)
-    // Calculate hovered index using the passed-in mouse_pos
+    // Resolve hover interactions. We use the exact float slot width to reverse calculate
+    // which mathematical slot the mouse cursor is currently residing in.
     let hovered_bar_index = if config.inspector_enabled && profile.visual_mode != VisualMode::Oscilloscope {
         mouse_pos.and_then(|pos| {
             if rect.contains(pos) {
@@ -92,74 +65,74 @@ pub fn draw_main_visualizer(
         })
     } else { None };
 
-    // 3. Dispatch Drawing Strategy
+    // 3. Dispatch to the specific rendering algorithm...
     match profile.visual_mode {
-            VisualMode::SolidBars => {
-                draw_solid_bars(
-                    painter,
-                    rect,
-                    profile,
-                    colors,                 
-                    data,                    
-                    bar_width,
-                    bar_slot_width,
-                    hovered_bar_index,
-                    config.noise_floor_db);
-            },
-            VisualMode::SegmentedBars => {
-                draw_segmented_bars(
-                    painter,
-                    rect,
-                    profile,
-                    colors,
-                    data,
-                    bar_width,
-                    bar_slot_width,
-                    hovered_bar_index,
-                    config.noise_floor_db);
-            },
-            VisualMode::LineSpectrum => {
-                draw_line_spectrum(
-                    painter,
-                    rect,
-                    profile,
-                    colors,
-                    data,
-                    hovered_bar_index,
-                    config.noise_floor_db);
-            },
-            VisualMode::Oscilloscope => {
-                draw_oscilloscope(
-                    painter,
-                    rect,
-                    profile,
-                    colors,
-                    data,
-                );
-            },
-        }
-        
-        // 7. Draw Overlays
-        if let Some(index) = hovered_bar_index {
-            draw_inspector_overlay(
+        VisualMode::SolidBars => {
+            draw_solid_bars(
+                painter,
+                rect,
+                profile,
+                colors,                 
+                data,                    
+                bar_width,
+                bar_slot_width,
+                hovered_bar_index,
+                config.noise_floor_db);
+        },
+        VisualMode::SegmentedBars => {
+            draw_segmented_bars(
                 painter,
                 rect,
                 profile,
                 colors,
                 data,
-                perf,
-                index,
+                bar_width,
                 bar_slot_width,
+                hovered_bar_index,
                 config.noise_floor_db);
-        }
-
-        if config.show_stats {
-            draw_stats_overlay(
+        },
+        VisualMode::LineSpectrum => {
+            draw_line_spectrum(
                 painter,
                 rect,
+                profile,
                 colors,
-                perf);
-        }
+                data,
+                hovered_bar_index,
+                config.noise_floor_db);
+        },
+        VisualMode::Oscilloscope => {
+            draw_oscilloscope(
+                painter,
+                rect,
+                profile,
+                colors,
+                data,
+            );
+        },
+    }
+        
+    // Render Overlay UI...
+    if let Some(index) = hovered_bar_index {
+        draw_inspector_overlay(
+            painter,
+            rect,
+            profile,
+            colors,
+            data,
+            perf,
+            index,
+            bar_slot_width,
+            config.noise_floor_db);
+    }
+
+    if config.show_stats {
+        draw_stats_overlay(
+            painter,
+            rect,
+            colors,
+            perf);
+    }
 }
 
 /// Draw solid gradient bars
@@ -184,37 +157,34 @@ pub fn draw_solid_bars(
         crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => rect.width(),
     };
 
-    for (i, &db) in data.bars.iter().enumerate() {
-        // --- Pixel Snappage ---
-        let exact_start = i as f32 * bar_slot_width;
-        let exact_end = (i + 1) as f32 * bar_slot_width;
+    // Protect against drawing phantom bars off-screen during rapid window shrink
+    let display_bars = (rect.width() / bar_slot_width).floor() as usize;
 
-        let snapped_start = exact_start.round();
-        let snapped_end = exact_end.round();
+    for (i, &db) in data.bars.iter().take(display_bars).enumerate() {
+        // Calculate the logical baseline coordinate.
+        // By keeping this as a pure float (eg 4.25, 8.50), the GPU will apply
+        // sub-pixel rendering. This avoids integer-snapping artifacts where gaps
+        // appear rhythmically wider or narrower across the screen.
+        let u = i as f32 * bar_slot_width;
+        
 
-        let actual_width = (snapped_end - snapped_start - profile.bar_gap_px as f32).max(1.0);
-        let u = snapped_start;
-        // ----------------------
-
+        // Map audio dB to a physical screen dimension
         let bar_v = db_to_px(db, noise_floor_db, max_v);
         let norm_height = (bar_v / max_v).clamp(0.0, 1.0);
         
-        // Gradient Base Color
+        // Calculate gradient coloring
         let mut bar_color = lerp_color(low, high, norm_height);
         if Some(i) == hovered_index {
             bar_color = lerp_color(bar_color, egui::Color32::WHITE, 0.5);
         }
 
-        // --- Logical to Physical Mapping
-        // Base vertices (magnitude = 0.0)
+        // Map logical u/v coordinates to physical x/y coordinates based on user orientation
         let p_base_left = map_uv_to_xy(rect, u, 0.0, profile.orientation);
-        let p_base_right = map_uv_to_xy(rect, u + actual_width, 0.0, profile.orientation);
-
-        // Tip vertices (magnitude = bar_v)
-        let p_tip_right = map_uv_to_xy(rect, u + actual_width, bar_v, profile.orientation);
+        let p_base_right = map_uv_to_xy(rect, u + bar_width, 0.0, profile.orientation);
+        let p_tip_right = map_uv_to_xy(rect, u + bar_width, bar_v, profile.orientation);
         let p_tip_left = map_uv_to_xy(rect, u, bar_v, profile.orientation);
 
-        // Draw Mesh
+        // Construct and submit the immmediate-mode mesh for this bar
         use egui::epaint::Vertex;
         let mut mesh = egui::Mesh::default();
 
@@ -235,7 +205,7 @@ pub fn draw_solid_bars(
             
             // Just grab the two opposing logical corners
             let p1 = map_uv_to_xy(rect, u, peak_v, profile.orientation);
-            let p2 = map_uv_to_xy(rect, u + actual_width, peak_v + peak_thickness, profile.orientation);
+            let p2 = map_uv_to_xy(rect, u + bar_width, peak_v + peak_thickness, profile.orientation);
 
             // from_two_pos automatically handles sorting the coordinates, 
             // no matter which cardinal direction they were mapped to!
@@ -348,8 +318,15 @@ pub fn draw_segmented_bars(
     };
     
 
+    // Protect against geometry overdraw during rapid resize events
+    let display_bars = (rect.width() / bar_slot_width).floor() as usize;
+
     // 3. Render Each Bar
     for (i, &db) in data.bars.iter().enumerate() {
+            // Retain pure floating-point precision for horizontal layout.
+            // Vertically, the segments are strictly pixel-snapped (via the LOD governor)
+            // to ensure crisp LED boxes, but horizontally we allow sub-pixel blending to 
+            // maintain an exact edge-to-edge fit across the window
             let u = i as f32 * bar_slot_width;
             
             // Convert dB to logical v-axis magnitude
