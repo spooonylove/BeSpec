@@ -55,7 +55,7 @@ pub fn draw_main_visualizer(
                         pos.x - rect.left()
                     }
                     crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => {
-                        rect.bottom() - pos.y
+                        pos.y - rect.top()
                     } 
                 };
 
