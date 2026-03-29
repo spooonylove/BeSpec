@@ -5,7 +5,6 @@ use crate::shared_state::{SharedState};
 use crate::shared_state::{ColorProfile, MediaDisplayMode, VisualMode, VisualProfile};
 use crate::shared_state::ColorRef;use crate::media::MediaController;
 use crate::gui::{theme::*, visualizers};
-use crate::fft_config::FIXED_FFT_SIZE;
 
 /// Settings Tab Definition
 #[derive(PartialEq, Debug)]
@@ -448,11 +447,11 @@ pub fn show_settings_window(
     ui.horizontal(|ui| {
         let colors = state.config.resolve_colors(&state.user_color_presets);
         let highlight = to_egui_color(colors.high);
-        ui_tab_button(ui, " 🎨 Visual ", SettingsTab::Visual, active_tab, highlight);
-        ui_tab_button(ui, " 🔊 Audio ", SettingsTab::Audio, active_tab, highlight);
-        ui_tab_button(ui, " 🌈 Colors ", SettingsTab::Colors, active_tab, highlight);
-        ui_tab_button(ui, " 🪟 Window ", SettingsTab::Window, active_tab, highlight);
-        ui_tab_button(ui, " 📊 Stats ", SettingsTab::Performance, active_tab, highlight);
+        ui_tab_button(ui, " Visual ", SettingsTab::Visual, active_tab, highlight);
+        ui_tab_button(ui, " Colors ", SettingsTab::Colors, active_tab, highlight);
+        ui_tab_button(ui, " Audio ", SettingsTab::Audio, active_tab, highlight);
+        ui_tab_button(ui, " Window ", SettingsTab::Window, active_tab, highlight);
+        ui_tab_button(ui, " Stats ", SettingsTab::Performance, active_tab, highlight);
     });
     ui.separator();
 
@@ -474,46 +473,56 @@ pub fn settings_tab_visual(
     new_preset_name: &mut String
 ) {
     let grid_spacing = egui::vec2(40.0, 12.0); 
-        ui.horizontal(|ui| {
-            ui.label("Visual Profile:");
-            egui::ComboBox::from_id_salt("viz_profile_combo")
-                .selected_text(&state.config.profile.name)
-                .show_ui(ui, |ui| {
-                    // --- User Visual Presets ---
-                    let user_visuals = state.user_visual_presets.clone();
-                    if !user_visuals.is_empty() {
-                        let _ = ui.selectable_label(false, egui::RichText::new("--- User Presets ---").strong());
-                        for vp in &user_visuals {
-                            ui.horizontal(|ui| {
-                                if ui.selectable_label(state.config.profile.name == vp.name, &vp.name).clicked() {
-                                    state.config.profile = vp.clone();
-                                }
-                                // Delete button
-                                if ui.small_button("🗑").clicked() {
-                                    let _ = crate::shared_state::AppConfig::delete_user_visual_preset(&vp.name);
-                                    // Remove from memory immediately
-                                    state.user_visual_presets.retain(|p| p.name != vp.name);
-                                }
-                            });
+        // === 1. PRESET MANAGER BLOCK ===
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Preset Manager").strong());
+            ui.add_space(4.0);
+            
+            ui.horizontal(|ui| {
+                ui.label("Visual Profile:");
+                egui::ComboBox::from_id_salt("viz_profile_combo")
+                    .selected_text(&state.config.profile.name)
+                    .show_ui(ui, |ui| {
+                        // --- User Visual Presets ---
+                        let user_visuals = state.user_visual_presets.clone();
+                        if !user_visuals.is_empty() {
+                            let _ = ui.selectable_label(false, egui::RichText::new("--- User Presets ---").strong());
+                            for vp in &user_visuals {
+                                ui.horizontal(|ui| {
+                                    if ui.selectable_label(state.config.profile.name == vp.name, &vp.name).clicked() {
+                                        state.config.profile = vp.clone();
+                                    }
+                                    // Delete button
+                                    if ui.small_button("🗑").clicked() {
+                                        let _ = crate::shared_state::AppConfig::delete_user_visual_preset(&vp.name);
+                                        // Remove from memory immediately
+                                        state.user_visual_presets.retain(|p| p.name != vp.name);
+                                    }
+                                });
+                            }
+                            ui.separator();
                         }
-                        ui.separator();
-                    }
-                    // --- Built-in Visual Presets ---
-                    let _ = ui.selectable_label(false, egui::RichText::new("--- Built-in ---").strong());
-                    for vp in VisualProfile::built_in() {
-                        if ui.selectable_label(state.config.profile.name == vp.name, &vp.name).clicked() {
-                            state.config.profile = vp;
+                        // --- Built-in Visual Presets ---
+                        let _ = ui.selectable_label(false, egui::RichText::new("--- Built-in ---").strong());
+                        for vp in VisualProfile::built_in() {
+                            if ui.selectable_label(state.config.profile.name == vp.name, &vp.name).clicked() {
+                                state.config.profile = vp;
+                            }
                         }
+                    });
+                
+                // Push save button to the right for a cleaner look
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("💾 Save").on_hover_text("Save Current Settings to Profile").clicked() { 
+                        *save_target = SaveTarget::Visual;
+                        *new_preset_name = state.config.profile.name.clone(); // Pre-fill
                     }
                 });
-            if ui.button("💾").on_hover_text("Save Profile").clicked() { 
-                *save_target = SaveTarget::Visual;
-                *new_preset_name = state.config.profile.name.clone(); // Pre-fill
-            }
-        });
+            });
 
         // -- Save Popup --
         if *save_target == SaveTarget::Visual {
+            ui.add_space(4.0);
             ui_save_popup(ui, new_preset_name, |name| {
                 state.config.profile.name = name.clone();
                 if let Err(e) = crate::shared_state::AppConfig::save_user_visual_preset(&state.config.profile) {
@@ -527,8 +536,11 @@ pub fn settings_tab_visual(
                 }
             }, save_target);
         }
+    });
 
-        ui.separator();
+    ui.add_space(10.0);
+    ui.heading("Active Settings");
+    ui.add_space(4.0);
 
         // --- Visual Controls ---
         ui.group(|ui| {
@@ -615,8 +627,18 @@ pub fn settings_tab_visual(
                 }
 
                 ui.label("Font Style");
+                
+                // Match the internal enum to the user-friendly display text
+                let font_display_text = match state.config.profile.overlay_font {
+                    crate::shared_state::ThemeFont::Mini => "Mini",
+                    crate::shared_state::ThemeFont::Small => "Small",
+                    crate::shared_state::ThemeFont::Medium => "Standard",
+                    crate::shared_state::ThemeFont::Large => "Large",
+                    crate::shared_state::ThemeFont::Monospace => "Retro (Mono)",
+                };
+                
                 egui::ComboBox::from_id_salt("font_combo")
-                    .selected_text(format!("{:?}", state.config.profile.overlay_font))
+                    .selected_text(font_display_text)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut state.config.profile.overlay_font, crate::shared_state::ThemeFont::Medium, "Standard");
                         ui.selectable_value(&mut state.config.profile.overlay_font, crate::shared_state::ThemeFont::Monospace, "Retro (Mono)");
@@ -627,87 +649,60 @@ pub fn settings_tab_visual(
 
         ui.add_space(10.0);
         ui.group(|ui| {
-            ui.label("Aggregation Mode:");
-            ui.horizontal(|ui| {
-                ui.radio_value(&mut state.config.profile.aggregation_mode, crate::shared_state::AggregationMode::Peak, "Peak");
-                ui.radio_value(&mut state.config.profile.aggregation_mode, crate::shared_state::AggregationMode::Average, "Average");
-            });
+            // Hardcode to Aggregation Mode to Peak to overwrite anyt old saved profiles silently
+            state.config.profile.aggregation_mode = crate::shared_state::AggregationMode::Peak;
+            
+            ui.label("Baseline Orientation:");
+            
+            // Clean D-Pad style toggle buttons
+            let current_colors = state.config.resolve_colors(&state.user_color_presets);
+            let highlight = crate::gui::theme::to_egui_color(current_colors.high);
 
-            ui.add_space(5.0);
-            ui.label("Orientation:");
-            //REFACTOR PATCH
-            //ui.checkbox(&mut state.config.profile.inverted_spectrum, "Inverted (Top-Down)");
             ui.horizontal(|ui| {
-                ui.label("DEBUG Orientation:");
-                ui.radio_value(&mut state.config.profile.orientation, crate::shared_state::Orientation::BottomUp, "Up");
-                ui.radio_value(&mut state.config.profile.orientation, crate::shared_state::Orientation::TopDown, "Down");
-                ui.radio_value(&mut state.config.profile.orientation, crate::shared_state::Orientation::LeftRight, "Right");
-                ui.radio_value(&mut state.config.profile.orientation, crate::shared_state::Orientation::RightLeft, "Left");
+                let o = &mut state.config.profile.orientation;
+
+                // Helper closure to draw theme-colored toggle buttons
+                let mut dir_btn = |label: &str, target: crate::shared_state::Orientation| {
+                    let is_selected = *o == target;
+                    let text_color = if is_selected {egui::Color32::BLACK} else { ui.visuals().text_color() };
+
+                    let response = ui.add(
+                        egui::Button::new(egui::RichText::new(label).color(text_color))
+                            .fill(if is_selected {highlight} else { egui::Color32::TRANSPARENT })
+                            .frame(is_selected)
+                            .rounding(8.0)
+                    );
+
+                    if response.clicked() { *o = target; }
+
+                    // Subtle hover effect for inactive buttons
+                    if response.hovered() && !is_selected {
+                        ui.painter().rect_filled(
+                            response.rect,
+                            8.0,
+                            ui.visuals().widgets.hovered.bg_fill.linear_multiply(0.2)
+                        );
+                    }
+                };
+
+                dir_btn(" ⬆ Bottom-Up ", crate::shared_state::Orientation::BottomUp);
+                dir_btn(" ⬇ Top-Down ", crate::shared_state::Orientation::TopDown);
+                dir_btn(" ➡ Left-Right ", crate::shared_state::Orientation::LeftRight);
+                dir_btn(" ⬅ Right-Left ", crate::shared_state::Orientation::RightLeft);
             });
         });
 }
 
 pub fn settings_tab_audio(ui: &mut egui::Ui, state: &mut SharedState) {
     let grid_spacing = egui::vec2(40.0, 12.0);
-    ui.heading("Audio Configuration");
-    ui.add_space(5.0);
-
-    ui.group(|ui| {
-        egui::Grid::new("audio_grid")
-            .num_columns(2)
-            .spacing(grid_spacing)
-            .striped(true)
-            .show(ui, |ui| {
-                ui.label("FFT Window Size");
-                ui.label(format!("{} samples (fixed)", FIXED_FFT_SIZE));
-                ui.end_row();
-
-                ui.label("Sensitivity");
-                ui.add(egui::Slider::new(&mut state.config.profile.sensitivity, 0.01..=100.0)
-                    .logarithmic(true)
-                    .custom_formatter(|v, _| format!("{:+.1} dB", 20.0 * v.log10()))
-                );
-                ui.end_row();
-
-                ui.label("Noise Floor");
-                ui.add(egui::Slider::new(&mut state.config.noise_floor_db, -120.0..=-20.0).suffix(" dB"));
-                ui.end_row();
-            });
-    });
 
     ui.add_space(10.0);
-    ui.heading("Response Timing");
+
+    // === 1. Hardware & Input ===
     ui.group(|ui| {
-        egui::Grid::new("timing_grid")
-            .num_columns(2)
-            .spacing(grid_spacing)
-            .striped(true)
-            .show(ui, |ui| {
-                ui.label("Bar Attack (Rise)");
-                ui.add(egui::Slider::new(&mut state.config.profile.attack_time_ms, 1.0..=500.0).suffix(" ms"));
-                ui.end_row();
-
-                ui.label("Bar Release (Fall)");
-                ui.add(egui::Slider::new(&mut state.config.profile.release_time_ms, 1.0..=2000.0).suffix(" ms"));
-                ui.end_row();
-
-                if state.config.profile.show_peaks {
-                    ui.label("Peak Hold Time");
-                    ui.add(egui::Slider::new(&mut state.config.profile.peak_hold_time_ms, 0.0..=2000.0).suffix(" ms"));
-                    ui.end_row();
-
-                    ui.label("Peak Fall Speed");
-                    ui.add(egui::Slider::new(&mut state.config.profile.peak_release_time_ms, 10.0..=2000.0).suffix(" ms"));
-                    ui.end_row();
-                }
-            });
-    });
-
-    ui.add_space(10.0);
-    ui.heading("Input Source");
-    ui.add_space(5.0);
-
-    ui.group(|ui| {
+        ui.label(egui::RichText::new("Hardware & Input").strong());
+        ui.separator();
+        
         egui::Grid::new("audio_source_grid")
             .num_columns(2)
             .spacing(grid_spacing)
@@ -715,7 +710,6 @@ pub fn settings_tab_audio(ui: &mut egui::Ui, state: &mut SharedState) {
                 ui.label("Device");
                 
                 ui.horizontal(|ui| {
-                    // Clone data to satisfy borrow checker (state is already locked)
                     let (current_sel, devices) = {
                         (state.config.selected_device.clone(), state.audio_devices.clone())
                     };
@@ -725,8 +719,7 @@ pub fn settings_tab_audio(ui: &mut egui::Ui, state: &mut SharedState) {
                         .selected_text(&current_sel)
                         .width(220.0)
                         .show_ui(ui, |ui| {
-                            
-                            // 1. Default Option
+                            // Default Option
                             if ui.selectable_label(current_sel == "Default", "Default System Device").clicked() {
                                 tracing::info!("[GUI] User selected device: Default");
                                 state.config.selected_device = "Default".to_string();
@@ -735,7 +728,7 @@ pub fn settings_tab_audio(ui: &mut egui::Ui, state: &mut SharedState) {
                             
                             ui.separator();
 
-                            // 2. Enumerated Hardware Devices
+                            // Enumerated Hardware Devices
                             for name in devices {
                                 let is_selected = current_sel == name;
                                 if ui.selectable_label(is_selected, &name).clicked() {
@@ -753,6 +746,76 @@ pub fn settings_tab_audio(ui: &mut egui::Ui, state: &mut SharedState) {
                     }
                 });
                 ui.end_row();
+
+                ui.label("FFT Window Size");
+                ui.label(egui::RichText::new(format!("{} samples (fixed)", crate::fft_config::FIXED_FFT_SIZE)).weak());
+                ui.end_row();
+            });
+    });
+
+    ui.add_space(10.0);
+
+    // === 2. Signal Processing ===
+    ui.group(|ui| {
+        ui.label(egui::RichText::new("Signal Processing").strong());
+        ui.separator();
+        
+        egui::Grid::new("audio_grid")
+            .num_columns(2)
+            .spacing(grid_spacing)
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label("Sensitivity");
+                ui.add(egui::Slider::new(&mut state.config.profile.sensitivity, 0.01..=100.0)
+                    .logarithmic(true)
+                    .custom_formatter(|v, _| format!("{:+.1} dB", 20.0 * v.log10()))
+                    .custom_parser(|s| {
+                        // Strip out "dB", "+", and whitespace so the user can type "10", "+10", or "10 dB"
+                        let clean = s.replace("dB", "").replace("+", "").replace(" ", "");
+                        clean.parse::<f64>().ok().map(|db| 10.0_f64.powf(db / 20.0))
+                    })
+                );
+                ui.end_row();
+
+                ui.label("Noise Floor");
+                ui.add(egui::Slider::new(&mut state.config.noise_floor_db, -120.0..=-20.0).suffix(" dB"));
+                ui.end_row();
+            });
+    });
+
+    ui.add_space(10.0);
+
+    // === 3. Response Timing ===
+    ui.group(|ui| {
+        ui.label(egui::RichText::new("Envelope Settings").strong());
+        ui.separator();
+        
+        egui::Grid::new("timing_grid")
+            .num_columns(2)
+            .spacing(grid_spacing)
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label("Bar Attack (Rise)");
+                ui.add(egui::Slider::new(&mut state.config.profile.attack_time_ms, 1.0..=500.0).suffix(" ms"));
+                ui.end_row();
+
+                ui.label("Bar Release (Fall)");
+                ui.add(egui::Slider::new(&mut state.config.profile.release_time_ms, 1.0..=2000.0).suffix(" ms"));
+                ui.end_row();
+
+                // Grab the boolean state to control widget availability
+                let peaks_enabled = state.config.profile.show_peaks;
+
+                // Use `add_enabled` so the UI elements remain visible but greyed out when peaks are disabled
+                ui.add_enabled(peaks_enabled, egui::Label::new("Peak Hold Time"))
+                  .on_disabled_hover_text("Enable 'Show Peaks' in the Visual tab to use this.");
+                ui.add_enabled(peaks_enabled, egui::Slider::new(&mut state.config.profile.peak_hold_time_ms, 0.0..=2000.0).suffix(" ms"));
+                ui.end_row();
+
+                ui.add_enabled(peaks_enabled, egui::Label::new("Peak Fall Speed"))
+                  .on_disabled_hover_text("Enable 'Show Peaks' in the Visual tab to use this.");
+                ui.add_enabled(peaks_enabled, egui::Slider::new(&mut state.config.profile.peak_release_time_ms, 10.0..=2000.0).suffix(" ms"));
+                ui.end_row();
             });
     });
 }
@@ -763,52 +826,64 @@ pub fn settings_tab_colors(
     save_target: &mut SaveTarget,
     new_preset_name: &mut String
 ) {
-        let grid_spacing = egui::vec2(40.0, 12.0); 
-        let mut current_colors = state.config.resolve_colors(&state.user_color_presets);
-        let initial_colors = current_colors.clone();
-        let bar_opacity = state.config.profile.bar_opacity;
+    let grid_spacing = egui::vec2(40.0, 12.0); 
+    let mut current_colors = state.config.resolve_colors(&state.user_color_presets);
+    let initial_colors = current_colors.clone();
+    let bar_opacity = state.config.profile.bar_opacity;
 
-        // -- Preset Loader --
+    // === 1. PRESET MANAGER BLOCK ===
+    ui.group(|ui| {
+        ui.label(egui::RichText::new("Preset Manager").strong());
+        ui.add_space(4.0);
+        
         ui.horizontal(|ui| {
-        ui.label("Preset:");
-        let combo_text = match &state.config.profile.color_link {
-            ColorRef::Preset(name) => name.clone(),
-            ColorRef::Custom(_) => "Custom (Unsaved)".to_string(),
-        };
-        egui::ComboBox::from_id_salt("color_preset_combo").selected_text(combo_text).show_ui(ui, |ui| {
-                let user_presets = state.user_color_presets.clone();
-                if !user_presets.is_empty() {
-                    let _ = ui.selectable_label(false, egui::RichText::new("--- User Presets ---").strong());
-                    for p in &user_presets {
-                        ui.horizontal(|ui| {
-                            if ui.selectable_label(false, &p.name).clicked() {
-                                state.config.profile.color_link = ColorRef::Preset(p.name.clone());
-                                state.config.profile.background = None;
-                            }
-                            if ui.small_button("🗑").clicked() {
-                                let _ = crate::shared_state::AppConfig::delete_user_color_preset(&p.name);
-                                state.user_color_presets.retain(|x| x.name != p.name);
-                            }
-                        });
+            ui.label("Preset:");
+            let combo_text = match &state.config.profile.color_link {
+                ColorRef::Preset(name) => name.clone(),
+                ColorRef::Custom(_) => "Custom (Unsaved)".to_string(),
+            };
+            
+            egui::ComboBox::from_id_salt("color_preset_combo")
+                .selected_text(combo_text)
+                .show_ui(ui, |ui| {
+                    let user_presets = state.user_color_presets.clone();
+                    if !user_presets.is_empty() {
+                        let _ = ui.selectable_label(false, egui::RichText::new("--- User Presets ---").strong());
+                        for p in &user_presets {
+                            ui.horizontal(|ui| {
+                                if ui.selectable_label(false, &p.name).clicked() {
+                                    state.config.profile.color_link = ColorRef::Preset(p.name.clone());
+                                    state.config.profile.background = None;
+                                }
+                                if ui.small_button("🗑").clicked() {
+                                    let _ = crate::shared_state::AppConfig::delete_user_color_preset(&p.name);
+                                    state.user_color_presets.retain(|x| x.name != p.name);
+                                }
+                            });
+                        }
+                        ui.separator();
                     }
-                    ui.separator();
-                }
-                let _ = ui.selectable_label(false, egui::RichText::new("--- Built-in ---").strong());
-                for cp in ColorProfile::built_in() {
-                    if ui.selectable_label(false, &cp.name).clicked() {
-                        state.config.profile.color_link = ColorRef::Preset(cp.name);
-                        state.config.profile.background = None;
+                    let _ = ui.selectable_label(false, egui::RichText::new("--- Built-in ---").strong());
+                    for cp in ColorProfile::built_in() {
+                        if ui.selectable_label(false, &cp.name).clicked() {
+                            state.config.profile.color_link = ColorRef::Preset(cp.name);
+                            state.config.profile.background = None;
+                        }
                     }
+                });
+                
+            // Push save button to the right for a cleaner look
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("💾 Save").on_hover_text("Save as User Preset").clicked() {
+                    *save_target = SaveTarget::Color;
+                    new_preset_name.clear(); // Colors usually saved as new name
                 }
             });
-        if ui.button("💾").on_hover_text("Save as User Preset").clicked() {
-                *save_target = SaveTarget::Color;
-                new_preset_name.clear(); // Colors usually saved as new name
-        }
         });
 
         // -- Save Popup --
         if *save_target == SaveTarget::Color {
+            ui.add_space(4.0);
             ui_save_popup(ui, new_preset_name, |name: String| {
                 let mut new_profile = current_colors.clone();
                 new_profile.name = name.clone();
@@ -825,7 +900,11 @@ pub fn settings_tab_colors(
                 }
             }, save_target);
         }
-        ui.separator();
+    });
+
+    ui.add_space(10.0);
+    ui.heading("Active Colors");
+    ui.add_space(4.0);
 
         // -- Editors --
         let mut egui_low = to_egui_color(current_colors.low);
@@ -899,40 +978,62 @@ pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
         ui.add_space(10.0); // Margin from top
         
         let grid_spacing = egui::vec2(40.0, 12.0);
-
-        ui.heading("Window Configuration");
-        ui.add_space(5.0);
         
+        // === 1. Appearance & Decorations ===
         ui.group(|ui| {
-            ui.label(egui::RichText::new("Decorations & Style").strong());
+            ui.label(egui::RichText::new("Appearance & Decorations").strong());
             ui.separator();
             
-            if ui.checkbox(&mut state.config.profile.beos_enabled, "Enable BeOS / Haiku Mode").changed() {
-                if state.config.profile.beos_enabled && state.config.beos_tab_offset < 1.0 {
-                    state.config.beos_tab_offset = 20.0;
-                }
-            }
+            egui::Grid::new("window_appearance_grid")
+                .num_columns(2)
+                .spacing(grid_spacing)
+                .min_col_width(150.0)
+                .show(ui, |ui| {
+                    // OS Title Bar
+                    ui.label("OS Title Bar");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.checkbox(&mut state.config.window_decorations, "Show Title Bar").changed() {
+                            let show = state.config.window_decorations;
+                            ui.ctx().send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Decorations(show));
+                        }
+                    });
+                    ui.end_row();
+
+                    // BeOS Mode
+                    ui.label("Custom Theme");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.checkbox(&mut state.config.profile.beos_enabled, "Enable BeOS / Haiku Mode").changed() {
+                            if state.config.profile.beos_enabled && state.config.beos_tab_offset < 1.0 {
+                                state.config.beos_tab_offset = 20.0;
+                            }
+                        }
+                    });
+                    ui.end_row();
+                });
 
             if state.config.profile.beos_enabled {
+                ui.add_space(4.0);
                 ui.indent("beos_help", |ui| {
                     ui.spacing_mut().item_spacing.y = 2.0;
-                    ui.label("• Shift + Drag tab to slide it horizontally");
-                    ui.label("• Double-click tab to collapse/shutter window");
+                    ui.label(egui::RichText::new("• Shift + Drag tab to slide it horizontally").small().weak());
+                    ui.label(egui::RichText::new("• Double-click tab to collapse/shutter window").small().weak());
                 });
             }
         });
 
         ui.add_space(10.0);
+
+        // === 2. Interaction & Behavior ===
         ui.group(|ui| {
-            ui.label(egui::RichText::new("Behavior").strong());
+            ui.label(egui::RichText::new("Interaction & Behavior").strong());
             ui.separator();
             
-            egui::Grid::new("window_grid")
+            egui::Grid::new("window_behavior_grid")
                 .num_columns(2)
                 .spacing(grid_spacing)
-                .min_col_width(150.0) // Ensures the left labels have enough breathing room
+                .min_col_width(150.0)
                 .show(ui, |ui| {
-                    // --- Row: Always on Top ---
+                    // Always on Top
                     ui.label("Main Window");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.checkbox(&mut state.config.always_on_top, "Always on Top").changed() {
@@ -946,15 +1047,17 @@ pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
                     });
                     ui.end_row();
 
-                    // --- Row: Shortcut Picker ---
-                    ui.label("Minimize Shortcut (Ctrl + )");
+                    // Shortcut
+                    ui.label("Minimize Shortcut");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Call the new widget from our widgets module
-                        crate::gui::widgets::key_binder_widget(ui, &mut state.config.minimize_key);
+                        ui.horizontal(|ui| {
+                            ui.label("Ctrl + ");
+                            crate::gui::widgets::key_binder_widget(ui, &mut state.config.minimize_key);
+                        });
                     });
                     ui.end_row();
 
-                    // --- Row: Ghost Mode ---
+                    // Ghost Mode
                     ui.label("Ghost Mode 👻");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add(egui::Label::new("❓").sense(egui::Sense::hover()))
@@ -962,19 +1065,23 @@ pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
                         ui.label("Enable via Lock Icon 🔒");
                     });
                     ui.end_row();
+                });
+        });
 
-                    // --- Row: Decorations ---
-                    ui.label("Decorations");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.checkbox(&mut state.config.window_decorations, "Show Title Bar").changed() {
-                            let show = state.config.window_decorations;
-                            ui.ctx().send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Decorations(show));
-                        }
-                    });
-                    ui.end_row();
+        ui.add_space(10.0);
 
-                    // --- Row: Media Mode ---
-                    ui.label("Now Playing");
+        // === 3. Media & Integration ===
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Media Integration").strong());
+            ui.separator();
+
+            egui::Grid::new("media_integration_grid")
+                .num_columns(2)
+                .spacing(grid_spacing)
+                .min_col_width(150.0)
+                .show(ui, |ui| {
+                    // Media Mode
+                    ui.label("Now Playing Overlay");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         egui::ComboBox::from_id_salt("media_mode")
                             .selected_text(format!("{:?}", state.config.media_display_mode))
@@ -986,7 +1093,7 @@ pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
                     });
                     ui.end_row();
 
-                    // --- Row: Privacy Metadata Mode --- 
+                    // Privacy
                     ui.label("Privacy");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.checkbox(&mut state.config.log_media_metadata, "Log Media Metadata")
@@ -995,6 +1102,7 @@ pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
                     ui.end_row();
                 });
         });
+
         ui.add_space(10.0); // Bottom padding
 
         ui.separator();
@@ -1010,20 +1118,41 @@ pub fn settings_tab_window(ui: &mut egui::Ui, state: &mut SharedState) {
 }
 
 pub fn settings_tab_performance(ui: &mut egui::Ui, state: &mut SharedState) {
+let grid_spacing = egui::vec2(40.0, 12.0);
 
-    
+    ui.add_space(10.0); // Match top margin of other tabs
+
+    // === 1. Overlay Controls ===
     ui.group(|ui| {
-        ui.heading("Performance Monitoring");
-        ui.checkbox(&mut state.config.show_stats, "Show Performance Overlay");
-        ui.small("Displays FPS, FFT latency, and processing times.");
+        ui.label(egui::RichText::new("On-Screen HUD").strong());
+        ui.separator();
         
-        ui.add_space(10.0);
-        ui.heading("Diagnostics");
+        ui.checkbox(&mut state.config.show_stats, "Show Performance Overlay");
+        
+        // Explainer text matching the exact order of the overlay render
+        ui.add_space(4.0);
+        ui.indent("stats_explainer", |ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.label(egui::RichText::new("Displays real-time metrics in the top-left corner:").small());
+            ui.label(egui::RichText::new("• FPS: Visual rendering speed").small());
+            ui.label(egui::RichText::new("• FFT: Average time to process an audio block").small());
+            ui.label(egui::RichText::new("• Min/Max: Fastest and slowest recent processing times").small());
+            ui.label(egui::RichText::new("• FFT Res: Mathematical engine precision (Hertz per FFT bin)").small());
+            ui.label(egui::RichText::new("• Bars: Actual bars drawn vs. Profile requested limit").small());
+        });
+    });
+
+    ui.add_space(10.0);
+
+    // === 2. Internal Engine Diagnostics ===
+    ui.group(|ui| {
+        ui.label(egui::RichText::new("Audio Engine Diagnostics").strong());
+        ui.separator();
         
         let info = &state.performance.fft_info;
         egui::Grid::new("perf_grid")
             .num_columns(2)
-            .spacing([20.0, 10.0])
+            .spacing(grid_spacing)
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Sample Rate");
@@ -1031,7 +1160,7 @@ pub fn settings_tab_performance(ui: &mut egui::Ui, state: &mut SharedState) {
                 ui.end_row();
 
                 ui.label("FFT Size");
-                ui.label(format!("{} samples (fixed)", info.fft_size));
+                ui.label(format!("{} samples", info.fft_size));
                 ui.end_row();
 
                 ui.label("Frequency Resolution");

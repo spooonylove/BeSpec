@@ -271,7 +271,7 @@ fn start_fft_processing(
                                 release_time_ms: 100.0,
                                 peak_hold_time_ms: 50.0,
                                 peak_release_time_ms: 200.0,
-                                aggregation_mode: crate::shared_state::AggregationMode::Average,
+                                aggregation_mode: crate::shared_state::AggregationMode::Peak,
                             }
                         };
 

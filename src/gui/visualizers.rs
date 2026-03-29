@@ -640,14 +640,14 @@ pub fn draw_stats_overlay(
     let pos = rect.left_top() + egui::vec2(10.0, 10.0);
     
     let text = format!(
-        "FPS: {:.0}\nFFT: {:.1}ms\nMin/Max: {:.1}/{:.1}ms\nRes: {:.1}Hz\nBars: {} / {}",
+        "FPS: {:.0}\nFFT: {:.1}ms\nMin/Max: {:.1}/{:.1}ms\nFFT Res: {:.2} Hz/bin\nBars: {} / {}",
         perf.gui_fps,
         perf.fft_ave_time.as_micros() as f32 / 1000.0,
         perf.fft_min_time.as_micros() as f32 / 1000.0,
         perf.fft_max_time.as_micros() as f32 / 1000.0,
-        perf.fft_info.frequency_resolution,
-        display_bars,      // <-- Actual bars drawn on screen
-        requested_bars     // <-- What the user's profile is asking for
+        perf.fft_info.frequency_resolution, // Strictly the raw FFT math
+        display_bars,      
+        requested_bars     
     );
 
     // Reuse Inspector colors for consistency
