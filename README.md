@@ -21,6 +21,8 @@ BeSpec captures system audio loopback and renders a customizable frequency spect
     * Top-Down: Gravity-defying bars anchored to the top of the screen.
     * Left-to-Right: A horizontal "sideways" flow anchored to the left.
     * Right-to-Left: Anchored to the right, perfect for dual-monitor edge setups.
+
+![Orientation Animation](docs/images/orientation_animation.gif)
 * **Visualization Modes:**
     * **Solid Bars:** Smooth gradients with adjustable opacity.
     * **Retro LED:** Segmented bars with customizable height and gaps, including a "Fill to Peak" warning mode.
@@ -46,6 +48,8 @@ BeSpec captures system audio loopback and renders a customizable frequency spect
 | **Line Spectrum** | **Oscilloscope** |
 | :---: | :---: |
 | ![Line Mode](docs/images/mode_line.gif) | ![Scope Mode](docs/images/mode_scope.gif) |
+
+![Solid Mode](docs/images/mode_beos2.gif)
 
 ## Case Studies
 
