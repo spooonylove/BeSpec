@@ -15,18 +15,23 @@ BeSpec captures system audio loopback and renders a customizable frequency spect
 
 ## Features
 
-* **High Performance Engine:** Built with `egui` (immediate mode GUI) and `realfft` for low-latency rendering and frequency processing.
-* **Cross-Platform Audio Capture:**
-    * Native capture via `cpal` for Windows (WASAPI), Linux (ALSA/Pulse/Jack), and macOS (CoreAudio).
-    * **Hot-Swappable Devices:** Switch input sources and refresh hardware lists in real-time without application restarts.
+* **High Performance Engine:** Built with `egui` (immediate mode GUI) and `realfft` for low-latency rendering and frequency processing. The UI overhaul in v1.6.4 introduces Physical Pixel Snapping to reduce Moiré aliasing and Dynamic LOD Scaling to maintain high frame rates during window resizing.
+* **Flexible Layouts & Orientations (New!):** Choose how your spectrum flows. The baseline can be anchored to any edge of the window:
+    * Bottom-Up: The classic upward-growing spectrum.
+    * Top-Down: Gravity-defying bars anchored to the top of the screen.
+    * Left-to-Right: A horizontal "sideways" flow anchored to the left.
+    * Right-to-Left: Anchored to the right, perfect for dual-monitor edge setups.
 * **Visualization Modes:**
     * **Solid Bars:** Smooth gradients with adjustable opacity.
     * **Retro LED:** Segmented bars with customizable height and gaps, including a "Fill to Peak" warning mode.
     * **Line Spectrum:** A continuous, glowing frequency contour.
     * **Oscilloscope:** Real-time raw waveform monitoring in the time domain.
+* **Cross-Platform Audio Capture:**
+    * Native capture via `cpal` for Windows (WASAPI), Linux (ALSA/Pulse/Jack), and macOS (CoreAudio).
+    * **Hot-Swappable Devices:** Switch input sources and refresh hardware lists in real-time without application restarts.
 * **Precision FFT:** Uses a fixed 2048-point FFT for granular resolution (23.4 Hz/bin @ 48kHz) with configurable Attack/Release and Peak Hold dynamics.
 * **Theming Engine:** A revamped system handling 25+ presets (e.g., **Winamp Classic**, **Gameboy**, **O-Scope**) and custom user profiles independently.
-* **Media & Wikipedia Integration:** * Displays track metadata and full-color album art. 
+* **Media & Wikipedia Integration:** Displays track metadata and full-color album art. 
     * Clicking album art triggers an intelligent Wikipedia search for the artist or album.
     * Native transport controls (Play/Pause/Skip) for Windows and Linux.
 * **Interactive Inspector:** Hover over the spectrum to activate a precision crosshair displaying exact frequency (Hz) and amplitude (dB) metrics for individual bins.
