@@ -54,9 +54,12 @@ pub fn draw_main_visualizer(
                     crate::shared_state::Orientation::BottomUp | crate::shared_state::Orientation::TopDown =>{
                         pos.x - rect.left()
                     }
-                    crate::shared_state::Orientation::LeftRight | crate::shared_state::Orientation::RightLeft => {
-                        pos.y - rect.top()
+                    crate::shared_state::Orientation::LeftRight => {
+                        pos.y - rect.top() // u=0 is at the top
                     } 
+                    crate::shared_state::Orientation::RightLeft => {
+                        rect.bottom() - pos.y // u=0 is at the bottom
+                    }
                 };
 
                 let index = (u_pos / bar_slot_width).floor() as usize;
@@ -1026,10 +1029,12 @@ fn map_uv_to_xy(
         }
         crate::shared_state::Orientation::LeftRight => {
             // Baseline is Left edge, growing right (+X)
+            // Rotated 90 CW: Low freq (u=0) at Top, growing Down (+Y)
             egui::pos2(rect.left() + v, rect.top() + u)
         }
         crate::shared_state::Orientation::RightLeft => {
             // Baseline is Right edge, growing left (-X)
+            // Rotated 90 CCW: Low freq (u=0) at Bottom, growing Up (-Y)
             egui::pos2(rect.right() - v, rect.bottom() - u)
         }
     }
