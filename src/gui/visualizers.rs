@@ -2,7 +2,7 @@ use egui::{Painter, Rect, Stroke};
 use crate::media::MediaController;
 use crate::shared_state::{ColorProfile, PerformanceStats, VisualMode, 
     VisualProfile, VisualizationData, MediaDisplayMode};
-use crate::gui::theme::{to_egui_color, db_to_px, lerp_color};
+use crate::gui::theme::{to_egui_color, db_to_px, lerp_color, bar_color};
 use crate::gui::widgets::draw_transport_controls;
 use crate::fft_processor::FFTProcessor;
 
@@ -177,32 +177,54 @@ pub fn draw_solid_bars(
         // Map audio dB to a physical screen dimension
         let bar_v = db_to_px(db, noise_floor_db, max_v);
         let norm_height = (bar_v / max_v).clamp(0.0, 1.0);
-        
-        // Calculate gradient coloring
-        let mut bar_color = lerp_color(low, high, norm_height);
-        if Some(i) == hovered_index {
-            bar_color = lerp_color(bar_color, egui::Color32::WHITE, 0.5);
-        }
 
-        // Map logical u/v coordinates to physical x/y coordinates based on user orientation
-        let p_base_left = map_uv_to_xy(rect, u, 0.0, profile.orientation);
-        let p_base_right = map_uv_to_xy(rect, u + bar_width, 0.0, profile.orientation);
-        let p_tip_right = map_uv_to_xy(rect, u + bar_width, bar_v, profile.orientation);
-        let p_tip_left = map_uv_to_xy(rect, u, bar_v, profile.orientation);
+        let is_hovered = Some(i) == hovered_index;
 
-        // Construct and submit the immmediate-mode mesh for this bar
         use egui::epaint::Vertex;
-        let mut mesh = egui::Mesh::default();
 
-        let v_idx = mesh.vertices.len() as u32;
-        mesh.vertices.push(Vertex { pos: p_base_left, uv: egui::Pos2::ZERO, color: low });
-        mesh.vertices.push(Vertex { pos: p_base_right, uv: egui::Pos2::ZERO, color: low });
-        mesh.vertices.push(Vertex { pos: p_tip_right, uv: egui::Pos2::ZERO, color: bar_color });
-        mesh.vertices.push(Vertex { pos: p_tip_left, uv: egui::Pos2::ZERO, color: bar_color });
-        
-        mesh.add_triangle(v_idx, v_idx + 1, v_idx + 2);
-        mesh.add_triangle(v_idx, v_idx + 2, v_idx + 3);
-        painter.add(egui::Shape::mesh(mesh));
+        if profile.vu_coloring == crate::shared_state::VuColoring::Retro {
+            if bar_v <= 0.0 { continue; }
+            // Retro mode: draw up to 3 discrete color zones within each bar
+            let zone_boundaries: &[(f32, egui::Color32)] = &[
+                (0.7, low),   // 0–70%: low
+                (0.9, high),  // 70–90%: high
+                (1.0, peak),  // 90–100%: peak
+            ];
+            let mut zone_start_v = 0.0_f32;
+            for &(zone_end_norm, zone_color) in zone_boundaries {
+                let zone_end_v = (zone_end_norm * max_v).min(bar_v);
+                if zone_start_v >= bar_v { break; }
+                let mut color = zone_color;
+                if is_hovered { color = lerp_color(color, egui::Color32::WHITE, 0.5); }
+
+                let p1 = map_uv_to_xy(rect, u, zone_start_v, profile.orientation);
+                let p2 = map_uv_to_xy(rect, u + bar_width, zone_end_v, profile.orientation);
+                let zone_rect = egui::Rect::from_two_pos(p1, p2);
+                painter.rect_filled(zone_rect, 0.0, color);
+
+                zone_start_v = zone_end_v;
+            }
+        } else {
+            // Gradient mode: GPU-interpolated smooth gradient from low to tip color
+            let mut color = bar_color(low, high, peak, norm_height, profile.vu_coloring);
+            if is_hovered { color = lerp_color(color, egui::Color32::WHITE, 0.5); }
+
+            let p_base_left = map_uv_to_xy(rect, u, 0.0, profile.orientation);
+            let p_base_right = map_uv_to_xy(rect, u + bar_width, 0.0, profile.orientation);
+            let p_tip_right = map_uv_to_xy(rect, u + bar_width, bar_v, profile.orientation);
+            let p_tip_left = map_uv_to_xy(rect, u, bar_v, profile.orientation);
+
+            let mut mesh = egui::Mesh::default();
+            let v_idx = mesh.vertices.len() as u32;
+            mesh.vertices.push(Vertex { pos: p_base_left, uv: egui::Pos2::ZERO, color: low });
+            mesh.vertices.push(Vertex { pos: p_base_right, uv: egui::Pos2::ZERO, color: low });
+            mesh.vertices.push(Vertex { pos: p_tip_right, uv: egui::Pos2::ZERO, color: color });
+            mesh.vertices.push(Vertex { pos: p_tip_left, uv: egui::Pos2::ZERO, color: color });
+
+            mesh.add_triangle(v_idx, v_idx + 1, v_idx + 2);
+            mesh.add_triangle(v_idx, v_idx + 2, v_idx + 3);
+            painter.add(egui::Shape::mesh(mesh));
+        }
 
         // Peaks
         if profile.show_peaks && i < data.peaks.len() {
@@ -346,9 +368,11 @@ pub fn draw_segmented_bars(
                 let segment_idx = s as f32;
                 let v_offset = segment_idx * total_seg_h;
                 
-                // Calculate gradient color based on vertical position
-                let norm_h = (v_offset / max_v).clamp(0.0, 1.0);
-                let color = lerp_color(low, high, norm_h);
+                // Calculate segment color (gradient or retro VU meter zones)
+                // Use segment midpoint for zone classification to avoid off-by-one at boundaries
+                let seg_center_v = v_offset + seg_h / 2.0;
+                let norm_h = (seg_center_v / max_v).clamp(0.0, 1.0);
+                let color = bar_color(low, high, peak_color, norm_h, profile.vu_coloring);
 
                 // Map logical bounds to physical rect
                 let p1 = map_uv_to_xy(rect, u, v_offset, profile.orientation);

@@ -44,6 +44,21 @@ impl Default for Orientation {
     }
 }
 
+/// Controls how bar colors are mapped across the frequency spectrum.
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
+pub enum VuColoring {
+    /// Smooth linear interpolation from `low` to `high` color.
+    Gradient,
+    /// Classic 3-zone VU meter: low (0–70%), high (70–90%), peak (90–100%).
+    Retro,
+}
+
+impl Default for VuColoring {
+    fn default() -> Self {
+        Self::Gradient
+    }
+}
+
 
 /// Controls how the "Now Playing" media overlay behaves.
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
@@ -177,6 +192,10 @@ pub struct VisualProfile {
     pub peak_release_time_ms: f32,
     pub aggregation_mode: AggregationMode,
 
+    // === Color Mode ===
+    #[serde(default)]
+    pub vu_coloring: VuColoring,
+
     // === Color Link ===
     pub color_link: ColorRef,
 
@@ -208,6 +227,7 @@ impl Default for VisualProfile {
             peak_hold_time_ms: 1000.0,
             peak_release_time_ms: 1500.0,
             aggregation_mode: AggregationMode::Peak,
+            vu_coloring: VuColoring::Gradient,
 
             color_link: ColorRef::Preset("Default".to_string()),
 

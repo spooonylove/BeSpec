@@ -2,7 +2,7 @@ use eframe::egui::{self, Ui, Rect, Context, Color32};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use crate::shared_state::{SharedState};
-use crate::shared_state::{ColorProfile, MediaDisplayMode, VisualMode, VisualProfile};
+use crate::shared_state::{ColorProfile, MediaDisplayMode, VisualMode, VisualProfile, VuColoring};
 use crate::shared_state::ColorRef;use crate::media::MediaController;
 use crate::gui::{theme::*, visualizers};
 
@@ -564,7 +564,18 @@ pub fn settings_tab_visual(
                         ui.selectable_value(&mut state.config.profile.visual_mode, VisualMode::Oscilloscope, "Oscilloscope");
                     });
                 ui.end_row();
-                
+
+                if state.config.profile.visual_mode != VisualMode::Oscilloscope {
+                    ui.label("VU Coloring");
+                    egui::ComboBox::from_id_salt("vu_coloring")
+                        .selected_text(format!("{:?}", state.config.profile.vu_coloring))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut state.config.profile.vu_coloring, VuColoring::Gradient, "Gradient");
+                            ui.selectable_value(&mut state.config.profile.vu_coloring, VuColoring::Retro, "Retro");
+                        });
+                    ui.end_row();
+                }
+
                 // Specific Controls
                 if state.config.profile.visual_mode != VisualMode::Oscilloscope {
                     ui.label("Bar Count");
