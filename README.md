@@ -13,6 +13,8 @@ BeSpec captures system audio loopback and renders a customizable frequency spect
 
 ---
 
+> **🚀 What's New in v1.7.0:** > This update brings community-contributed **Classic VU Meter** coloring (discrete retro zones) and Unix **Preset Hot-Reloading** via `SIGUSR1` for seamless theme management. Under the hood, you'll experience a massive smoothness upgrade thanks to **batched mesh rendering** and **background album art decoding** (no more UI stutters when tracks change!). We've also completely overhauled the settings UI, added privacy-aware media logging, and implemented native Wayland window positioning for flawless KDE integration.
+
 ## Features
 
 * **High Performance Engine:** Built with `egui` (immediate mode GUI) and `realfft` for low-latency rendering and frequency processing. The UI overhaul in v1.6.4 introduces Physical Pixel Snapping to reduce Moiré aliasing and Dynamic LOD Scaling to maintain high frame rates during window resizing.
@@ -24,7 +26,7 @@ BeSpec captures system audio loopback and renders a customizable frequency spect
 
 ![Orientation Animation](docs/images/orientation_animation.gif)
 * **Visualization Modes:**
-    * **Solid Bars:** Smooth gradients with adjustable opacity.
+    * **Solid Bars:** Choose between smooth color gradients or discrete "Retro VU" 3-zone coloring for classic hardware accuracy.
     * **Retro LED:** Segmented bars with customizable height and gaps, including a "Fill to Peak" warning mode.
     * **Line Spectrum:** A continuous, glowing frequency contour.
     * **Oscilloscope:** Real-time raw waveform monitoring in the time domain.
@@ -33,6 +35,7 @@ BeSpec captures system audio loopback and renders a customizable frequency spect
     * **Hot-Swappable Devices:** Switch input sources and refresh hardware lists in real-time without application restarts.
 * **Precision FFT:** Uses a fixed 2048-point FFT for granular resolution (23.4 Hz/bin @ 48kHz) with configurable Attack/Release and Peak Hold dynamics.
 * **Theming Engine:** A revamped system handling 25+ presets (e.g., **Winamp Classic**, **Gameboy**, **O-Scope**) and custom user profiles independently.
+    * Live Hot-Reloading: Unix/Linux users can seamlessly update UI themes on the fly without restarting by sending SIGUSR1 signals—perfect for automated system theme managers.
 * **Media & Wikipedia Integration:** Displays track metadata and full-color album art. 
     * Clicking album art triggers an intelligent Wikipedia search for the artist or album.
     * Native transport controls (Play/Pause/Skip) for Windows and Linux.
