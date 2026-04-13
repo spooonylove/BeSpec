@@ -169,4 +169,4 @@ jobs:
         with:
           files: ${{ env.ASSET_NAME }}
           generate_release_notes: true
-          prerelease: true
+          prerelease: false
