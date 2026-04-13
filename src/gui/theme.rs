@@ -86,6 +86,104 @@ pub fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
     )
 }
 
+/// Retro VU meter coloring: 3 discrete color zones instead of a smooth gradient.
+///
+/// Mimics classic hardware spectrum analyzers with distinct color bands:
+/// - 0–70%:  `low` color  (normal operating level)
+/// - 70–90%: `high` color (warning / elevated level)
+/// - 90–100%: `peak` color (danger / clipping zone)
+pub fn retro_color(low: egui::Color32, high: egui::Color32, peak: egui::Color32, t: f32) -> egui::Color32 {
+    if t < 0.7 { low }
+    else if t < 0.9 { high }
+    else { peak }
+}
+
+/// Choose the appropriate bar color based on the profile's `vu_coloring` setting.
+///
+/// - Retro mode: 3 discrete color zones via [`retro_color`].
+/// - Gradient mode: smooth linear interpolation via [`lerp_color`].
+pub fn bar_color(
+    low: egui::Color32,
+    high: egui::Color32,
+    peak: egui::Color32,
+    t: f32,
+    vu_coloring: crate::shared_state::VuColoring,
+) -> egui::Color32 {
+    match vu_coloring {
+        crate::shared_state::VuColoring::Retro => retro_color(low, high, peak, t),
+        crate::shared_state::VuColoring::Gradient => lerp_color(low, high, t),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_retro_color_low_zone() {
+        let low = Color32::from_rgb(0, 255, 0);
+        let high = Color32::from_rgb(255, 255, 0);
+        let peak = Color32::from_rgb(255, 0, 0);
+
+        assert_eq!(retro_color(low, high, peak, 0.0), low);
+        assert_eq!(retro_color(low, high, peak, 0.35), low);
+        assert_eq!(retro_color(low, high, peak, 0.69), low);
+    }
+
+    #[test]
+    fn test_retro_color_high_zone() {
+        let low = Color32::from_rgb(0, 255, 0);
+        let high = Color32::from_rgb(255, 255, 0);
+        let peak = Color32::from_rgb(255, 0, 0);
+
+        assert_eq!(retro_color(low, high, peak, 0.7), high);
+        assert_eq!(retro_color(low, high, peak, 0.8), high);
+        assert_eq!(retro_color(low, high, peak, 0.89), high);
+    }
+
+    #[test]
+    fn test_retro_color_peak_zone() {
+        let low = Color32::from_rgb(0, 255, 0);
+        let high = Color32::from_rgb(255, 255, 0);
+        let peak = Color32::from_rgb(255, 0, 0);
+
+        assert_eq!(retro_color(low, high, peak, 0.9), peak);
+        assert_eq!(retro_color(low, high, peak, 0.95), peak);
+        assert_eq!(retro_color(low, high, peak, 1.0), peak);
+    }
+
+    #[test]
+    fn test_bar_color_retro_dispatches_to_retro() {
+        use crate::shared_state::VuColoring;
+        let low = Color32::from_rgb(0, 255, 0);
+        let high = Color32::from_rgb(255, 255, 0);
+        let peak = Color32::from_rgb(255, 0, 0);
+
+        assert_eq!(bar_color(low, high, peak, 0.5, VuColoring::Retro), low);
+    }
+
+    #[test]
+    fn test_bar_color_gradient_dispatches_to_lerp() {
+        use crate::shared_state::VuColoring;
+        let low = Color32::from_rgb(0, 0, 0);
+        let high = Color32::from_rgb(255, 255, 255);
+        let peak = Color32::from_rgb(255, 0, 0);
+
+        let result = bar_color(low, high, peak, 0.5, VuColoring::Gradient);
+        assert_ne!(result, low);
+        assert_ne!(result, high);
+    }
+
+    #[test]
+    fn test_lerp_color_endpoints() {
+        let a = Color32::from_rgb(0, 0, 0);
+        let b = Color32::from_rgb(255, 255, 255);
+
+        assert_eq!(lerp_color(a, b, 0.0).r(), 0);
+        assert_eq!(lerp_color(a, b, 1.0).r(), 255);
+    }
+}
+
 pub fn to_egui_font(font_variant: &ThemeFont) -> FontId {
     match font_variant {
         ThemeFont::Mini => FontId::new(9.0, FontFamily::Proportional),

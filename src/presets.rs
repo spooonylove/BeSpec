@@ -1,4 +1,4 @@
-use crate::shared_state::{Color32, ColorProfile, ColorRef, ThemeFont, VisualMode, VisualProfile};
+use crate::shared_state::{Color32, ColorProfile, ColorRef, ThemeFont, VisualMode, VisualProfile, VuColoring};
 
 /// Returns all built-in Color Profiles
 pub fn built_in_colors() -> Vec<ColorProfile> {
@@ -537,13 +537,14 @@ pub fn built_in_visuals() -> Vec<VisualProfile> {
         VisualProfile {
             name: "Retro Dashboard".to_string(),
             visual_mode: VisualMode::SegmentedBars,
-            num_bars: 64, 
+            num_bars: 64,
             segment_height_px: 6.0,
             segment_gap_px: 2.0,
             overlay_font: ThemeFont::Monospace,
             color_link: ColorRef::Preset("Neon Tokyo".to_string()),
             attack_time_ms: 10.0,
             release_time_ms: 120.0,
+            vu_coloring: VuColoring::Retro,
             ..VisualProfile::default()
         },
 
