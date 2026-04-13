@@ -60,6 +60,10 @@ tokio = { version = "1.0", default-features = false, features = ["rt", "time", "
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris = "2.0"
 
+# Unix: Signal handling for preset reload (SIGUSR1)
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.3"
+
 
 # macOS: Uses private MediaRemote framework bindings
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -745,11 +745,112 @@ mod tests {
     // Critical: Prevents file system errors or overwrites
     #[test]
     fn test_filename_sanitization() {
-        // We need to access the private helper. 
+        // We need to access the private helper.
         // Rust unit tests in the same file CAN access private methods.
         assert_eq!(AppConfig::sanitize_filename("Cool Preset"), "cool_preset");
         assert_eq!(AppConfig::sanitize_filename("My/Preset!"), "mypreset");
         assert_eq!(AppConfig::sanitize_filename("  Trim Me  "), "trim_me");
         assert_eq!(AppConfig::sanitize_filename("O'Reilly"), "oreilly");
+    }
+
+    // --- 4. Preset Hot-Reload Tests ---
+    // Verifies that color presets can be loaded from a temp directory,
+    // updated on disk, and re-loaded with new values.
+
+    #[test]
+    fn test_color_preset_save_and_load_roundtrip() {
+        let dir = std::env::temp_dir().join("bespec_test_presets_roundtrip");
+        let colors_dir = dir.join("presets").join("colors");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&colors_dir).unwrap();
+
+        let preset = ColorProfile {
+            name: "test_roundtrip".to_string(),
+            low: Color32::from_rgb(10, 20, 30),
+            high: Color32::from_rgb(40, 50, 60),
+            peak: Color32::from_rgb(255, 0, 0),
+            background: Color32::BLACK,
+            text: Color32::WHITE,
+            inspector_bg: Color32::BLACK,
+            inspector_fg: Color32::WHITE,
+        };
+
+        let json = serde_json::to_string_pretty(&preset).unwrap();
+        fs::write(colors_dir.join("test_roundtrip.json"), &json).unwrap();
+
+        let loaded: ColorProfile =
+            serde_json::from_str(&fs::read_to_string(colors_dir.join("test_roundtrip.json")).unwrap())
+                .unwrap();
+
+        assert_eq!(loaded.name, "test_roundtrip");
+        assert_eq!(loaded.low, Color32::from_rgb(10, 20, 30));
+        assert_eq!(loaded.peak, Color32::from_rgb(255, 0, 0));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_color_preset_update_detected() {
+        let dir = std::env::temp_dir().join("bespec_test_presets_update");
+        let colors_dir = dir.join("presets").join("colors");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&colors_dir).unwrap();
+
+        // Write initial preset
+        let preset_v1 = ColorProfile {
+            name: "theme_test".to_string(),
+            low: Color32::from_rgb(0, 0, 0),
+            ..ColorProfile::default()
+        };
+        let json_v1 = serde_json::to_string_pretty(&preset_v1).unwrap();
+        fs::write(colors_dir.join("theme_test.json"), &json_v1).unwrap();
+
+        // Load and verify v1
+        let content = fs::read_to_string(colors_dir.join("theme_test.json")).unwrap();
+        let loaded_v1: ColorProfile = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded_v1.low, Color32::from_rgb(0, 0, 0));
+
+        // Update the preset (simulates external theme manager writing new colors)
+        let preset_v2 = ColorProfile {
+            name: "theme_test".to_string(),
+            low: Color32::from_rgb(100, 200, 50),
+            ..ColorProfile::default()
+        };
+        let json_v2 = serde_json::to_string_pretty(&preset_v2).unwrap();
+        fs::write(colors_dir.join("theme_test.json"), &json_v2).unwrap();
+
+        // Re-load and verify v2
+        let content = fs::read_to_string(colors_dir.join("theme_test.json")).unwrap();
+        let loaded_v2: ColorProfile = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded_v2.low, Color32::from_rgb(100, 200, 50),
+            "Preset should reflect updated file contents");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_resolve_colors_picks_up_new_preset() {
+        // Simulates what happens after hot-reload: new user preset replaces old one
+        let old_presets = vec![ColorProfile {
+            name: "vogix theme".to_string(),
+            low: Color32::from_rgb(0, 100, 150), // blue
+            ..ColorProfile::default()
+        }];
+
+        let new_presets = vec![ColorProfile {
+            name: "vogix theme".to_string(),
+            low: Color32::from_rgb(100, 50, 0), // brown (walnut)
+            ..ColorProfile::default()
+        }];
+
+        let mut config = AppConfig::default();
+        config.profile.color_link = ColorRef::Preset("vogix theme".to_string());
+
+        let resolved_old = config.resolve_colors(&old_presets);
+        assert_eq!(resolved_old.low, Color32::from_rgb(0, 100, 150));
+
+        let resolved_new = config.resolve_colors(&new_presets);
+        assert_eq!(resolved_new.low, Color32::from_rgb(100, 50, 0),
+            "resolve_colors should use the latest preset data");
     }
 }

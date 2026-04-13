@@ -562,6 +562,58 @@ fn start_fft_processing(
 }
 
 // ========================================================================
+// SIGNAL HANDLER THREAD (SIGUSR1 = reload presets)
+// ========================================================================
+//    Listens for SIGUSR1 and reloads all user presets (colors + visuals).
+//    This is the standard Unix pattern for config reload — works reliably
+//    with symlinks, NixOS store paths, and any file management approach.
+
+#[cfg(unix)]
+fn start_signal_handler(
+    shared_state: Arc<Mutex<SharedState>>,
+    shutdown: Arc<AtomicBool>,
+) {
+    thread::spawn(move || {
+        tracing::info!("[Presets] SIGUSR1 handler registered for preset reload");
+
+        let mut signals = match signal_hook::iterator::Signals::new([signal_hook::consts::SIGUSR1]) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("[Presets] Failed to register SIGUSR1 handler: {}", e);
+                return;
+            }
+        };
+
+        for _ in signals.forever() {
+            if shutdown.load(Ordering::Relaxed) {
+                break;
+            }
+            let color_presets = shared_state::AppConfig::load_user_color_presets();
+            let visual_presets = shared_state::AppConfig::load_user_visual_presets();
+            if let Ok(mut state) = shared_state.lock() {
+                tracing::info!(
+                    "[Presets] SIGUSR1: reloaded {} color, {} visual presets",
+                    color_presets.len(),
+                    visual_presets.len()
+                );
+                state.user_color_presets = color_presets;
+                state.user_visual_presets = visual_presets;
+            }
+        }
+
+        tracing::info!("[Presets] Signal handler shutdown");
+    });
+}
+
+#[cfg(not(unix))]
+fn start_signal_handler(
+    _shared_state: Arc<Mutex<SharedState>>,
+    _shutdown: Arc<AtomicBool>,
+) {
+    tracing::info!("[Presets] Signal-based reload not available on this platform");
+}
+
+// ========================================================================
 // Load Icon to Memory
 // ========================================================================
 fn load_icon() -> Option<Arc<egui::IconData>> {
@@ -688,6 +740,11 @@ fn main (){
     let media_manager = Arc::new(PlatformMedia::new());
     let (media_tx, media_rx) = bounded(10);
     media_manager.start(media_tx);
+
+    // ==================================
+    // Start Signal Handler Thread (SIGUSR1 = reload presets)
+    // ==================================
+    start_signal_handler(shared_state.clone(), shutdown.clone());
 
     // ==================================
     // Start Update Update Checker Thread
