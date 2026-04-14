@@ -12,7 +12,6 @@ winres = "0.1"
 
 [dependencies]
 # Audio capture and processing
-cpal = "0.15"
 realfft = "3.3"
 num-complex = "0.4"
 directories = "5.0"
@@ -56,9 +55,18 @@ windows = { version = "0.52", features = [
 ] }
 tokio = { version = "1.0", default-features = false, features = ["rt", "time", "sync"] }
 
-# Linux: Uses the MPRIS standard via D-Bus
+# Linux: Uses the MPRIS standard via D-Bus, and PipeWire native for audio capture
 [target.'cfg(target_os = "linux")'.dependencies]
 mpris = "2.0"
+# v0_3_44 feature enables PW_KEY_TARGET_OBJECT (added in pipewire 0.3.44)
+# which we use to pin a capture stream to a specific sink/source by name.
+pipewire = { version = "0.9", features = ["v0_3_44"] }
+
+# Non-Linux: cpal handles audio capture (its WASAPI loopback / CoreAudio paths
+# work properly on Windows / macOS — only Linux's ALSA backend is broken for our
+# "capture what's playing" use case, so we go native there).
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+cpal = "0.15"
 
 # Unix: Signal handling for preset reload (SIGUSR1)
 [target.'cfg(unix)'.dependencies]
