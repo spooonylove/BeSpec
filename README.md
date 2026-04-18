@@ -13,7 +13,10 @@ BeSpec captures system audio loopback and renders a customizable frequency spect
 
 ---
 
-> **🚀 What's New in v1.7.0:** > This update brings community-contributed **Classic VU Meter** coloring (discrete retro zones) and Unix **Preset Hot-Reloading** via `SIGUSR1` for seamless theme management. Under the hood, you'll experience a massive smoothness upgrade thanks to **batched mesh rendering** and **background album art decoding** (no more UI stutters when tracks change!). We've also completely overhauled the settings UI, added privacy-aware media logging, and implemented native Wayland window positioning for flawless KDE integration.
+### 🚀 What's New in v1.8.0: Native Linux PipeWire Support!
+BeSpec now features a completely rewritten, native PipeWire audio backend for Linux. You no longer need to use `pavucontrol` or manual routing tricks to capture your desktop audio. BeSpec automatically attaches to your active output monitor and seamlessly follows the audio if you switch devices (like moving from desktop speakers to a USB headset). 
+
+*Note for Linux Builders: Building from source now requires `libpipewire-0.3-dev` and `libclang-dev`. See [docs/linux_setup.md](docs/linux_setup.md) for updated instructions.*
 
 ## Features
 
