@@ -730,30 +730,55 @@ pub fn settings_tab_audio(ui: &mut egui::Ui, state: &mut SharedState) {
                 ui.label("Device");
                 
                 ui.horizontal(|ui| {
-                    let (current_sel, devices) = {
+                    let (current_sel_id, devices) = {
                         (state.config.selected_device.clone(), state.audio_devices.clone())
+                    };
+
+                    // Display label for the currently-selected id: look the id
+                    // up in the device list so the dropdown shows the friendly
+                    // `name` field rather than the raw backend id (which on
+                    // linux is a long pipewire `node.name`). Falls back to the
+                    // id itself for the "Default" sentinel and for ids that
+                    // are no longer present in the list.
+                    //
+                    // `&str` instead of owning `String` — avoids the per-frame
+                    // allocation in the GUI render loop (the dropdown redraws
+                    // every frame). egui's `ComboBox::selected_text` takes
+                    // `impl Into<WidgetText>`, which accepts `&str` directly.
+                    let current_label: &str = if current_sel_id == "Default" {
+                        "Default System Device"
+                    } else {
+                        devices
+                            .iter()
+                            .find(|d| d.id == current_sel_id)
+                            .map(|d| d.name.as_str())
+                            .unwrap_or(current_sel_id.as_str())
                     };
 
                     // Device Selector
                     egui::ComboBox::from_id_salt("audio_device_combo")
-                        .selected_text(&current_sel)
+                        .selected_text(current_label)
                         .width(220.0)
                         .show_ui(ui, |ui| {
                             // Default Option
-                            if ui.selectable_label(current_sel == "Default", "Default System Device").clicked() {
+                            if ui.selectable_label(current_sel_id == "Default", "Default System Device").clicked() {
                                 tracing::info!("[GUI] User selected device: Default");
                                 state.config.selected_device = "Default".to_string();
                                 state.device_changed = true;
                             }
-                            
+
                             ui.separator();
 
-                            // Enumerated Hardware Devices
-                            for name in devices {
-                                let is_selected = current_sel == name;
-                                if ui.selectable_label(is_selected, &name).clicked() {
-                                    tracing::info!("[GUI] User selected device: '{}'", name);
-                                    state.config.selected_device = name;
+                            // Enumerated Hardware Devices: display `name`,
+                            // store `id` in selected_device.
+                            for dev in devices {
+                                let is_selected = current_sel_id == dev.id;
+                                if ui.selectable_label(is_selected, &dev.name).clicked() {
+                                    tracing::info!(
+                                        "[GUI] User selected device: '{}' (id: {})",
+                                        dev.name, dev.id
+                                    );
+                                    state.config.selected_device = dev.id.clone();
                                     state.device_changed = true;
                                 }
                             }

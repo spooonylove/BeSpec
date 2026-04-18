@@ -23,13 +23,24 @@ jobs:
     - uses: actions/checkout@v4
 
     # === COMBINED LINUX DEPENDENCIES ===
-    # Merges your original GUI deps (udev, wayland, xkb) 
-    # with the new Media deps (dbus, pkg-config)
+    # GUI deps (udev, wayland, xkb), media deps (dbus, pkg-config),
+    # plus the native PipeWire audio capture backend's compile-time deps:
+    #   - libpipewire-0.3-dev: libspa-sys / pipewire-sys link against this
+    #   - libclang-dev:        bindgen (used by libspa-sys) needs libclang
+    #                          to parse the pipewire C headers
     - name: Install Linux Dependencies
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
-        sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libdbus-1-dev pkg-config
+        sudo apt-get install -y \
+          libasound2-dev \
+          libudev-dev \
+          libwayland-dev \
+          libxkbcommon-dev \
+          libdbus-1-dev \
+          libpipewire-0.3-dev \
+          libclang-dev \
+          pkg-config
 
     # Cache cargo registry and build artifacts to speed up future runs
     - name: Cache Cargo registry

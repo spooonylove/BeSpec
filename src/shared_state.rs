@@ -1,4 +1,5 @@
 use std::time::{Duration, Instant};
+use crate::audio_device::AudioDeviceInfo;
 use crate::fft_config::FFTInfo;
 use serde::{Serialize, Deserialize};
 use std::fs;
@@ -264,7 +265,14 @@ pub struct SharedState {
     pub config: AppConfig,
 
     // === Audio Device State === 
-    pub audio_devices: Vec<String>,
+    /// Available audio devices, populated by the capture thread from
+    /// `AudioCaptureManager::list_devices()`. Stores the full
+    /// `AudioDeviceInfo` so the GUI can show the friendly `name` while
+    /// passing the stable `id` back to the backend on selection — these
+    /// are the same string on cpal-based platforms but diverge on linux
+    /// where `id` is the PipeWire `node.name` and `name` is the picker
+    /// label like "Maonocaster E2 (Output Monitor)".
+    pub audio_devices: Vec<AudioDeviceInfo>,
 
     /// Flag: GUI requested a device switch (handled by main thread)
     pub device_changed: bool,

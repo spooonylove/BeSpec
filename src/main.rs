@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console on Windows in release
 
 mod audio_capture;
+#[cfg(target_os = "linux")]
+mod audio_capture_pw;
 mod audio_device;
 mod fft_config;
 mod fft_processor;
@@ -65,11 +67,11 @@ fn start_audio_capture(
         tracing::info!("[Capture] Initializing audio device list...");
         if let Ok(devices) = AudioCaptureManager::list_devices() {
             if let Ok(mut state) = shared_state.lock() {
-                state.audio_devices = devices.iter().map(|d| d.name.clone()).collect();
+                state.audio_devices = devices;
 
                 tracing::info!("[Capture] Found {} audio devices", state.audio_devices.len());
-                for (i, name) in state.audio_devices.iter().enumerate() {
-                    tracing::debug!("[Capture]    {}: {}", i, name);
+                for (i, dev) in state.audio_devices.iter().enumerate() {
+                    tracing::debug!("[Capture]    {}: {} ({})", i, dev.name, dev.id);
                 }
             } else {
                 tracing::error!("[Capture] Failed to lock shared state for audio devices");
@@ -140,7 +142,7 @@ fn start_audio_capture(
 
                 if let Ok(devices) = AudioCaptureManager::list_devices() {
                     if let Ok(mut state) = shared_state.lock() {
-                        state.audio_devices = devices.iter().map(|d| d.name.clone()).collect();
+                        state.audio_devices = devices;
                         tracing::info!("[Capture] ✓ Scan complete in {:.2}ms, Found {} audio devices",
                             start.elapsed().as_secs_f32() * 1000.0,
                             state.audio_devices.len()

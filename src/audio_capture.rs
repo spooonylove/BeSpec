@@ -1,13 +1,34 @@
-/// Enhanced audio capture with dynamic sample rate detection.
-/// Manages audio streams and adjusts FFT configuration based on actual device capabilities.
+/// Audio capture — backend dispatched per-platform.
+///
+/// `AudioPacket` is the shared frame type that flows from any backend to the
+/// FFT thread via crossbeam channel. The actual `AudioCaptureManager`
+/// implementation lives in:
+///
+/// - `audio_capture_pw` — Linux, native PipeWire via `pipewire-rs` (the
+///   correct backend for capturing what's playing on a sink monitor — cpal's
+///   ALSA path silently misroutes to the default capture source instead).
+/// - this file (cfg(not(linux))) — Windows / macOS, cpal-based with WASAPI /
+///   CoreAudio loopback semantics that work as designed on those platforms.
 
+#[cfg(target_os = "linux")]
+pub use crate::audio_capture_pw::AudioCaptureManager;
+
+use std::time::Instant;
+
+#[cfg(not(target_os = "linux"))]
 use cpal::traits::{DeviceTrait, StreamTrait};
+#[cfg(not(target_os = "linux"))]
 use crossbeam_channel::{bounded, Receiver, Sender};
+#[cfg(not(target_os = "linux"))]
 use std::sync::{Arc, Mutex};
+#[cfg(not(target_os = "linux"))]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(not(target_os = "linux"))]
 use std::thread;
-use std::time::{Duration, Instant};
+#[cfg(not(target_os = "linux"))]
+use std::time::Duration;
 
+#[cfg(not(target_os = "linux"))]
 use crate::audio_device::{AudioDeviceEnumerator, AudioDeviceInfo, AudioDeviceError};
 
 /// Audio packet containing raw samples and metadata
@@ -73,73 +94,25 @@ impl AudioPacket {
 }
 
 // ============================================================================
-//  StderrSilencer: Linux Implementation (The real logic)
+//  StderrSilencer (Windows/macOS no-op)
 // ============================================================================
-/// a helper to temporarily silence `stderr` out from C libaries (ALSA, Jack)
-/// Useful on Linux to suppress unwanted error messages from audio backends
-#[cfg(target_os = "linux")]
-struct StderrSilencer {
-    original_stderr: Option<i32>,
-}
-
-#[cfg(target_os = "linux")]
-impl StderrSilencer {
-    fn new() -> Self {
-        let mut silencer = Self { original_stderr: None };
-        unsafe {
-            // 1. Duplicate the current stderr (file descriptor 2) so we can restore it later
-            let stderr_fd = libc::STDERR_FILENO;
-            let original = libc::dup(stderr_fd);
-
-            if original >= 0 {
-                silencer.original_stderr = Some(original);
-
-                // 2. Open /dev/null (the black hole waits for nothing)
-                let null_path = std::ffi::CString::new("/dev/null").unwrap();
-                let null_fd = libc::open(null_path.as_ptr(), libc::O_WRONLY);
-
-                if null_fd >= 0 {
-                    // 3. Overrite  stderr with /dev/null file descriptor
-                    libc::dup2(null_fd, stderr_fd);
-                    libc::close(null_fd);
-                }
-            }
-        }
-        silencer
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for StderrSilencer {
-    fn drop(&mut self) {
-        // Restore stderr immediately when this struct goes out of scope
-        if let Some(original) = self.original_stderr {
-            unsafe {
-                libc::dup2(original, libc::STDERR_FILENO);
-                libc::close(original);
-            }
-        }
-    }
-}
-
-// ============================================================================
-//  StderrSilencer: Windows/macOS Implementation (Dummy / No-Op)
-// ============================================================================
-// On other platforms, we don't need to suppress anything, so this struct does nothing.
-// The compiler optimizes it away completely (zero cost).
+// Was originally a linux ALSA/JACK stderr suppressor. Now that the linux audio
+// backend is native PipeWire (no cpal, no ALSA), nothing on linux spams stderr
+// and the real impl is gone. The remaining no-op exists so the cpal-based
+// AudioCaptureManager on Windows/macOS keeps the same call shape; the compiler
+// optimizes it away.
 #[cfg(not(target_os = "linux"))]
 struct StderrSilencer;
 
 #[cfg(not(target_os = "linux"))]
 impl StderrSilencer {
     fn new() -> Self {
-        Self // Returns the empty struct
+        Self
     }
 }
 
-
-
 /// Handles audio capture from a specific device
+#[cfg(not(target_os = "linux"))]
 pub struct AudioCaptureManager {
     /// Information about the currently active device
     device_info: Arc<Mutex<AudioDeviceInfo>>,
@@ -157,6 +130,7 @@ pub struct AudioCaptureManager {
     capture_thread: Option<thread::JoinHandle<()>>,
 }
 
+#[cfg(not(target_os = "linux"))]
 impl AudioCaptureManager {
     /// Create a new audio capture manager with default device
     pub fn new() -> Result<Self, AudioDeviceError> {
@@ -492,6 +466,7 @@ impl AudioCaptureManager {
 
 }
 
+#[cfg(not(target_os = "linux"))]
 impl Drop for AudioCaptureManager {
     fn drop(&mut self) {
         self.stop_capture();
@@ -500,7 +475,9 @@ impl Drop for AudioCaptureManager {
 
 // ========== Tests ============
 
-#[cfg(test)]
+// AudioCaptureManager unit tests on cpal-using platforms only. The pipewire
+// linux backend has its own tests.
+#[cfg(all(test, not(target_os = "linux")))]
 mod tests {
     use super::*;
 

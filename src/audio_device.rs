@@ -1,7 +1,9 @@
 /// Audio device enumeration and stream management.
 /// Handles device discovery, sample rate detection, and dynamic device switching.
 
+#[cfg(not(target_os = "linux"))]
 use cpal::traits::{DeviceTrait, HostTrait};
+#[cfg(not(target_os = "linux"))]
 use cpal::Device;
 use std::fmt;
 
@@ -40,6 +42,9 @@ impl fmt::Display for AudioDeviceInfo {
 }
 
 /// Error types for audio device operations
+// dead_code allowed: linux backend only constructs `DeviceNotFound` today;
+// the rest exist for the cpal backends and for forward-compat error reporting.
+#[allow(dead_code)]
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum AudioDeviceError {
     /// No audio output devices were found on the system.
@@ -57,11 +62,65 @@ pub enum AudioDeviceError {
     /// Failed to query or apply device configuration.
     #[error("Configuration error: {0}")]
     ConfigurationError(String),
+    /// PipeWire backend (Linux) hit an error. The inner string carries the
+    /// context needed to diagnose it — pipewire-rs `Error`, a PipeWire
+    /// pod-serialization failure, a mainloop/context setup failure, etc.
+    #[error("PipeWire backend error: {0}")]
+    PipeWireError(String),
 }
 
 /// Enumerates all available audio output devices and their capabilities
 pub struct AudioDeviceEnumerator;
 
+// ============================================================================
+// Linux: PipeWire-native compatibility shim
+// ============================================================================
+// On linux the audio backend is native PipeWire and the *real* device list
+// comes from `audio_capture_pw::AudioCaptureManager::list_devices()`, which
+// walks the PipeWire registry and returns one entry per Audio/Source plus
+// one synthesized monitor entry per Audio/Sink.
+//
+// This `AudioDeviceEnumerator` impl is just a compatibility shim for the
+// few call sites in `main.rs` that still go through it (e.g. `Default`
+// resolution); it returns a single placeholder representing the current
+// default-sink monitor. Linux callers should prefer
+// `AudioCaptureManager::list_devices()` for actual enumeration.
+//
+// dead_code allowed: most linux callers use `AudioCaptureManager` directly,
+// but we keep the methods here for shape parity with the cpal backends so
+// `main.rs` doesn't need its own cfg-gates around device-list calls.
+#[cfg(target_os = "linux")]
+#[allow(dead_code)]
+impl AudioDeviceEnumerator {
+    pub fn enumerate_devices() -> Result<Vec<AudioDeviceInfo>, AudioDeviceError> {
+        Ok(vec![Self::default_info()])
+    }
+
+    pub fn get_device_by_id(_device_id: &str) -> Result<(), AudioDeviceError> {
+        // Linux backend ignores device id and always captures the default
+        // sink monitor; we just acknowledge any id as valid.
+        Ok(())
+    }
+
+    pub fn get_default_device() -> Result<((), AudioDeviceInfo), AudioDeviceError> {
+        // Tuple shape kept to match call sites in main.rs that destructure
+        // `let (_, info) = ...`.
+        Ok(((), Self::default_info()))
+    }
+
+    fn default_info() -> AudioDeviceInfo {
+        AudioDeviceInfo {
+            id: "System Audio".to_string(),
+            name: "System Audio (Default Output)".to_string(),
+            sample_rates: vec![48000],
+            default_sample_rate: 48000,
+            channels: 2,
+            is_default: true,
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
 impl AudioDeviceEnumerator {
     /// Get all available audio output devices.
     #[must_use = "device list should be checked for errors"]
@@ -238,7 +297,10 @@ impl AudioDeviceEnumerator {
 
 // ================== Tests ===================
 
-#[cfg(test)]
+// Cpal-backed enumerator tests are non-linux only — the linux backend has no
+// cpal symbols in scope. Linux-side enumeration tests live alongside the
+// pipewire backend.
+#[cfg(all(test, not(target_os = "linux")))]
 mod tests {
     use super::*;
 
